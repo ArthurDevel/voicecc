@@ -1,19 +1,19 @@
 /**
- * Claude session via the `claude` CLI with streaming JSON output.
+ * Claude session via the @anthropic-ai/claude-code SDK.
  *
- * Spawns the globally installed `claude` binary in print mode with
- * `--output-format stream-json` to get streaming text deltas. Uses the
- * user's existing Claude Code subscription auth (no API key needed).
+ * Uses the SDK's `query()` function with `includePartialMessages: true` for
+ * true token-level streaming. Runs against the user's existing Claude Code
+ * subscription (no API key needed). Supports multi-turn via `resume`.
  *
  * Responsibilities:
- * - Spawn `claude` CLI per turn with --resume for conversation continuity
- * - Parse streaming JSON lines into ClaudeStreamEvent objects
- * - Support interruption by killing the child process
+ * - Call SDK query() per turn with resume for conversation continuity
+ * - Extract streaming text deltas from SDKPartialAssistantMessage events
+ * - Map tool_use content blocks to tool_start / tool_end events
+ * - Support interruption via query.interrupt()
  * - Provide clean session teardown
  */
 
-import { spawn, type ChildProcess } from "child_process";
-import { createInterface } from "readline";
+import { query as claudeQuery, type Query, type Options } from "@anthropic-ai/claude-code";
 import type { ClaudeSessionConfig, ClaudeStreamEvent } from "./types.js";
 
 // ============================================================================
@@ -45,7 +45,7 @@ async function createClaudeSession(
 ): Promise<ClaudeSession> {
   const systemPrompt = config.systemPrompt || DEFAULT_SYSTEM_PROMPT;
   let sessionId: string | null = null;
-  let currentProcess: ChildProcess | null = null;
+  let currentQuery: Query | null = null;
   let closed = false;
 
   return {
@@ -58,119 +58,130 @@ async function createClaudeSession(
         throw new Error("Cannot send empty message.");
       }
 
-      const args = [
-        "--print",
-        "--verbose",
-        "--output-format", "stream-json",
-        "--include-partial-messages",
-        "--system-prompt", systemPrompt,
-        "--max-turns", String(config.maxTurns),
-        "--dangerously-skip-permissions",
-      ];
-
-      // Resume the same session for multi-turn context
-      if (sessionId) {
-        args.push("--resume", sessionId);
-      }
-
-      args.push("--", text);
-
-      const child = spawn(CLAUDE_BIN, args, {
-        stdio: ["ignore", "pipe", "pipe"],
-        env: { ...process.env },
-      });
-      currentProcess = child;
-
-      const rl = createInterface({ input: child.stdout! });
-      let hasError = false;
+      const t0 = Date.now();
       let hasStreamedText = false;
 
-      // Log stderr for debugging
-      child.stderr?.on("data", (data: Buffer) => {
-        const msg = data.toString().trim();
-        if (msg) {
-          console.error(`[claude-stderr] ${msg}`);
-        }
-      });
+      const options: Options = {
+        pathToClaudeCodeExecutable: CLAUDE_BIN,
+        includePartialMessages: true,
+        appendSystemPrompt: systemPrompt,
+        maxTurns: config.maxTurns,
+        permissionMode: config.permissionMode as Options["permissionMode"],
+        stderr: (data: string) => {
+          const msg = data.trim();
+          if (msg) console.error(`[claude-stderr] ${msg}`);
+        },
+      };
 
-      for await (const line of rl) {
-        if (!line.trim()) continue;
+      if (sessionId) {
+        options.resume = sessionId;
+      }
 
-        let parsed: Record<string, unknown>;
-        try {
-          parsed = JSON.parse(line);
-        } catch {
-          continue;
-        }
+      const q = claudeQuery({ prompt: text, options });
+      currentQuery = q;
 
-        // Capture session ID for resume on subsequent turns
-        if (parsed.session_id && !sessionId) {
-          sessionId = parsed.session_id as string;
-        }
+      // Track which content block indices are tool_use blocks
+      const toolUseBlocks = new Set<number>();
 
-        // Result message -- turn complete
-        if (parsed.type === "result") {
-          if (parsed.is_error) {
-            hasError = true;
-            yield { type: "error", content: String(parsed.result || "Unknown error") };
+      try {
+        for await (const msg of q) {
+          // Log all message types for debugging
+          const debugType = msg.type === "stream_event" ? `stream_event/${(msg as any).event?.type}` : msg.type;
+          if (msg.type !== "stream_event") {
+            console.log(`[claude] event: ${debugType}`);
           }
-          break;
-        }
-
-        // Streaming content_block_delta with text (from --include-partial-messages)
-        if (parsed.type === "content_block_delta") {
-          const delta = parsed.delta as Record<string, unknown> | undefined;
-          if (delta?.type === "text_delta" && typeof delta.text === "string") {
-            hasStreamedText = true;
-            yield { type: "text_delta", content: delta.text };
+          // Capture session ID for resume on subsequent turns
+          if (msg.session_id && !sessionId) {
+            sessionId = msg.session_id;
           }
-          continue;
-        }
 
-        // Assistant message with full content blocks (non-streaming fallback).
-        // Skip if we already yielded streaming deltas to avoid double-speaking.
-        if (parsed.type === "assistant" && parsed.message) {
-          if (hasStreamedText) continue;
-          const msg = parsed.message as Record<string, unknown>;
-          const blocks = msg.content as Array<Record<string, unknown>> | undefined;
-          if (Array.isArray(blocks)) {
-            for (const block of blocks) {
-              if (block.type === "text" && typeof block.text === "string") {
-                yield { type: "text_delta", content: block.text };
+          // Streaming events (token-level deltas from includePartialMessages)
+          if (msg.type === "stream_event") {
+            const event = msg.event;
+
+            if (event.type === "content_block_start") {
+              if (event.content_block.type === "tool_use") {
+                toolUseBlocks.add(event.index);
+                yield { type: "tool_start", content: "", toolName: event.content_block.name };
+              }
+              continue;
+            }
+
+            if (event.type === "content_block_delta") {
+              if (event.delta.type === "text_delta") {
+                if (!hasStreamedText) {
+                  console.log(`[claude] first delta at +${Date.now() - t0}ms`);
+                }
+                hasStreamedText = true;
+                yield { type: "text_delta", content: event.delta.text };
+              }
+              continue;
+            }
+
+            if (event.type === "content_block_stop") {
+              if (toolUseBlocks.has(event.index)) {
+                toolUseBlocks.delete(event.index);
+                yield { type: "tool_end", content: "" };
+              }
+              continue;
+            }
+
+            continue;
+          }
+
+          // Full assistant message — fallback if streaming didn't produce deltas
+          if (msg.type === "assistant") {
+            if (hasStreamedText) {
+              console.log(`[claude] full message at +${Date.now() - t0}ms (skipped, already streamed)`);
+            } else {
+              console.log(`[claude] full message at +${Date.now() - t0}ms (no streaming, using fallback)`);
+              const blocks = msg.message.content;
+              if (Array.isArray(blocks)) {
+                for (const block of blocks) {
+                  if (block.type === "text") {
+                    yield { type: "text_delta", content: block.text };
+                  }
+                  if (block.type === "tool_use") {
+                    yield { type: "tool_start", content: "", toolName: block.name };
+                  }
+                }
               }
             }
+            // Reset tool tracking for next turn (tool results may produce more streaming)
+            toolUseBlocks.clear();
+            continue;
           }
-          continue;
+
+          // Result — turn complete
+          if (msg.type === "result") {
+            console.log(`[claude] result at +${Date.now() - t0}ms (streamed=${hasStreamedText})`);
+            if (msg.is_error) {
+              yield { type: "error", content: msg.subtype === "success" ? String((msg as any).result) : msg.subtype };
+            }
+            break;
+          }
         }
+      } catch (err) {
+        console.error(`[claude] SDK error:`, err);
+        yield { type: "error", content: String(err) };
+      } finally {
+        currentQuery = null;
       }
 
-      // Wait for process to exit
-      await new Promise<void>((resolve) => {
-        if (child.exitCode !== null) {
-          resolve();
-        } else {
-          child.on("close", () => resolve());
-        }
-      });
-
-      currentProcess = null;
-
-      if (!hasError) {
-        yield { type: "result", content: "" };
-      }
+      yield { type: "result", content: "" };
     },
 
     interrupt(): void {
-      if (currentProcess) {
-        currentProcess.kill("SIGTERM");
-        currentProcess = null;
+      if (currentQuery) {
+        currentQuery.interrupt();
+        currentQuery = null;
       }
     },
 
     async close(): Promise<void> {
-      if (currentProcess) {
-        currentProcess.kill("SIGTERM");
-        currentProcess = null;
+      if (currentQuery) {
+        await currentQuery.interrupt();
+        currentQuery = null;
       }
       closed = true;
     },

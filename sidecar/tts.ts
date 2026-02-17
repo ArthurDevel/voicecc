@@ -122,31 +122,49 @@ export async function createTts(config: TtsConfig): Promise<TtsPlayer> {
     let spk: Speaker | null = null;
 
     // Feed text into the splitter in the background
+    const t0 = Date.now();
+    let firstTextLogged = false;
+    let totalText = "";
     const feedTask = (async () => {
       try {
         for await (const chunk of texts) {
+          if (!firstTextLogged) {
+            console.log(`[tts] first text at +${Date.now() - t0}ms`);
+            firstTextLogged = true;
+          }
+          totalText += chunk;
           splitter.push(chunk);
         }
       } finally {
-        // Always close the splitter so tts.stream() terminates
+        console.log(`[tts] splitter.close() at +${Date.now() - t0}ms (${totalText.length} chars)`);
         splitter.close();
       }
     })();
 
     // tts.stream() pipelines generation: while chunk N plays, chunk N+1 generates
+    let chunkIndex = 0;
     const playTask = (async () => {
       try {
         for await (const result of tts.stream(splitter, { voice: config.voice as any })) {
           const pcmBuffer = float32ToInt16Pcm(result.audio.audio);
+          console.log(`[tts] chunk ${chunkIndex} ready at +${Date.now() - t0}ms (${pcmBuffer.length} bytes)`);
 
-          // Lazy-create Speaker on first audio chunk
+          // First chunk: cork → write → uncork so the Speaker's native _open()
+          // and first AudioQueueEnqueueBuffer happen in the same _write() call.
+          // This eliminates the CoreAudio "buffer underflow" race.
           if (!spk) {
             spk = createSpeaker();
             currentSpeaker = spk;
+            spk.cork();
+            spk.write(pcmBuffer);
+            spk.uncork();
+            chunkIndex++;
+            continue;
           }
 
           if (currentSpeaker !== spk) break; // interrupted
           await writeChunk(spk, pcmBuffer);
+          chunkIndex++;
         }
 
         // Signal no more data and wait for playback to finish
@@ -238,27 +256,17 @@ export async function createTts(config: TtsConfig): Promise<TtsPlayer> {
 // HELPER FUNCTIONS (module-level)
 // ============================================================================
 
-/** Bytes of silence to prime the CoreAudio buffer on Speaker creation.
- * Prevents "buffer underflow" warnings from mpg123 native code.
- * 50ms at 24kHz mono 16-bit = 2400 bytes — imperceptible. */
-const SILENCE_PRIMER_BYTES = Math.ceil(TTS_SAMPLE_RATE * (SPEAKER_BIT_DEPTH / 8) * SPEAKER_CHANNELS * 0.05);
-
 /**
  * Create a new Speaker instance configured for 24kHz mono 16-bit signed PCM.
- * Writes a brief silence primer so CoreAudio's callback has data immediately,
- * avoiding native "buffer underflow" warnings from mpg123.
  *
- * @returns A new Speaker instance
+ * @returns A new Speaker instance (not yet opened — device opens on first write)
  */
 function createSpeaker(): Speaker {
-  const spk = new Speaker({
+  return new Speaker({
     channels: SPEAKER_CHANNELS,
     bitDepth: SPEAKER_BIT_DEPTH,
     sampleRate: TTS_SAMPLE_RATE,
   });
-  // Prime the CoreAudio buffer with silence to prevent underflow warnings
-  spk.write(Buffer.alloc(SILENCE_PRIMER_BYTES));
-  return spk;
 }
 
 /**
