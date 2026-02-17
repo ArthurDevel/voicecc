@@ -117,17 +117,45 @@ export async function createTts(config: TtsConfig): Promise<TtsPlayer> {
 
     const splitter = new TextSplitterStream();
 
+    // Don't create Speaker yet -- defer until first audio chunk is ready
+    // to avoid CoreAudio buffer underflow while waiting for Claude + TTS.
+    let spk: Speaker | null = null;
+
+    // Feed text into the splitter in the background
     const feedTask = (async () => {
-      for await (const chunk of texts) {
-        splitter.push(chunk);
+      try {
+        for await (const chunk of texts) {
+          splitter.push(chunk);
+        }
+      } finally {
+        // Always close the splitter so tts.stream() terminates
+        splitter.close();
       }
-      splitter.close();
     })();
 
+    // tts.stream() pipelines generation: while chunk N plays, chunk N+1 generates
     const playTask = (async () => {
-      for await (const result of tts.stream(splitter, { voice: config.voice as any })) {
-        const pcmBuffer = float32ToInt16Pcm(result.audio.audio);
-        await playBuffer(pcmBuffer);
+      try {
+        for await (const result of tts.stream(splitter, { voice: config.voice as any })) {
+          const pcmBuffer = float32ToInt16Pcm(result.audio.audio);
+
+          // Lazy-create Speaker on first audio chunk
+          if (!spk) {
+            spk = createSpeaker();
+            currentSpeaker = spk;
+          }
+
+          if (currentSpeaker !== spk) break; // interrupted
+          await writeChunk(spk, pcmBuffer);
+        }
+
+        // Signal no more data and wait for playback to finish
+        if (spk && currentSpeaker === spk) {
+          await endAndWait(spk);
+        }
+      } catch (err) {
+        // Swallow errors from speaker destroyed mid-write (interruption)
+        if (spk && currentSpeaker === spk) throw err;
       }
     })();
 
@@ -160,32 +188,48 @@ export async function createTts(config: TtsConfig): Promise<TtsPlayer> {
     destroy: destroyPlayer,
   };
 
-  /**
-   * Play a PCM buffer by creating a fresh Speaker, writing data with end(),
-   * and waiting for the 'close' event. A new Speaker per chunk avoids
-   * the buffer-underflow / hung-drain issue with long-lived Speaker instances.
-   */
+  /** Play a single buffer with a fresh Speaker (used by speak()). */
   function playBuffer(pcmBuffer: Buffer): Promise<void> {
     return new Promise<void>((resolve, reject) => {
       const spk = createSpeaker();
       currentSpeaker = spk;
 
       spk.on("close", () => {
-        if (currentSpeaker === spk) {
-          currentSpeaker = null;
-        }
+        if (currentSpeaker === spk) currentSpeaker = null;
         resolve();
       });
 
       spk.on("error", (err: Error) => {
-        if (currentSpeaker === spk) {
-          currentSpeaker = null;
-        }
+        if (currentSpeaker === spk) currentSpeaker = null;
         reject(err);
       });
 
-      // end() writes the buffer AND signals EOF -- Speaker plays then closes cleanly
       spk.end(pcmBuffer);
+    });
+  }
+
+  /** Write a chunk to an open Speaker, respecting backpressure. */
+  function writeChunk(spk: Speaker, pcmBuffer: Buffer): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      const ok = spk.write(pcmBuffer, (err: Error | null | undefined) => {
+        if (err) reject(err);
+      });
+      if (ok) {
+        resolve();
+      } else {
+        spk.once("drain", () => resolve());
+      }
+    });
+  }
+
+  /** Signal EOF and wait for the Speaker to finish playing and close. */
+  function endAndWait(spk: Speaker): Promise<void> {
+    return new Promise<void>((resolve) => {
+      spk.on("close", () => {
+        if (currentSpeaker === spk) currentSpeaker = null;
+        resolve();
+      });
+      spk.end();
     });
   }
 }
@@ -194,17 +238,27 @@ export async function createTts(config: TtsConfig): Promise<TtsPlayer> {
 // HELPER FUNCTIONS (module-level)
 // ============================================================================
 
+/** Bytes of silence to prime the CoreAudio buffer on Speaker creation.
+ * Prevents "buffer underflow" warnings from mpg123 native code.
+ * 50ms at 24kHz mono 16-bit = 2400 bytes — imperceptible. */
+const SILENCE_PRIMER_BYTES = Math.ceil(TTS_SAMPLE_RATE * (SPEAKER_BIT_DEPTH / 8) * SPEAKER_CHANNELS * 0.05);
+
 /**
  * Create a new Speaker instance configured for 24kHz mono 16-bit signed PCM.
+ * Writes a brief silence primer so CoreAudio's callback has data immediately,
+ * avoiding native "buffer underflow" warnings from mpg123.
  *
  * @returns A new Speaker instance
  */
 function createSpeaker(): Speaker {
-  return new Speaker({
+  const spk = new Speaker({
     channels: SPEAKER_CHANNELS,
     bitDepth: SPEAKER_BIT_DEPTH,
     sampleRate: TTS_SAMPLE_RATE,
   });
+  // Prime the CoreAudio buffer with silence to prevent underflow warnings
+  spk.write(Buffer.alloc(SILENCE_PRIMER_BYTES));
+  return spk;
 }
 
 /**

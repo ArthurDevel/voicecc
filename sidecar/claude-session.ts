@@ -62,6 +62,7 @@ async function createClaudeSession(
         "--print",
         "--verbose",
         "--output-format", "stream-json",
+        "--include-partial-messages",
         "--system-prompt", systemPrompt,
         "--max-turns", String(config.maxTurns),
         "--dangerously-skip-permissions",
@@ -82,6 +83,7 @@ async function createClaudeSession(
 
       const rl = createInterface({ input: child.stdout! });
       let hasError = false;
+      let hasStreamedText = false;
 
       // Log stderr for debugging
       child.stderr?.on("data", (data: Buffer) => {
@@ -115,8 +117,20 @@ async function createClaudeSession(
           break;
         }
 
-        // Assistant message with full content blocks (non-streaming)
+        // Streaming content_block_delta with text (from --include-partial-messages)
+        if (parsed.type === "content_block_delta") {
+          const delta = parsed.delta as Record<string, unknown> | undefined;
+          if (delta?.type === "text_delta" && typeof delta.text === "string") {
+            hasStreamedText = true;
+            yield { type: "text_delta", content: delta.text };
+          }
+          continue;
+        }
+
+        // Assistant message with full content blocks (non-streaming fallback).
+        // Skip if we already yielded streaming deltas to avoid double-speaking.
         if (parsed.type === "assistant" && parsed.message) {
+          if (hasStreamedText) continue;
           const msg = parsed.message as Record<string, unknown>;
           const blocks = msg.content as Array<Record<string, unknown>> | undefined;
           if (Array.isArray(blocks)) {
@@ -125,15 +139,6 @@ async function createClaudeSession(
                 yield { type: "text_delta", content: block.text };
               }
             }
-          }
-          continue;
-        }
-
-        // Streaming content_block_delta with text
-        if (parsed.type === "content_block_delta") {
-          const delta = parsed.delta as Record<string, unknown> | undefined;
-          if (delta?.type === "text_delta" && typeof delta.text === "string") {
-            yield { type: "text_delta", content: delta.text };
           }
           continue;
         }

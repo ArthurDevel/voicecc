@@ -351,9 +351,9 @@ async function handleCompleteTurn(transcript: string, config: VoiceLoopConfig): 
 /**
  * Send transcript to Claude, stream the response through narration and TTS.
  *
- * Iterates over ClaudeStreamEvents from the session, feeds each to the narrator,
- * and speaks any text chunks via TTS. Transitions to SPEAKING when first audio
- * starts, then back to LISTENING on completion.
+ * Uses speakStream() for pipelined TTS: audio for chunk N plays while chunk N+1
+ * generates, and the narrator passes text deltas through immediately (kokoro-js's
+ * TextSplitterStream handles chunking for TTS).
  *
  * @param transcript - The user's transcribed speech
  */
@@ -364,52 +364,41 @@ async function processClaudeResponse(transcript: string): Promise<void> {
 
   interrupted = false;
   narrator.reset();
-  let hasSpoken = false;
 
-  const eventStream = claudeSession.sendMessage(transcript);
+  // Async generator that yields text chunks from Claude → narrator
+  const session = claudeSession;
+  const narr = narrator;
+  async function* textChunks(): AsyncGenerator<string> {
+    const eventStream = session.sendMessage(transcript);
 
-  for await (const event of eventStream) {
-    if (interrupted) break;
+    for await (const event of eventStream) {
+      if (interrupted) return;
 
-    const textChunks = narrator.processEvent(event);
-
-    for (const chunk of textChunks) {
-      if (interrupted) break;
-
-      if (!hasSpoken) {
-        state = handleStateTransition(state, "first_audio");
-        hasSpoken = true;
+      const chunks = narr.processEvent(event);
+      for (const chunk of chunks) {
+        if (interrupted) return;
+        yield chunk;
       }
+    }
 
-      console.log(`[tts] Speaking: "${chunk.slice(0, 60)}..."`);
-      await ttsPlayer.speak(chunk);
-      console.log("[tts] Chunk done");
+    if (interrupted) return;
+
+    const remaining = narr.flush();
+    for (const chunk of remaining) {
+      if (interrupted) return;
+      yield chunk;
     }
   }
+
+  // Transition to SPEAKING before starting the stream
+  state = handleStateTransition(state, "first_audio");
+
+  await ttsPlayer.speakStream(textChunks());
 
   if (interrupted) {
     console.log("[debug] Response interrupted, bailing out");
     return;
   }
-
-  console.log("[debug] Claude stream finished");
-
-  // Flush any remaining buffered text from the narrator
-  const remaining = narrator.flush();
-  for (const chunk of remaining) {
-    if (interrupted) break;
-
-    if (!hasSpoken) {
-      state = handleStateTransition(state, "first_audio");
-      hasSpoken = true;
-    }
-
-    console.log(`[tts] Speaking flush: "${chunk.slice(0, 60)}..."`);
-    await ttsPlayer.speak(chunk);
-    console.log("[tts] Flush chunk done");
-  }
-
-  if (interrupted) return;
 
   console.log("[debug] Response processing complete");
 

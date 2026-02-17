@@ -2,14 +2,13 @@
  * Processes Claude's streaming output into TTS-friendly text.
  *
  * Two modes of operation:
- * - Response mode: accumulates text_delta events, emits complete sentences at
- *   sentence boundaries (split on `.!?` followed by space or end-of-string).
+ * - Response mode: passes text_delta content through immediately for streaming
+ *   TTS. Text chunking is handled downstream by kokoro-js TextSplitterStream.
  * - Long-task mode: emits periodic template-based summaries during tool use
  *   (e.g. "Running Bash...", "Still working on Bash...").
  *
  * Responsibilities:
- * - Accumulate streaming text deltas into a buffer
- * - Split buffered text into complete sentences for natural TTS output
+ * - Pass through streaming text deltas immediately for low-latency TTS
  * - Track tool execution and emit periodic spoken summaries
  * - Flush remaining text on result/error events
  */
@@ -44,13 +43,6 @@ export interface Narrator {
 }
 
 // ============================================================================
-// CONSTANTS
-// ============================================================================
-
-/** Regex to match sentence boundaries: `.`, `!`, or `?` followed by a space or end-of-string */
-const SENTENCE_BOUNDARY = /([.!?])(?:\s|$)/;
-
-// ============================================================================
 // MAIN HANDLERS
 // ============================================================================
 
@@ -62,7 +54,6 @@ const SENTENCE_BOUNDARY = /([.!?])(?:\s|$)/;
  */
 export function createNarrator(config: NarrationConfig): Narrator {
   // -- internal state --
-  let textBuffer = "";
   let currentToolName: string | null = null;
   let summaryTimer: NodeJS.Timeout | null = null;
   let pendingSummaries: string[] = [];
@@ -94,11 +85,6 @@ export function createNarrator(config: NarrationConfig): Narrator {
    * @returns Array of remaining text strings
    */
   function flush(): string[] {
-    const remaining = textBuffer.trim();
-    textBuffer = "";
-    if (remaining.length > 0) {
-      return [remaining];
-    }
     return [];
   }
 
@@ -106,7 +92,6 @@ export function createNarrator(config: NarrationConfig): Narrator {
    * Reset all state for a new conversation turn.
    */
   function reset(): void {
-    textBuffer = "";
     currentToolName = null;
     clearSummaryTimer();
     pendingSummaries = [];
@@ -120,10 +105,10 @@ export function createNarrator(config: NarrationConfig): Narrator {
   // ============================================================================
 
   /**
-   * Handle a text_delta event: accumulate text, exit long-task mode,
-   * and emit any complete sentences.
+   * Handle a text_delta event: pass through immediately, exit long-task mode.
+   * Text chunking for TTS is handled downstream by TextSplitterStream.
    * @param event - The text_delta event
-   * @returns Array of complete sentences found in the buffer
+   * @returns Array containing the delta text (plus any pending summaries)
    */
   function handleTextDelta(event: ClaudeStreamEvent): string[] {
     // Text arriving means Claude is responding directly -- leave long-task mode
@@ -133,13 +118,10 @@ export function createNarrator(config: NarrationConfig): Narrator {
       currentToolName = null;
     }
 
-    textBuffer += event.content;
-
-    // Drain any pending summaries that accumulated from the timer,
-    // then append any complete sentences from the text buffer
     const results = drainPendingSummaries();
-    const sentences = extractCompleteSentences();
-    results.push(...sentences);
+    if (event.content) {
+      results.push(event.content);
+    }
     return results;
   }
 
@@ -188,34 +170,6 @@ export function createNarrator(config: NarrationConfig): Narrator {
     inLongTask = false;
 
     return results;
-  }
-
-  /**
-   * Extract complete sentences from the text buffer.
-   * Splits on `.`, `!`, or `?` followed by a space or end-of-string.
-   * Keeps any incomplete trailing text in the buffer.
-   * @returns Array of complete sentences
-   */
-  function extractCompleteSentences(): string[] {
-    const sentences: string[] = [];
-
-    let match = SENTENCE_BOUNDARY.exec(textBuffer);
-    while (match !== null) {
-      // Extract everything up to and including the punctuation mark
-      const endIndex = match.index + 1;
-      const sentence = textBuffer.slice(0, endIndex).trim();
-      if (sentence.length > 0) {
-        sentences.push(sentence);
-      }
-
-      // Keep the remainder (skip the space after punctuation if present)
-      const remainderStart = match.index + match[0].length;
-      textBuffer = textBuffer.slice(remainderStart);
-
-      match = SENTENCE_BOUNDARY.exec(textBuffer);
-    }
-
-    return sentences;
   }
 
   /**
