@@ -1,0 +1,6 @@
+{
+  "name": "claude-code-voice",
+  "description": "Voice mode for hands-free interaction with Claude Code",
+  "version": "1.0.0",
+  "skills": ["skills/voice/SKILL.md"]
+}

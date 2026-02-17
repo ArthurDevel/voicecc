@@ -1,0 +1,15 @@
+node_modules/
+dist/
+*.tgz
+
+# Model files (large binaries)
+*.onnx
+*.bin
+*.tar.bz2
+
+# OS
+.DS_Store
+
+# Logs
+*.log
+npm-debug.log*
