@@ -61,7 +61,6 @@ const DEFAULT_CONFIG: VoiceLoopConfig = {
     summaryIntervalMs: 12000,
   },
   claudeSession: {
-    maxTurns: 50,
     allowedTools: [],
     permissionMode: "bypassPermissions",
     systemPrompt:
@@ -116,7 +115,11 @@ let stopping = false;
 async function startVoiceLoop(config: VoiceLoopConfig): Promise<void> {
   activeConfig = config;
 
-  // Initialize all modules
+  // Initialize Claude session first — spawns the persistent process so it's
+  // ready by the time the user speaks (eliminates process startup from TTFT).
+  console.log("Initializing Claude session...");
+  claudeSession = await createClaudeSession(config.claudeSession);
+
   // IMPORTANT: TTS (kokoro-js) must init before VAD/STT (avr-vad, sherpa-onnx)
   // to avoid ONNX runtime conflicts -- all three bundle native ONNX runtimes.
   console.log("Initializing TTS (downloading model on first run, may take a minute)...");
@@ -130,8 +133,6 @@ async function startVoiceLoop(config: VoiceLoopConfig): Promise<void> {
   sttProcessor = await createStt(config.sttModelPath);
   console.log("Initializing endpointer...");
   endpointer = createEndpointer(config.endpointing);
-  console.log("Initializing Claude session...");
-  claudeSession = await createClaudeSession(config.claudeSession);
   console.log("Initializing narrator...");
   narrator = createNarrator(config.narration);
 

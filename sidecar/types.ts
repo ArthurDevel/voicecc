@@ -60,8 +60,6 @@ export interface EndpointingConfig {
  * Configuration for the Claude Agent SDK session.
  */
 export interface ClaudeSessionConfig {
-  /** Maximum number of agent turns per session */
-  maxTurns: number;
   /** List of allowed tool names (empty array means all tools allowed) */
   allowedTools: string[];
   /** Permission mode -- must be "bypassPermissions" for voice loop */

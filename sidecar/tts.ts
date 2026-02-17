@@ -143,11 +143,16 @@ export async function createTts(config: TtsConfig): Promise<TtsPlayer> {
 
     // tts.stream() pipelines generation: while chunk N plays, chunk N+1 generates
     let chunkIndex = 0;
+    let lastChunkReadyAt = 0;
     const playTask = (async () => {
       try {
         for await (const result of tts.stream(splitter, { voice: config.voice as any })) {
           const pcmBuffer = float32ToInt16Pcm(result.audio.audio);
-          console.log(`[tts] chunk ${chunkIndex} ready at +${Date.now() - t0}ms (${pcmBuffer.length} bytes)`);
+          const now = Date.now() - t0;
+          const audioDurationMs = (pcmBuffer.length / (TTS_SAMPLE_RATE * (SPEAKER_BIT_DEPTH / 8) * SPEAKER_CHANNELS)) * 1000;
+          const genTimeMs = now - lastChunkReadyAt;
+          console.log(`[tts] chunk ${chunkIndex} ready at +${now}ms (${(audioDurationMs / 1000).toFixed(1)}s audio, generated in ${(genTimeMs / 1000).toFixed(1)}s)`);
+          lastChunkReadyAt = now;
 
           // First chunk: cork → write → uncork so the Speaker's native _open()
           // and first AudioQueueEnqueueBuffer happen in the same _write() call.

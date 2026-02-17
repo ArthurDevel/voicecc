@@ -1,20 +1,73 @@
 /**
  * Claude session via the @anthropic-ai/claude-code SDK.
  *
- * Uses the SDK's `query()` function with `includePartialMessages: true` for
- * true token-level streaming. Runs against the user's existing Claude Code
- * subscription (no API key needed). Supports multi-turn via `resume`.
+ * Keeps a single persistent Claude Code process alive across turns using
+ * streaming I/O (AsyncIterable<SDKUserMessage> input). This eliminates the
+ * ~2-3s process spawn overhead on each turn.
  *
  * Responsibilities:
- * - Call SDK query() per turn with resume for conversation continuity
+ * - Start a persistent query() on createClaudeSession (process spawns once)
+ * - Push user messages into the live session via an async queue
  * - Extract streaming text deltas from SDKPartialAssistantMessage events
  * - Map tool_use content blocks to tool_start / tool_end events
  * - Support interruption via query.interrupt()
  * - Provide clean session teardown
  */
 
-import { query as claudeQuery, type Query, type Options } from "@anthropic-ai/claude-code";
+import { query as claudeQuery, type Query, type Options, type SDKMessage, type SDKUserMessage } from "@anthropic-ai/claude-code";
 import type { ClaudeSessionConfig, ClaudeStreamEvent } from "./types.js";
+
+// ============================================================================
+// ASYNC QUEUE
+// ============================================================================
+
+/** Simple async iterable backed by a push queue. */
+class AsyncQueue<T> implements AsyncIterable<T> {
+  private buf: T[] = [];
+  private resolve: ((r: IteratorResult<T>) => void) | null = null;
+  private done = false;
+
+  push(item: T) {
+    if (this.resolve) {
+      const r = this.resolve;
+      this.resolve = null;
+      r({ value: item, done: false });
+    } else {
+      this.buf.push(item);
+    }
+  }
+
+  close() {
+    this.done = true;
+    if (this.resolve) {
+      const r = this.resolve;
+      this.resolve = null;
+      r({ value: undefined as any, done: true });
+    }
+  }
+
+  /** Read one item (used by sendMessage to drain the event channel). */
+  async next(): Promise<T | undefined> {
+    if (this.buf.length > 0) return this.buf.shift()!;
+    if (this.done) return undefined;
+    const result = await new Promise<IteratorResult<T>>((r) => { this.resolve = r; });
+    return result.done ? undefined : result.value;
+  }
+
+  [Symbol.asyncIterator](): AsyncIterator<T> {
+    return {
+      next: (): Promise<IteratorResult<T>> => {
+        if (this.buf.length > 0) {
+          return Promise.resolve({ value: this.buf.shift()!, done: false as const });
+        }
+        if (this.done) {
+          return Promise.resolve({ value: undefined as any, done: true as const });
+        }
+        return new Promise<IteratorResult<T>>((r) => { this.resolve = r; });
+      },
+    };
+  }
+}
 
 // ============================================================================
 // INTERFACES
@@ -44,9 +97,50 @@ async function createClaudeSession(
   config: ClaudeSessionConfig,
 ): Promise<ClaudeSession> {
   const systemPrompt = config.systemPrompt || DEFAULT_SYSTEM_PROMPT;
-  let sessionId: string | null = null;
-  let currentQuery: Query | null = null;
+  let sessionId = "";
   let closed = false;
+
+  // Persistent input stream — user messages are pushed here across turns
+  const userMessages = new AsyncQueue<SDKUserMessage>();
+
+  // Event channel — SDK events are routed here for sendMessage to consume
+  const sdkEvents = new AsyncQueue<SDKMessage>();
+
+  const options: Options = {
+    pathToClaudeCodeExecutable: CLAUDE_BIN,
+    includePartialMessages: true,
+    appendSystemPrompt: systemPrompt,
+    permissionMode: config.permissionMode as Options["permissionMode"],
+    stderr: (data: string) => {
+      const msg = data.trim();
+      if (msg) console.error(`[claude-stderr] ${msg}`);
+    },
+  };
+
+  // Start persistent query — process spawns once and stays alive
+  const q = claudeQuery({ prompt: userMessages, options });
+
+  // Background: pump SDK events into our channel
+  (async () => {
+    try {
+      for await (const msg of q) {
+        sdkEvents.push(msg);
+      }
+    } catch (err) {
+      console.error("[claude] SDK pump error:", err);
+    } finally {
+      sdkEvents.close();
+    }
+  })();
+
+  // Wait for system init — process is fully ready after this
+  let initMsg = await sdkEvents.next();
+  while (initMsg && initMsg.type !== "system") {
+    initMsg = await sdkEvents.next();
+  }
+  if (initMsg?.type === "system") {
+    sessionId = initMsg.session_id;
+  }
 
   return {
     async *sendMessage(text: string): AsyncIterable<ClaudeStreamEvent> {
@@ -60,130 +154,103 @@ async function createClaudeSession(
 
       const t0 = Date.now();
       let hasStreamedText = false;
-
-      const options: Options = {
-        pathToClaudeCodeExecutable: CLAUDE_BIN,
-        includePartialMessages: true,
-        appendSystemPrompt: systemPrompt,
-        maxTurns: config.maxTurns,
-        permissionMode: config.permissionMode as Options["permissionMode"],
-        stderr: (data: string) => {
-          const msg = data.trim();
-          if (msg) console.error(`[claude-stderr] ${msg}`);
-        },
-      };
-
-      if (sessionId) {
-        options.resume = sessionId;
-      }
-
-      const q = claudeQuery({ prompt: text, options });
-      currentQuery = q;
-
-      // Track which content block indices are tool_use blocks
       const toolUseBlocks = new Set<number>();
 
-      try {
-        for await (const msg of q) {
-          // Log all message types for debugging
-          const debugType = msg.type === "stream_event" ? `stream_event/${(msg as any).event?.type}` : msg.type;
-          if (msg.type !== "stream_event") {
-            console.log(`[claude] event: ${debugType}`);
-          }
-          // Capture session ID for resume on subsequent turns
-          if (msg.session_id && !sessionId) {
-            sessionId = msg.session_id;
-          }
+      // Push user message into the live session
+      userMessages.push({
+        type: "user",
+        message: { content: text, role: "user" },
+        parent_tool_use_id: null,
+        session_id: sessionId,
+      });
 
-          // Streaming events (token-level deltas from includePartialMessages)
-          if (msg.type === "stream_event") {
-            const event = msg.event;
+      // Read events for this turn until result
+      while (true) {
+        const msg = await sdkEvents.next();
+        if (!msg) break; // channel closed (process died)
 
-            if (event.type === "content_block_start") {
-              if (event.content_block.type === "tool_use") {
-                toolUseBlocks.add(event.index);
-                yield { type: "tool_start", content: "", toolName: event.content_block.name };
-              }
-              continue;
+        // Streaming events (token-level deltas)
+        if (msg.type === "stream_event") {
+          const event = msg.event;
+
+          if (event.type === "content_block_start") {
+            if (event.content_block.type === "tool_use") {
+              toolUseBlocks.add(event.index);
+              yield { type: "tool_start", content: "", toolName: event.content_block.name };
             }
-
-            if (event.type === "content_block_delta") {
-              if (event.delta.type === "text_delta") {
-                if (!hasStreamedText) {
-                  console.log(`[claude] first delta at +${Date.now() - t0}ms`);
-                }
-                hasStreamedText = true;
-                yield { type: "text_delta", content: event.delta.text };
-              }
-              continue;
-            }
-
-            if (event.type === "content_block_stop") {
-              if (toolUseBlocks.has(event.index)) {
-                toolUseBlocks.delete(event.index);
-                yield { type: "tool_end", content: "" };
-              }
-              continue;
-            }
-
             continue;
           }
 
-          // Full assistant message — fallback if streaming didn't produce deltas
-          if (msg.type === "assistant") {
-            if (hasStreamedText) {
-              console.log(`[claude] full message at +${Date.now() - t0}ms (skipped, already streamed)`);
-            } else {
-              console.log(`[claude] full message at +${Date.now() - t0}ms (no streaming, using fallback)`);
-              const blocks = msg.message.content;
-              if (Array.isArray(blocks)) {
-                for (const block of blocks) {
-                  if (block.type === "text") {
-                    yield { type: "text_delta", content: block.text };
-                  }
-                  if (block.type === "tool_use") {
-                    yield { type: "tool_start", content: "", toolName: block.name };
-                  }
-                }
+          if (event.type === "content_block_delta") {
+            if (event.delta.type === "text_delta") {
+              if (!hasStreamedText) {
+                console.log(`[claude] first delta at +${Date.now() - t0}ms`);
               }
+              hasStreamedText = true;
+              yield { type: "text_delta", content: event.delta.text };
             }
-            // Reset tool tracking for next turn (tool results may produce more streaming)
-            toolUseBlocks.clear();
             continue;
           }
 
-          // Result — turn complete
-          if (msg.type === "result") {
-            console.log(`[claude] result at +${Date.now() - t0}ms (streamed=${hasStreamedText})`);
-            if (msg.is_error) {
-              yield { type: "error", content: msg.subtype === "success" ? String((msg as any).result) : msg.subtype };
+          if (event.type === "content_block_stop") {
+            if (toolUseBlocks.has(event.index)) {
+              toolUseBlocks.delete(event.index);
+              yield { type: "tool_end", content: "" };
             }
-            break;
+            continue;
           }
+
+          continue;
         }
-      } catch (err) {
-        console.error(`[claude] SDK error:`, err);
-        yield { type: "error", content: String(err) };
-      } finally {
-        currentQuery = null;
+
+        // Full assistant message — fallback if streaming didn't produce deltas
+        if (msg.type === "assistant") {
+          if (hasStreamedText) {
+            console.log(`[claude] full message at +${Date.now() - t0}ms (skipped, already streamed)`);
+          } else {
+            console.log(`[claude] full message at +${Date.now() - t0}ms (no streaming, using fallback)`);
+            const blocks = msg.message.content;
+            if (Array.isArray(blocks)) {
+              for (const block of blocks) {
+                if (block.type === "text") {
+                  yield { type: "text_delta", content: block.text };
+                }
+                if (block.type === "tool_use") {
+                  yield { type: "tool_start", content: "", toolName: block.name };
+                }
+              }
+            }
+          }
+          toolUseBlocks.clear();
+          continue;
+        }
+
+        // Skip synthetic user messages (tool results)
+        if (msg.type === "user") {
+          continue;
+        }
+
+        // Result — turn complete
+        if (msg.type === "result") {
+          console.log(`[claude] result at +${Date.now() - t0}ms (streamed=${hasStreamedText})`);
+          if (msg.is_error) {
+            yield { type: "error", content: msg.subtype === "success" ? String((msg as any).result) : msg.subtype };
+          }
+          break;
+        }
       }
 
       yield { type: "result", content: "" };
     },
 
     interrupt(): void {
-      if (currentQuery) {
-        currentQuery.interrupt();
-        currentQuery = null;
-      }
+      q.interrupt();
     },
 
     async close(): Promise<void> {
-      if (currentQuery) {
-        await currentQuery.interrupt();
-        currentQuery = null;
-      }
       closed = true;
+      userMessages.close();
+      await q.interrupt();
     },
   };
 }
