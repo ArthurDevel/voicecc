@@ -151,7 +151,8 @@ export async function createTts(config: TtsConfig): Promise<TtsPlayer> {
           const now = Date.now() - t0;
           const audioDurationMs = (pcmBuffer.length / (TTS_SAMPLE_RATE * (SPEAKER_BIT_DEPTH / 8) * SPEAKER_CHANNELS)) * 1000;
           const genTimeMs = now - lastChunkReadyAt;
-          console.log(`[tts] chunk ${chunkIndex} ready at +${now}ms (${(audioDurationMs / 1000).toFixed(1)}s audio, generated in ${(genTimeMs / 1000).toFixed(1)}s)`);
+          const textSnippet = (result as any).text ? `"${(result as any).text.slice(0, 50)}${(result as any).text.length > 50 ? "..." : ""}"` : "";
+          console.log(`[tts] chunk ${chunkIndex} ready at +${now}ms (${(audioDurationMs / 1000).toFixed(1)}s audio, generated in ${(genTimeMs / 1000).toFixed(1)}s) ${textSnippet}`);
           lastChunkReadyAt = now;
 
           // First chunk: cork → write → uncork so the Speaker's native _open()

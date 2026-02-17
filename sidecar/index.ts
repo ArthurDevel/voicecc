@@ -55,7 +55,7 @@ const DEFAULT_CONFIG: VoiceLoopConfig = {
     silenceThresholdMs: 700,
     maxSilenceBeforeTimeoutMs: 1200,
     minWordCountForFastPath: 2,
-    enableHaikuFallback: true,
+    enableHaikuFallback: false,
   },
   narration: {
     summaryIntervalMs: 12000,

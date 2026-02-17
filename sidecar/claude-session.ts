@@ -117,13 +117,21 @@ async function createClaudeSession(
     },
   };
 
-  // Start persistent query — process spawns once and stays alive
+  // Start persistent query — process spawns once and stays alive.
+  // NOTE: with AsyncIterable<SDKUserMessage> input, the SDK won't yield
+  // events until the first user message is consumed, so we don't block
+  // waiting for a system init event here. Session ID is captured when
+  // the system event arrives during the first turn.
   const q = claudeQuery({ prompt: userMessages, options });
 
   // Background: pump SDK events into our channel
   (async () => {
     try {
       for await (const msg of q) {
+        if (msg.type === "system" && !sessionId) {
+          sessionId = msg.session_id;
+          console.log(`[claude] session ready (id=${sessionId})`);
+        }
         sdkEvents.push(msg);
       }
     } catch (err) {
@@ -133,14 +141,7 @@ async function createClaudeSession(
     }
   })();
 
-  // Wait for system init — process is fully ready after this
-  let initMsg = await sdkEvents.next();
-  while (initMsg && initMsg.type !== "system") {
-    initMsg = await sdkEvents.next();
-  }
-  if (initMsg?.type === "system") {
-    sessionId = initMsg.session_id;
-  }
+  console.log("[claude] persistent process started");
 
   return {
     async *sendMessage(text: string): AsyncIterable<ClaudeStreamEvent> {
@@ -225,8 +226,8 @@ async function createClaudeSession(
           continue;
         }
 
-        // Skip synthetic user messages (tool results)
-        if (msg.type === "user") {
+        // Skip system events and synthetic user messages (tool results)
+        if (msg.type === "system" || msg.type === "user") {
           continue;
         }
 
