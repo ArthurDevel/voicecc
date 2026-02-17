@@ -15,6 +15,17 @@
 
 import type { ClaudeStreamEvent, NarrationConfig } from "./types.js";
 
+/** Strip markdown syntax so text reads naturally when spoken. */
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/\*+/g, "")       // bold/italic asterisks
+    .replace(/#+\s*/g, "")     // heading markers
+    .replace(/`+/g, "")        // inline code / code fences
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1") // [text](url) → text
+    .replace(/^-\s+/gm, "")   // unordered list markers
+    .replace(/^\d+\.\s+/gm, ""); // ordered list markers
+}
+
 // ============================================================================
 // INTERFACES
 // ============================================================================
@@ -120,7 +131,8 @@ export function createNarrator(config: NarrationConfig): Narrator {
 
     const results = drainPendingSummaries();
     if (event.content) {
-      results.push(event.content);
+      const clean = stripMarkdown(event.content);
+      if (clean) results.push(clean);
     }
     return results;
   }
