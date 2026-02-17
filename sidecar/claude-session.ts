@@ -109,6 +109,7 @@ async function createClaudeSession(
   const options: Options = {
     pathToClaudeCodeExecutable: CLAUDE_BIN,
     includePartialMessages: true,
+    maxThinkingTokens: 10000,
     appendSystemPrompt: systemPrompt,
     permissionMode: config.permissionMode as Options["permissionMode"],
     stderr: (data: string) => {
@@ -156,6 +157,7 @@ async function createClaudeSession(
       const t0 = Date.now();
       let hasStreamedText = false;
       const toolUseBlocks = new Set<number>();
+      const thinkingBlocks = new Set<number>();
 
       // Push user message into the live session
       userMessages.push({
@@ -179,6 +181,11 @@ async function createClaudeSession(
               toolUseBlocks.add(event.index);
               yield { type: "tool_start", content: "", toolName: event.content_block.name };
             }
+            if (event.content_block.type === "thinking") {
+              thinkingBlocks.add(event.index);
+              console.log(`[claude] thinking started at +${Date.now() - t0}ms`);
+              yield { type: "text_delta", content: "Thinking... " };
+            }
             continue;
           }
 
@@ -194,6 +201,10 @@ async function createClaudeSession(
           }
 
           if (event.type === "content_block_stop") {
+            if (thinkingBlocks.has(event.index)) {
+              thinkingBlocks.delete(event.index);
+              console.log(`[claude] thinking ended at +${Date.now() - t0}ms`);
+            }
             if (toolUseBlocks.has(event.index)) {
               toolUseBlocks.delete(event.index);
               yield { type: "tool_end", content: "" };
