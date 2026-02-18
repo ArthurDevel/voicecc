@@ -8,6 +8,9 @@ dist/
 *.bin
 *.tar.bz2
 
+# Compiled binaries
+sidecar/mic-vpio
+
 # OS
 .DS_Store
 
