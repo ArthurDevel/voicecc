@@ -50,6 +50,11 @@ var gRingLock = os_unfair_lock()
 /// Flag set by SIGUSR1 handler, checked by render callback to clear ring buffer
 var gClearRequested: Bool = false
 
+/// Flag set by SIGUSR1, cleared by SIGUSR2. When true, stdin reader discards
+/// data instead of writing to ring buffer. This prevents stale pipe data from
+/// re-filling the ring buffer after an interrupt clears it.
+var gDiscardStdin: Bool = false
+
 /// AudioConverter for resampling mic from vpioRate to micRate (nil if rates match)
 var gMicConverter: AudioConverterRef?
 
@@ -438,8 +443,15 @@ let stdinThread = Thread {
         let bytesRead = fread(buf, 1, chunkSize, stdin)
         if bytesRead == 0 { break }
 
+        // After SIGUSR1 (interrupt), discard stale pipe data until SIGUSR2 (resume)
+        if gDiscardStdin { continue }
+
         var offset = 0
         while offset < bytesRead {
+            // Re-check discard flag inside the write loop in case SIGUSR1 arrives
+            // while we're draining a large read into the ring buffer
+            if gDiscardStdin { break }
+
             os_unfair_lock_lock(&gRingLock)
             let written = ringWrite(buf.advanced(by: offset), count: bytesRead - offset)
             os_unfair_lock_unlock(&gRingLock)
@@ -459,6 +471,11 @@ stdinThread.start()
 
 signal(SIGUSR1) { _ in
     gClearRequested = true
+    gDiscardStdin = true
+}
+
+signal(SIGUSR2) { _ in
+    gDiscardStdin = false
 }
 
 signal(SIGINT) { _ in exit(0) }
