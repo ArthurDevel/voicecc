@@ -123,13 +123,100 @@
       padding: 1px 4px;
       border-radius: 2px;
     }
+
+    /* -- Start voice button -- */
+    .btn-start-voice {
+      display: block;
+      width: calc(100% - 24px);
+      margin: 12px 12px 8px;
+      padding: 7px 12px;
+      font-size: 12px;
+      font-family: inherit;
+      color: #fff;
+      background: #0e639c;
+      border: none;
+      border-radius: 3px;
+      cursor: pointer;
+      text-align: center;
+    }
+    .btn-start-voice:hover { background: #1177bb; }
+    .btn-start-voice:disabled { background: #555; cursor: default; }
+
+    /* -- Sidebar conversation list -- */
+    .sidebar-section-label {
+      padding: 12px 16px 4px;
+      font-size: 11px;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .sidebar-conversation {
+      display: block;
+      width: 100%;
+      padding: 6px 16px;
+      font-size: 12px;
+      color: #888;
+      background: none;
+      border: none;
+      text-align: left;
+      cursor: pointer;
+      font-family: inherit;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .sidebar-conversation:hover { color: #d4d4d4; background: #2a2d2e; }
+    .sidebar-conversation.active { color: #e0e0e0; background: #37373d; }
+
+    /* -- Conversation view -- */
+    .conversation-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px 20px;
+    }
+    .msg {
+      margin-bottom: 16px;
+      max-width: 80%;
+    }
+    .msg-user {
+      margin-left: auto;
+      background: #264f78;
+      border-radius: 8px 8px 2px 8px;
+      padding: 8px 12px;
+      font-size: 13px;
+      line-height: 1.5;
+      color: #e0e0e0;
+    }
+    .msg-assistant {
+      background: #2d2d2d;
+      border-radius: 8px 8px 8px 2px;
+      padding: 8px 12px;
+      font-size: 13px;
+      line-height: 1.5;
+      color: #d4d4d4;
+      white-space: pre-wrap;
+    }
+    .msg-time {
+      font-size: 10px;
+      color: #555;
+      margin-top: 2px;
+    }
+    .conversation-empty {
+      color: #555;
+      font-size: 13px;
+      padding: 20px;
+    }
   </style>
 </head>
 <body>
 
 <!-- Sidebar -->
 <div class="sidebar">
-  <div class="sidebar-nav"></div>
+  <div class="sidebar-nav">
+    <button id="btn-start-voice" class="btn-start-voice">Start Voice</button>
+    <div class="sidebar-section-label">Conversations</div>
+    <div id="conversation-list"></div>
+  </div>
   <div class="sidebar-footer">
     <button class="sidebar-item active" data-page="settings">Settings</button>
   </div>
@@ -137,6 +224,16 @@
 
 <!-- Main area -->
 <div class="main">
+
+  <!-- Conversation page -->
+  <div id="page-conversation" class="page">
+    <div class="page-header">
+      <h1 id="conversation-title">Conversation</h1>
+    </div>
+    <div class="conversation-messages" id="conversation-messages">
+      <div class="conversation-empty">Select a conversation from the sidebar.</div>
+    </div>
+  </div>
 
   <!-- Settings page (CLAUDE.md editor) -->
   <div id="page-settings" class="page active">
@@ -161,15 +258,21 @@
 const sidebarItems = document.querySelectorAll('.sidebar-item[data-page]');
 const pages = document.querySelectorAll('.page');
 
+/** Switch to a page and deactivate all sidebar items */
+function showPage(pageId) {
+  sidebarItems.forEach((i) => i.classList.remove('active'));
+  document.querySelectorAll('.sidebar-conversation').forEach((c) => c.classList.remove('active'));
+
+  pages.forEach((p) => p.classList.remove('active'));
+  const target = document.getElementById('page-' + pageId);
+  if (target) target.classList.add('active');
+}
+
 sidebarItems.forEach((item) => {
   item.addEventListener('click', () => {
     const target = item.getAttribute('data-page');
-
-    sidebarItems.forEach((i) => i.classList.remove('active'));
+    showPage(target);
     item.classList.add('active');
-
-    pages.forEach((p) => p.classList.remove('active'));
-    document.getElementById('page-' + target).classList.add('active');
   });
 });
 
@@ -252,6 +355,126 @@ async function save() {
 }
 
 // ============================================================================
+// VOICE
+// ============================================================================
+
+const btnStartVoice = document.getElementById('btn-start-voice');
+
+btnStartVoice.addEventListener('click', startVoice);
+
+/** Send request to open Terminal.app with the voice sidecar. */
+async function startVoice() {
+  btnStartVoice.disabled = true;
+  btnStartVoice.textContent = 'Opening Terminal...';
+
+  try {
+    const res = await fetch('/api/voice/start', { method: 'POST' });
+    if (!res.ok) throw new Error('Failed to start');
+    btnStartVoice.textContent = 'Start Voice';
+  } catch (err) {
+    btnStartVoice.textContent = 'Error -- retry';
+  }
+
+  btnStartVoice.disabled = false;
+}
+
+// ============================================================================
+// CONVERSATIONS
+// ============================================================================
+
+const conversationListEl = document.getElementById('conversation-list');
+const conversationTitleEl = document.getElementById('conversation-title');
+const conversationMessagesEl = document.getElementById('conversation-messages');
+
+/**
+ * Fetch the list of conversations and populate the sidebar.
+ */
+async function loadConversations() {
+  try {
+    const res = await fetch('/api/conversations');
+    if (!res.ok) return;
+    const conversations = await res.json();
+
+    conversationListEl.innerHTML = '';
+
+    if (conversations.length === 0) {
+      conversationListEl.innerHTML = '<div style="padding:6px 16px;font-size:12px;color:#555;">No conversations yet.</div>';
+      return;
+    }
+
+    for (const conv of conversations) {
+      const btn = document.createElement('button');
+      btn.className = 'sidebar-conversation';
+      btn.title = conv.firstMessage;
+      btn.textContent = formatConversationLabel(conv);
+      btn.addEventListener('click', () => openConversation(conv.sessionId, btn));
+      conversationListEl.appendChild(btn);
+    }
+  } catch (err) {
+    console.error('Failed to load conversations:', err);
+  }
+}
+
+/**
+ * Format a conversation label for the sidebar.
+ * Shows the date and a truncated first message.
+ */
+function formatConversationLabel(conv) {
+  const date = new Date(conv.timestamp);
+  const dateStr = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  const preview = conv.firstMessage.slice(0, 40);
+  return dateStr + ' - ' + preview;
+}
+
+/**
+ * Open a specific conversation by session ID.
+ */
+async function openConversation(sessionId, btn) {
+  // Update sidebar selection
+  showPage('conversation');
+  if (btn) btn.classList.add('active');
+
+  conversationTitleEl.textContent = 'Loading...';
+  conversationMessagesEl.innerHTML = '';
+
+  try {
+    const res = await fetch('/api/conversations/' + sessionId);
+    if (!res.ok) throw new Error('Failed to load');
+    const messages = await res.json();
+
+    conversationTitleEl.textContent = 'Conversation (' + messages.length + ' messages)';
+
+    if (messages.length === 0) {
+      conversationMessagesEl.innerHTML = '<div class="conversation-empty">No messages in this session.</div>';
+      return;
+    }
+
+    for (const msg of messages) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'msg';
+
+      const bubble = document.createElement('div');
+      bubble.className = msg.role === 'user' ? 'msg-user' : 'msg-assistant';
+      bubble.textContent = msg.content;
+
+      const time = document.createElement('div');
+      time.className = 'msg-time';
+      time.textContent = new Date(msg.timestamp).toLocaleTimeString();
+
+      wrapper.appendChild(bubble);
+      wrapper.appendChild(time);
+      conversationMessagesEl.appendChild(wrapper);
+    }
+
+    // Scroll to bottom
+    conversationMessagesEl.scrollTop = conversationMessagesEl.scrollHeight;
+  } catch (err) {
+    conversationMessagesEl.innerHTML = '<div class="conversation-empty">Error loading conversation.</div>';
+    conversationTitleEl.textContent = 'Conversation';
+  }
+}
+
+// ============================================================================
 // STATUS CHECK
 // ============================================================================
 
@@ -277,6 +500,7 @@ async function checkStatus() {
 
 load();
 checkStatus();
+loadConversations();
 </script>
 
 </body>
