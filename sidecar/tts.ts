@@ -152,7 +152,8 @@ export async function createTts(config: TtsConfig): Promise<TtsPlayer> {
     const t0 = Date.now();
     let firstTextLogged = false;
     let chunkIndex = 0;
-    let lastChunkReadyAt = 0;
+    let firstWriteAt = 0;
+    let totalAudioMs = 0;
 
     interruptFlag = false;
     speaking = true;
@@ -166,6 +167,7 @@ export async function createTts(config: TtsConfig): Promise<TtsPlayer> {
           firstTextLogged = true;
         }
 
+        const sentAt = Date.now();
         sendCommand(proc, { cmd: "generate", text: sentence });
 
         for await (const pcmBuffer of readPcmChunks(proc)) {
@@ -174,17 +176,41 @@ export async function createTts(config: TtsConfig): Promise<TtsPlayer> {
           const now = Date.now() - t0;
           const audioDurationMs =
             (pcmBuffer.length / (TTS_SAMPLE_RATE * (SPEAKER_BIT_DEPTH / 8) * SPEAKER_CHANNELS)) * 1000;
-          const genTimeMs = now - lastChunkReadyAt;
+          const genMs = Date.now() - sentAt;
           console.log(
-            `[tts] chunk ${chunkIndex} ready at +${now}ms (${(audioDurationMs / 1000).toFixed(1)}s audio, generated in ${(genTimeMs / 1000).toFixed(1)}s)`
+            `[tts] chunk ${chunkIndex} at +${now}ms (${(audioDurationMs / 1000).toFixed(1)}s audio, generated in ${genMs}ms)`
           );
-          lastChunkReadyAt = now;
           chunkIndex++;
+
+          if (firstWriteAt === 0) firstWriteAt = Date.now();
+          totalAudioMs += audioDurationMs;
 
           await writePcm(speakerInput, pcmBuffer);
         }
 
         if (interruptFlag) break;
+      }
+
+      // Wait for buffered audio to finish playing through the speakers
+      if (!interruptFlag && firstWriteAt > 0) {
+        const elapsedSinceFirstWrite = Date.now() - firstWriteAt;
+        const remainingMs = totalAudioMs - elapsedSinceFirstWrite;
+        if (remainingMs > 0) {
+          console.log(`[tts] waiting ${(remainingMs / 1000).toFixed(1)}s for playback to finish`);
+          await new Promise<void>((resolve) => {
+            const timer = setTimeout(resolve, remainingMs);
+            // Allow interruption to cancel the wait
+            const check = setInterval(() => {
+              if (interruptFlag) {
+                clearTimeout(timer);
+                clearInterval(check);
+                resolve();
+              }
+            }, 50);
+            // Clean up interval when timer fires naturally
+            setTimeout(() => clearInterval(check), remainingMs + 100);
+          });
+        }
       }
     } finally {
       speaking = false;
