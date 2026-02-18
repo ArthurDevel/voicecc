@@ -48,8 +48,8 @@ const DEFAULT_CONFIG: VoiceLoopConfig = {
   sampleRate: 16000,
   stopPhrase: "stop listening",
   sttModelPath: join(homedir(), ".claude-voice-models", "whisper-small"),
+  ttsModel: "prince-canuma/Kokoro-82M",
   ttsVoice: "af_heart",
-  ttsModelVariant: "q8",
   modelCacheDir: join(homedir(), ".claude-voice-models"),
   endpointing: {
     silenceThresholdMs: 700,
@@ -120,12 +120,11 @@ async function startVoiceLoop(config: VoiceLoopConfig): Promise<void> {
   console.log("Initializing Claude session...");
   claudeSession = await createClaudeSession(config.claudeSession);
 
-  // IMPORTANT: TTS (kokoro-js) must init before VAD/STT (avr-vad, sherpa-onnx)
-  // to avoid ONNX runtime conflicts -- all three bundle native ONNX runtimes.
+  // TTS uses mlx-audio (Python subprocess on Apple Silicon GPU), no ONNX conflict.
   console.log("Initializing TTS (downloading model on first run, may take a minute)...");
   ttsPlayer = await createTts({
+    model: config.ttsModel,
     voice: config.ttsVoice,
-    modelVariant: config.ttsModelVariant,
   });
   console.log("Initializing VAD...");
   vadProcessor = await createVad(handleVadEvent);

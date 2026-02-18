@@ -10,7 +10,6 @@
     "@anthropic-ai/claude-code": "^1.0.0",
     "@anthropic-ai/sdk": "^0.39.0",
     "avr-vad": "^1.0.0",
-    "kokoro-js": "^1.1.0",
     "node-record-lpcm16": "^1.0.1",
     "sherpa-onnx-node": "^1.11.0",
     "speaker": "^0.5.5"
