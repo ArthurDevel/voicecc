@@ -18,7 +18,7 @@ import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import Speaker from "speaker";
 
-import type { TtsConfig } from "./types.js";
+import type { TtsConfig, TextChunk } from "./types.js";
 
 // ============================================================================
 // INTERFACES
@@ -38,10 +38,10 @@ export interface TtsPlayer {
   /**
    * Stream text chunks into TTS for incremental playback.
    * First audio plays while later chunks are still generating.
-   * @param texts - Async iterable of text chunks to speak
+   * @param texts - Async iterable of text chunks (plain string = buffer, { text, flush } = immediate)
    * @returns Resolves when all chunks have been spoken
    */
-  speakStream(texts: AsyncIterable<string>): Promise<void>;
+  speakStream(texts: AsyncIterable<TextChunk>): Promise<void>;
 
   /**
    * Interrupt current playback immediately.
@@ -87,6 +87,7 @@ const SENTENCE_END_RE = /[.!?][\s]+/;
 
 /** Minimum sentence length before we'll split on punctuation */
 const MIN_SENTENCE_LENGTH = 20;
+
 
 // ============================================================================
 // MAIN HANDLERS
@@ -143,7 +144,7 @@ export async function createTts(config: TtsConfig): Promise<TtsPlayer> {
    * and plays while the next sentence generates.
    * @param texts - Async iterable of text chunks from the narrator
    */
-  async function speakStream(texts: AsyncIterable<string>): Promise<void> {
+  async function speakStream(texts: AsyncIterable<TextChunk>): Promise<void> {
     if (destroyed) throw new Error("TtsPlayer has been destroyed");
 
     const t0 = Date.now();
@@ -401,15 +402,26 @@ async function readAndPlayChunks(
 
 /**
  * Buffer streaming text deltas into complete sentences for TTS generation.
- * Splits on sentence-ending punctuation (.!?) followed by whitespace.
- * @param texts - Async iterable of text chunks from the narrator
+ * Chunks tagged with { flush: true } are yielded immediately (e.g. tool narration).
+ * Plain string chunks are buffered and split on sentence-ending punctuation.
+ * @param texts - Async iterable of TextChunk from the narrator
  * @yields Complete sentences ready for TTS
  */
-async function* bufferSentences(texts: AsyncIterable<string>): AsyncGenerator<string> {
+async function* bufferSentences(texts: AsyncIterable<TextChunk>): AsyncGenerator<string> {
   let buffer = "";
 
-  for await (const chunk of texts) {
-    buffer += chunk;
+  for await (const raw of texts) {
+    // Tagged chunk: flush buffer, then yield the chunk immediately
+    if (typeof raw !== "string") {
+      if (buffer.trim()) {
+        yield buffer.trim();
+        buffer = "";
+      }
+      yield raw.text;
+      continue;
+    }
+
+    buffer += raw;
 
     // Try to extract complete sentences from the buffer
     while (buffer.length >= MIN_SENTENCE_LENGTH) {

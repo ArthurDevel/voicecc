@@ -178,6 +178,14 @@ export interface ClaudeStreamEvent {
 }
 
 // ============================================================================
+// TTS TEXT CHUNK TYPES
+// ============================================================================
+
+/** A text chunk for TTS. Plain string = streaming fragment (buffer it).
+ * Object with flush = complete sentence (speak immediately). */
+export type TextChunk = string | { text: string; flush: true };
+
+// ============================================================================
 // VOICE LOOP STATE
 // ============================================================================
 
