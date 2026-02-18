@@ -12,8 +12,7 @@
     "@anthropic-ai/sdk": "^0.39.0",
     "avr-vad": "^1.0.0",
     "node-record-lpcm16": "^1.0.1",
-    "sherpa-onnx-node": "^1.11.0",
-    "speaker": "^0.5.5"
+    "sherpa-onnx-node": "^1.11.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

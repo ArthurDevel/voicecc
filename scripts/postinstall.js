@@ -1,11 +1,13 @@
 /**
  * Postinstall script that runs after `npm install`.
  *
- * Checks for required system dependencies (sox, espeak-ng), then sets up
+ * Compiles the mic-vpio Swift binary (macOS VPIO echo cancellation),
+ * checks for required system dependencies (espeak-ng), then sets up
  * the Python virtual environment and installs TTS dependencies.
  *
  * Responsibilities:
- * - Verify sox and espeak-ng are installed
+ * - Compile the mic-vpio Swift binary for echo-cancelled audio I/O
+ * - Verify espeak-ng is installed
  * - Create Python venv in sidecar/.venv (if not already present)
  * - Install Python TTS packages (mlx-audio, misaki, etc.)
  * - Download spaCy English model
@@ -36,6 +38,7 @@ const PYTHON_PACKAGES = [
 // ============================================================================
 
 function main() {
+  compileMicVpio();
   checkSystemDeps();
   setupPythonVenv();
   installPythonPackages();
@@ -49,13 +52,25 @@ function main() {
 // ============================================================================
 
 /**
+ * Compile the mic-vpio Swift binary for macOS VPIO echo cancellation.
+ * Skips compilation if the binary already exists and is newer than the source.
+ */
+function compileMicVpio() {
+  const source = join("sidecar", "mic-vpio.swift");
+  const binary = join("sidecar", "mic-vpio");
+
+  console.log("Compiling mic-vpio (VPIO echo cancellation)...");
+  run(`swiftc -O -o ${binary} ${source} -framework AudioToolbox -framework CoreAudio`);
+  console.log("mic-vpio compiled successfully");
+}
+
+/**
  * Check that required system binaries are available.
  * Exits with a clear error message if any are missing.
  */
 function checkSystemDeps() {
   const missing = [];
 
-  if (!commandExists("sox")) missing.push("sox");
   if (!commandExists("espeak-ng")) missing.push("espeak-ng");
 
   if (missing.length > 0) {
@@ -64,7 +79,7 @@ function checkSystemDeps() {
     process.exit(1);
   }
 
-  console.log("System dependencies OK (sox, espeak-ng)");
+  console.log("System dependencies OK (espeak-ng)");
 }
 
 /**

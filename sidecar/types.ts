@@ -85,6 +85,10 @@ export interface TtsConfig {
   model: string;
   /** Voice ID (e.g. "af_heart" for Kokoro) */
   voice: string;
+  /** Writable stream for PCM audio output (VPIO process stdin) */
+  speakerInput: import("stream").Writable;
+  /** Callback to clear the VPIO playback buffer on interruption */
+  interruptPlayback: () => void;
 }
 
 // ============================================================================
