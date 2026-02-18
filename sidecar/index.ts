@@ -16,11 +16,12 @@
  */
 
 import { homedir } from "os";
-import { Readable } from "stream";
 import { join } from "path";
 import { spawn } from "child_process";
 
-import { startCapture, stopCapture, bufferToFloat32 } from "./audio-capture.js";
+import type { Readable } from "stream";
+
+import { startCapture, stopCapture, interruptPlayback, bufferToFloat32 } from "./audio-capture.js";
 import { createVad } from "./vad.js";
 import { createStt } from "./stt.js";
 import { createEndpointer } from "./endpointing.js";
@@ -43,9 +44,13 @@ import type { VadEvent, VoiceLoopConfig, VoiceLoopState, VoiceLoopStatus, TextCh
 /** macOS system sound played when the agent finishes speaking and starts listening */
 const READY_CHIME_PATH = "/System/Library/Sounds/Glass.aiff";
 
+/** TTS output sample rate in Hz -- must match tts-server.py output format */
+const TTS_SAMPLE_RATE = 24000;
+
 /** Minimum sustained speech duration (ms) before interrupting TTS playback.
- * Set high enough to avoid false triggers from speaker echo picked up by the mic. */
-const INTERRUPTION_THRESHOLD_MS = 1500;
+ * VPIO echo cancellation filters out agent audio, so this only needs to
+ * guard against brief noise spikes, not sustained echo. */
+const INTERRUPTION_THRESHOLD_MS = 500;
 
 /** Default configuration for the voice loop */
 const DEFAULT_CONFIG: VoiceLoopConfig = {
@@ -119,16 +124,25 @@ let stopping = false;
 async function startVoiceLoop(config: VoiceLoopConfig): Promise<void> {
   activeConfig = config;
 
-  // Initialize Claude session first — spawns the persistent process so it's
+  // Start audio I/O first -- VPIO binary starts quickly and we need the
+  // speaker stream to pass to TTS. Mic data buffers until we attach handlers.
+  console.log("Initializing audio I/O (VPIO echo cancellation)...");
+  const audioIO = await startCapture(config.sampleRate, TTS_SAMPLE_RATE);
+  micStream = audioIO.micStream;
+
+  // Initialize Claude session — spawns the persistent process so it's
   // ready by the time the user speaks (eliminates process startup from TTFT).
   console.log("Initializing Claude session...");
   claudeSession = await createClaudeSession(config.claudeSession);
 
   // TTS uses mlx-audio (Python subprocess on Apple Silicon GPU), no ONNX conflict.
+  // Speaker output goes through the VPIO process for echo cancellation.
   console.log("Initializing TTS (downloading model on first run, may take a minute)...");
   ttsPlayer = await createTts({
     model: config.ttsModel,
     voice: config.ttsVoice,
+    speakerInput: audioIO.speakerInput,
+    interruptPlayback,
   });
   console.log("Initializing VAD...");
   vadProcessor = await createVad(handleVadEvent);
@@ -152,10 +166,7 @@ async function startVoiceLoop(config: VoiceLoopConfig): Promise<void> {
   // Transition to LISTENING
   state = handleStateTransition(state, "init_complete");
 
-  // Start mic capture -- returns a readable stream of raw PCM buffers
-  micStream = startCapture(config.sampleRate);
-
-  // Wrap the mic data loop in a promise that resolves on stream end or stop
+  // Attach mic data handlers -- data has been buffering since VPIO started
   return new Promise<void>((resolve, reject) => {
     if (!micStream) {
       reject(new Error("Mic stream failed to initialize"));
