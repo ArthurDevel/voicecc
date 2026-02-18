@@ -11,25 +11,14 @@ A Claude Code plugin that adds a `/voice` command for hands-free voice interacti
 - An Anthropic API key (already present if using Claude Code)
 - Headphones recommended (no echo cancellation in v1)
 
-## Quick Setup (single command)
-
-```bash
-brew install sox espeak-ng && npm install && python3 -m venv sidecar/.venv && sidecar/.venv/bin/pip install mlx-audio misaki num2words spacy phonemizer && sidecar/.venv/bin/python3 -m spacy download en_core_web_sm
-```
-
-## Setup (step by step)
+## Setup
 
 ```bash
 # 1. Install system dependencies
 brew install sox espeak-ng
 
-# 2. Install Node dependencies
+# 2. Install Node + Python dependencies (postinstall handles the Python venv)
 npm install
-
-# 3. Create Python venv and install TTS dependencies
-python3 -m venv sidecar/.venv
-sidecar/.venv/bin/pip install mlx-audio misaki num2words spacy phonemizer
-sidecar/.venv/bin/python3 -m spacy download en_core_web_sm
 ```
 
 ## Whisper Model Download

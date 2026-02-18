@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Claude Voice -- File Editor</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
+      background: #1e1e1e;
+      color: #d4d4d4;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* -- Header -- */
+    header {
+      background: #2d2d2d;
+      padding: 8px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid #404040;
+      flex-shrink: 0;
+    }
+    header h1 { font-size: 14px; font-weight: 600; color: #e0e0e0; }
+    #open-path {
+      font-size: 12px;
+      color: #888;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 60%;
+    }
+
+    /* -- Main layout -- */
+    .container {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* -- Sidebar (file browser) -- */
+    .sidebar {
+      width: 260px;
+      min-width: 200px;
+      background: #252526;
+      border-right: 1px solid #404040;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .sidebar-header {
+      padding: 8px 12px;
+      font-size: 11px;
+      text-transform: uppercase;
+      color: #888;
+      letter-spacing: 0.5px;
+      border-bottom: 1px solid #333;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .sidebar-header button {
+      background: none;
+      border: none;
+      color: #888;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .sidebar-header button:hover { color: #d4d4d4; }
+    #file-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 4px 0;
+    }
+    .file-entry {
+      padding: 4px 12px;
+      font-size: 13px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .file-entry:hover { background: #2a2d2e; }
+    .file-entry.active { background: #37373d; }
+    .file-entry .icon { width: 16px; text-align: center; font-size: 12px; }
+    .dir-icon { color: #c09553; }
+    .file-icon { color: #6a9fb5; }
+
+    /* -- Editor area -- */
+    .editor-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .editor-toolbar {
+      background: #2d2d2d;
+      padding: 6px 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-bottom: 1px solid #404040;
+      flex-shrink: 0;
+    }
+    .editor-toolbar button {
+      background: #0e639c;
+      color: #fff;
+      border: none;
+      padding: 4px 12px;
+      border-radius: 3px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .editor-toolbar button:hover { background: #1177bb; }
+    .editor-toolbar button:disabled { background: #555; cursor: default; }
+    #status {
+      font-size: 12px;
+      color: #888;
+      margin-left: auto;
+    }
+    #editor {
+      flex: 1;
+      width: 100%;
+      background: #1e1e1e;
+      color: #d4d4d4;
+      border: none;
+      padding: 12px 16px;
+      font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+      font-size: 13px;
+      line-height: 1.5;
+      resize: none;
+      outline: none;
+      tab-size: 2;
+    }
+
+    /* -- Empty state -- */
+    .empty-state {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #555;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Claude Voice -- File Editor</h1>
+  <span id="open-path">No file open</span>
+</header>
+
+<div class="container">
+  <!-- Sidebar: file browser -->
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <span>Explorer</span>
+      <button id="btn-up" title="Go up">&#x2191;</button>
+    </div>
+    <div id="file-list"></div>
+  </div>
+
+  <!-- Editor area -->
+  <div class="editor-area">
+    <div class="editor-toolbar">
+      <button id="btn-save" disabled>Save</button>
+      <span id="status"></span>
+    </div>
+    <textarea id="editor" spellcheck="false" placeholder="Select a file to edit..."></textarea>
+  </div>
+</div>
+
+<script>
+// ============================================================================
+// STATE
+// ============================================================================
+
+let currentDir = '';
+let currentFile = null;
+let isDirty = false;
+
+// ============================================================================
+// DOM REFS
+// ============================================================================
+
+const fileListEl = document.getElementById('file-list');
+const editorEl = document.getElementById('editor');
+const btnSave = document.getElementById('btn-save');
+const btnUp = document.getElementById('btn-up');
+const statusEl = document.getElementById('status');
+const openPathEl = document.getElementById('open-path');
+
+// ============================================================================
+// EVENT HANDLERS
+// ============================================================================
+
+btnSave.addEventListener('click', saveFile);
+btnUp.addEventListener('click', goUp);
+
+editorEl.addEventListener('input', () => {
+  if (currentFile) {
+    isDirty = true;
+    btnSave.disabled = false;
+    statusEl.textContent = 'Modified';
+  }
+});
+
+// Ctrl+S / Cmd+S to save
+document.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+    e.preventDefault();
+    if (currentFile && isDirty) saveFile();
+  }
+});
+
+// Tab key inserts spaces instead of moving focus
+editorEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    const start = editorEl.selectionStart;
+    const end = editorEl.selectionEnd;
+    editorEl.value = editorEl.value.substring(0, start) + '  ' + editorEl.value.substring(end);
+    editorEl.selectionStart = editorEl.selectionEnd = start + 2;
+    isDirty = true;
+    btnSave.disabled = false;
+    statusEl.textContent = 'Modified';
+  }
+});
+
+// ============================================================================
+// API CALLS
+// ============================================================================
+
+async function listDir(dirPath) {
+  const res = await fetch(`/api/files/list?path=${encodeURIComponent(dirPath)}`);
+  if (!res.ok) throw new Error((await res.json()).error);
+  return res.json();
+}
+
+async function readFile(filePath) {
+  const res = await fetch(`/api/files/read?path=${encodeURIComponent(filePath)}`);
+  if (!res.ok) throw new Error((await res.json()).error);
+  return res.json();
+}
+
+async function writeFileApi(filePath, content) {
+  const res = await fetch('/api/files/write', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path: filePath, content }),
+  });
+  if (!res.ok) throw new Error((await res.json()).error);
+  return res.json();
+}
+
+// ============================================================================
+// MAIN LOGIC
+// ============================================================================
+
+async function navigateTo(dirPath) {
+  try {
+    const data = await listDir(dirPath);
+    currentDir = data.path;
+    renderFileList(data.items);
+  } catch (err) {
+    statusEl.textContent = `Error: ${err.message}`;
+  }
+}
+
+function renderFileList(items) {
+  fileListEl.innerHTML = '';
+  for (const item of items) {
+    const el = document.createElement('div');
+    el.className = 'file-entry';
+    const iconClass = item.isDirectory ? 'dir-icon' : 'file-icon';
+    const iconChar = item.isDirectory ? '\u{1F4C1}' : '\u{1F4C4}';
+    el.innerHTML = `<span class="icon ${iconClass}">${iconChar}</span><span>${item.name}</span>`;
+
+    if (item.isDirectory) {
+      el.addEventListener('click', () => navigateTo(currentDir + '/' + item.name));
+    } else {
+      el.addEventListener('click', () => openFile(currentDir + '/' + item.name));
+    }
+    fileListEl.appendChild(el);
+  }
+}
+
+async function openFile(filePath) {
+  try {
+    statusEl.textContent = 'Loading...';
+    const data = await readFile(filePath);
+    currentFile = data.path;
+    editorEl.value = data.content;
+    openPathEl.textContent = data.path;
+    isDirty = false;
+    btnSave.disabled = true;
+    statusEl.textContent = '';
+
+    // Highlight active file in sidebar
+    document.querySelectorAll('.file-entry').forEach((el) => {
+      const name = el.querySelector('span:last-child').textContent;
+      el.classList.toggle('active', data.path.endsWith('/' + name));
+    });
+  } catch (err) {
+    statusEl.textContent = `Error: ${err.message}`;
+  }
+}
+
+async function saveFile() {
+  if (!currentFile) return;
+  try {
+    statusEl.textContent = 'Saving...';
+    await writeFileApi(currentFile, editorEl.value);
+    isDirty = false;
+    btnSave.disabled = true;
+    statusEl.textContent = 'Saved';
+    setTimeout(() => { if (statusEl.textContent === 'Saved') statusEl.textContent = ''; }, 2000);
+  } catch (err) {
+    statusEl.textContent = `Error: ${err.message}`;
+  }
+}
+
+function goUp() {
+  if (!currentDir || currentDir === '/') return;
+  const parent = currentDir.substring(0, currentDir.lastIndexOf('/')) || '/';
+  navigateTo(parent);
+}
+
+// ============================================================================
+// INIT
+// ============================================================================
+
+// Start at the project root (cwd of the server)
+navigateTo('.');
+</script>
+
+</body>
+</html>
