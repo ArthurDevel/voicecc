@@ -4,7 +4,8 @@
   "description": "Voice mode plugin for Claude Code -- hands-free interaction via local STT/TTS/VAD",
   "type": "module",
   "scripts": {
-    "start": "tsx sidecar/run.ts"
+    "start": "tsx run.ts",
+    "postinstall": "node scripts/postinstall.js"
   },
   "dependencies": {
     "@anthropic-ai/claude-code": "^1.0.0",
