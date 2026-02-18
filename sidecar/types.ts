@@ -89,6 +89,10 @@ export interface TtsConfig {
   speakerInput: import("stream").Writable;
   /** Callback to clear the VPIO playback buffer on interruption */
   interruptPlayback: () => void;
+  /** Callback to resume VPIO stdin processing after an interrupt */
+  resumePlayback: () => void;
+  /** Override server command for testing (default: Python TTS server) */
+  serverCommand?: string[];
 }
 
 // ============================================================================

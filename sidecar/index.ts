@@ -21,7 +21,7 @@ import { spawn } from "child_process";
 
 import type { Readable } from "stream";
 
-import { startCapture, stopCapture, interruptPlayback, bufferToFloat32 } from "./audio-capture.js";
+import { startCapture, stopCapture, interruptPlayback, resumePlayback, bufferToFloat32 } from "./audio-capture.js";
 import { createVad } from "./vad.js";
 import { createStt } from "./stt.js";
 import { createEndpointer } from "./endpointing.js";
@@ -143,6 +143,7 @@ async function startVoiceLoop(config: VoiceLoopConfig): Promise<void> {
     voice: config.ttsVoice,
     speakerInput: audioIO.speakerInput,
     interruptPlayback,
+    resumePlayback,
   });
   console.log("Initializing VAD...");
   vadProcessor = await createVad(handleVadEvent);
