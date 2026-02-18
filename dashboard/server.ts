@@ -1,17 +1,17 @@
 /**
- * Dashboard HTTP server for the Claude Code voice sidecar.
+ * Dashboard HTTP server -- CLAUDE.md editor.
  *
- * Serves a browser-based file editor on a local port. Runs independently
- * of the voice pipeline -- no shared state.
+ * Serves a single-page editor for the project-level CLAUDE.md file.
  *
  * Responsibilities:
- * - Serve static files from dashboard/public/
- * - Expose REST API for reading, writing, and listing files on disk
+ * - Serve the editor UI from dashboard/public/
+ * - Expose REST API to read and write CLAUDE.md
  */
 
 import { createServer, IncomingMessage, ServerResponse } from "http";
-import { readFile, writeFile, readdir, stat } from "fs/promises";
-import { join, extname, resolve } from "path";
+import { readFile, writeFile, access } from "fs/promises";
+import { join, extname } from "path";
+import { homedir } from "os";
 import { fileURLToPath } from "url";
 
 // ============================================================================
@@ -22,15 +22,14 @@ const DEFAULT_PORT = 3456;
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const PUBLIC_DIR = join(__dirname, "public");
+const CLAUDE_MD_PATH = join(process.cwd(), "CLAUDE.md");
+const USER_CLAUDE_MD_PATH = join(homedir(), ".claude", "CLAUDE.md");
 
-/** MIME types for static file serving */
 const MIME_TYPES: Record<string, string> = {
   ".html": "text/html",
   ".css": "text/css",
   ".js": "application/javascript",
   ".json": "application/json",
-  ".png": "image/png",
-  ".svg": "image/svg+xml",
 };
 
 // ============================================================================
@@ -44,12 +43,12 @@ const MIME_TYPES: Record<string, string> = {
  * @returns Resolves when the server is listening
  */
 export function startDashboard(port: number = DEFAULT_PORT): Promise<void> {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolvePromise, reject) => {
     const server = createServer(handleRequest);
     server.on("error", reject);
     server.listen(port, () => {
-      console.log(`Dashboard running at http://localhost:${port}`);
-      resolve();
+      console.log(`CLAUDE.md editor running at http://localhost:${port}`);
+      resolvePromise();
     });
   });
 }
@@ -69,12 +68,12 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   const pathname = url.pathname;
 
   try {
-    if (pathname === "/api/files/list" && req.method === "GET") {
-      await handleFileList(url, res);
-    } else if (pathname === "/api/files/read" && req.method === "GET") {
-      await handleFileRead(url, res);
-    } else if (pathname === "/api/files/write" && req.method === "POST") {
-      await handleFileWrite(req, res);
+    if (pathname === "/api/status" && req.method === "GET") {
+      await handleStatus(res);
+    } else if (pathname === "/api/claude-md" && req.method === "GET") {
+      await handleRead(res);
+    } else if (pathname === "/api/claude-md" && req.method === "POST") {
+      await handleWrite(req, res);
     } else {
       await handleStaticFile(pathname, res);
     }
@@ -85,75 +84,49 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
 }
 
 /**
- * List directory contents.
- * GET /api/files/list?path=/absolute/path
+ * Check for potential conflicts (e.g. user-level CLAUDE.md).
+ * GET /api/status
  *
- * @param url - Parsed request URL with query params
  * @param res - Server response
  */
-async function handleFileList(url: URL, res: ServerResponse): Promise<void> {
-  const dirPath = url.searchParams.get("path");
-  if (!dirPath) {
-    sendJson(res, 400, { error: "Missing 'path' query parameter" });
-    return;
-  }
-
-  const resolved = resolve(dirPath);
-  const entries = await readdir(resolved, { withFileTypes: true });
-
-  const items = entries.map((entry) => ({
-    name: entry.name,
-    isDirectory: entry.isDirectory(),
-  }));
-
-  // Sort: directories first, then alphabetical
-  items.sort((a, b) => {
-    if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
-    return a.name.localeCompare(b.name);
+async function handleStatus(res: ServerResponse): Promise<void> {
+  const hasUserClaudeMd = await fileExists(USER_CLAUDE_MD_PATH);
+  sendJson(res, 200, {
+    userClaudeMdExists: hasUserClaudeMd,
+    userClaudeMdPath: USER_CLAUDE_MD_PATH,
   });
-
-  sendJson(res, 200, { path: resolved, items });
 }
 
 /**
- * Read a file's contents.
- * GET /api/files/read?path=/absolute/path/to/file
+ * Read the CLAUDE.md file.
+ * GET /api/claude-md
  *
- * @param url - Parsed request URL with query params
  * @param res - Server response
  */
-async function handleFileRead(url: URL, res: ServerResponse): Promise<void> {
-  const filePath = url.searchParams.get("path");
-  if (!filePath) {
-    sendJson(res, 400, { error: "Missing 'path' query parameter" });
-    return;
-  }
-
-  const resolved = resolve(filePath);
-  const content = await readFile(resolved, "utf-8");
-  sendJson(res, 200, { path: resolved, content });
+async function handleRead(res: ServerResponse): Promise<void> {
+  const content = await readFile(CLAUDE_MD_PATH, "utf-8");
+  sendJson(res, 200, { content });
 }
 
 /**
- * Write content to a file.
- * POST /api/files/write
- * Body: { "path": "/absolute/path", "content": "file contents" }
+ * Write the CLAUDE.md file.
+ * POST /api/claude-md
+ * Body: { "content": "file contents" }
  *
  * @param req - Incoming HTTP request with JSON body
  * @param res - Server response
  */
-async function handleFileWrite(req: IncomingMessage, res: ServerResponse): Promise<void> {
+async function handleWrite(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const body = await readBody(req);
-  const { path: filePath, content } = JSON.parse(body);
+  const { content } = JSON.parse(body);
 
-  if (!filePath || content === undefined) {
-    sendJson(res, 400, { error: "Missing 'path' or 'content' in request body" });
+  if (content === undefined) {
+    sendJson(res, 400, { error: "Missing 'content' in request body" });
     return;
   }
 
-  const resolved = resolve(filePath);
-  await writeFile(resolved, content, "utf-8");
-  sendJson(res, 200, { path: resolved, success: true });
+  await writeFile(CLAUDE_MD_PATH, content, "utf-8");
+  sendJson(res, 200, { success: true });
 }
 
 // ============================================================================
@@ -161,8 +134,22 @@ async function handleFileWrite(req: IncomingMessage, res: ServerResponse): Promi
 // ============================================================================
 
 /**
+ * Check if a file exists on disk.
+ *
+ * @param path - Absolute file path
+ * @returns True if the file exists
+ */
+async function fileExists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Serve a static file from the public directory.
- * Falls back to index.html for the root path.
  *
  * @param pathname - URL pathname (e.g. "/index.html")
  * @param res - Server response
