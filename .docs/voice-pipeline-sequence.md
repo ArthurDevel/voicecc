@@ -11,12 +11,17 @@ sequenceDiagram
     participant Claude as Claude Session (SDK)
     participant API as Claude Code / Anthropic API
     participant Narrator as Narrator
-    participant TTS as kokoro-js TTS
+    participant TTS as tts.ts (Node.js)
+    participant Py as tts-server.py (MLX GPU)
     participant Speaker as Speaker (Audio Out)
 
-    Note over Index: Initialization Order (ONNX conflicts)
+    Note over Index: Initialization
     Index->>Claude: 1. createClaudeSession() — spawn persistent process
-    Index->>TTS: 2. createTts() — load Kokoro model (must init before VAD/STT)
+    Index->>TTS: 2. createTts() — spawn tts-server.py subprocess
+    TTS->>Py: spawn(python3 tts-server.py model voice)
+    Note over Py: Load Kokoro-82M via mlx-audio<br/>on Apple Silicon GPU
+    Note over Py: Warm-up generation
+    Py-->>TTS: stderr: "READY"
     Index->>VAD: 3. createVad() — dynamic import avr-vad
     Index->>STT: 4. createStt() — dynamic import sherpa-onnx-node
     Index->>EP: 5. createEndpointer()
@@ -94,12 +99,17 @@ sequenceDiagram
                     Narrator-->>Index: Final flush
                 end
 
-                Index->>TTS: push text chunk into TextSplitterStream
+                Index->>TTS: yield text chunk into textChunks() generator
             end
-        and TTS audio generation + playback
-            loop For each sentence from TextSplitterStream
-                TTS->>TTS: tts.stream() — generate Float32Array at 24kHz
-                TTS->>TTS: float32ToInt16Pcm() — convert to 16-bit PCM
+        and Sentence buffering + TTS generation + playback
+            loop For each sentence from bufferSentences()
+                Note over TTS: Buffer text deltas into sentences<br/>(split on .!? + whitespace, min 20 chars)
+                TTS->>Py: stdin: {"cmd":"generate","text":"..."}
+                Note over Py: model.generate(text, voice, stream=True)<br/>via MLX on Apple Silicon GPU (~8x realtime)
+                loop For each audio chunk from model
+                    Py->>TTS: stdout: [4-byte uint32 BE length][raw int16 PCM at 24kHz]
+                end
+                Py->>TTS: stdout: [4-byte 0x00000000] (end marker)
                 TTS->>Speaker: write(PCM buffer)
                 Note over Speaker: First chunk: cork/write/uncork<br/>to prevent CoreAudio race
                 Speaker->>User: Audio playback
@@ -122,7 +132,9 @@ sequenceDiagram
         Note over Index: Sustained > 800ms?
 
         alt Speech sustained >= 800ms
-            Index->>TTS: interrupt() — destroy Speaker
+            Index->>TTS: interrupt()
+            TTS->>Py: stdin: {"cmd":"interrupt"}
+            TTS->>Speaker: destroy Speaker
             Index->>Claude: interrupt() — cancel token generation
             Index->>STT: clearBuffer()
             Note over Index: State: LISTENING (loop back)
