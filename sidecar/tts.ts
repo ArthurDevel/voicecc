@@ -1,23 +1,25 @@
 /**
- * Local text-to-speech via mlx-audio (Chatterbox Turbo) with speaker playback.
+ * Local text-to-speech via mlx-audio (Chatterbox Turbo) with VPIO playback.
  *
  * Spawns a persistent Python subprocess (tts-server.py) that loads the TTS model
  * once on the Apple Silicon GPU via MLX, then generates audio on demand. Text is
  * buffered into sentences before being sent to the subprocess. Audio is received
- * as length-prefixed raw PCM and played through the `speaker` npm package.
+ * as length-prefixed raw PCM and written to the VPIO speaker stream for playback
+ * with echo cancellation.
  *
  * Responsibilities:
  * - Spawn and manage the tts-server.py Python subprocess lifecycle
  * - Buffer streaming text deltas into complete sentences for generation
  * - Read length-prefixed PCM audio chunks from the subprocess stdout
- * - Play audio through Speaker with interruption support
+ * - Write audio to the VPIO speaker stream (echo cancellation handled by VPIO)
+ * - Support interruption via VPIO ring buffer clear
  */
 
 import { ChildProcess, spawn } from "child_process";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
-import Speaker from "speaker";
 
+import type { Writable } from "stream";
 import type { TtsConfig, TextChunk } from "./types.js";
 
 // ============================================================================
@@ -31,7 +33,7 @@ export interface TtsPlayer {
   /**
    * Convert text to audio and play it through the speakers.
    * @param text - The text to speak
-   * @returns Resolves when playback completes
+   * @returns Resolves when all PCM has been sent to the speaker stream
    */
   speak(text: string): Promise<void>;
 
@@ -39,24 +41,24 @@ export interface TtsPlayer {
    * Stream text chunks into TTS for incremental playback.
    * First audio plays while later chunks are still generating.
    * @param texts - Async iterable of text chunks (plain string = buffer, { text, flush } = immediate)
-   * @returns Resolves when all chunks have been spoken
+   * @returns Resolves when all chunks have been sent to the speaker stream
    */
   speakStream(texts: AsyncIterable<TextChunk>): Promise<void>;
 
   /**
    * Interrupt current playback immediately.
-   * Destroys the current Speaker and cancels in-progress generation.
+   * Clears the VPIO ring buffer and cancels in-progress generation.
    */
   interrupt(): void;
 
   /**
-   * Check whether audio is currently playing.
-   * @returns true if audio is being played through the speaker
+   * Check whether TTS is currently generating and playing audio.
+   * @returns true if a speak/speakStream call is active
    */
   isSpeaking(): boolean;
 
   /**
-   * Free all TTS model resources and destroy the speaker.
+   * Free all TTS model resources and kill the subprocess.
    */
   destroy(): void;
 }
@@ -88,7 +90,6 @@ const SENTENCE_END_RE = /[.!?][\s]+/;
 /** Minimum sentence length before we'll split on punctuation */
 const MIN_SENTENCE_LENGTH = 20;
 
-
 // ============================================================================
 // MAIN HANDLERS
 // ============================================================================
@@ -99,7 +100,7 @@ const MIN_SENTENCE_LENGTH = 20;
  * Spawns tts-server.py which loads the model on the Apple Silicon GPU.
  * First run downloads the model from HuggingFace (~3GB for fp16).
  *
- * @param config - TTS configuration (model ID, optional reference audio)
+ * @param config - TTS configuration (model ID, voice, speaker stream, interrupt callback)
  * @returns A TtsPlayer instance ready for playback
  * @throws Error if subprocess fails to start or model fails to load
  */
@@ -110,11 +111,12 @@ export async function createTts(config: TtsConfig): Promise<TtsPlayer> {
     stdio: ["pipe", "pipe", "pipe"],
   });
 
-  // Wait for READY on stderr
   await waitForReady(proc);
 
-  let currentSpeaker: Speaker | null = null;
+  const { speakerInput, interruptPlayback } = config;
   let destroyed = false;
+  let speaking = false;
+  let interruptFlag = false;
 
   /**
    * Generate audio for a single text string and play it.
@@ -123,25 +125,25 @@ export async function createTts(config: TtsConfig): Promise<TtsPlayer> {
   async function speak(text: string): Promise<void> {
     if (destroyed) throw new Error("TtsPlayer has been destroyed");
 
+    interruptFlag = false;
+    speaking = true;
+
     sendCommand(proc, { cmd: "generate", text });
 
-    const spk = createSpeaker();
-    currentSpeaker = spk;
-
     try {
-      await readAndPlayChunks(proc, spk, () => currentSpeaker === spk);
-      await endAndWait(spk);
-    } catch (err) {
-      if (currentSpeaker === spk) throw err;
+      for await (const pcmBuffer of readPcmChunks(proc)) {
+        if (interruptFlag) break;
+        await writePcm(speakerInput, pcmBuffer);
+      }
     } finally {
-      if (currentSpeaker === spk) currentSpeaker = null;
+      speaking = false;
     }
   }
 
   /**
    * Stream text chunks into TTS for pipelined playback.
    * Buffers text deltas into sentences, generates audio per sentence,
-   * and plays while the next sentence generates.
+   * and writes PCM to the VPIO speaker stream.
    * @param texts - Async iterable of text chunks from the narrator
    */
   async function speakStream(texts: AsyncIterable<TextChunk>): Promise<void> {
@@ -149,86 +151,66 @@ export async function createTts(config: TtsConfig): Promise<TtsPlayer> {
 
     const t0 = Date.now();
     let firstTextLogged = false;
-    let spk: Speaker | null = null;
     let chunkIndex = 0;
     let lastChunkReadyAt = 0;
 
-    for await (const sentence of bufferSentences(texts)) {
-      if (!firstTextLogged) {
-        console.log(`[tts] first sentence at +${Date.now() - t0}ms: "${sentence.slice(0, 50)}${sentence.length > 50 ? "..." : ""}"`);
-        firstTextLogged = true;
-      }
+    interruptFlag = false;
+    speaking = true;
 
-      // Send generate command for this sentence
-      sendCommand(proc, { cmd: "generate", text: sentence });
+    try {
+      for await (const sentence of bufferSentences(texts)) {
+        if (interruptFlag) break;
 
-      // Read and play audio chunks for this sentence
-      const playOneChunk = (pcmBuffer: Buffer, isFirst: boolean) => {
-        const now = Date.now() - t0;
-        const audioDurationMs =
-          (pcmBuffer.length / (TTS_SAMPLE_RATE * (SPEAKER_BIT_DEPTH / 8) * SPEAKER_CHANNELS)) * 1000;
-        const genTimeMs = now - lastChunkReadyAt;
-        console.log(
-          `[tts] chunk ${chunkIndex} ready at +${now}ms (${(audioDurationMs / 1000).toFixed(1)}s audio, generated in ${(genTimeMs / 1000).toFixed(1)}s)`
-        );
-        lastChunkReadyAt = now;
-        chunkIndex++;
-
-        if (isFirst && !spk) {
-          spk = createSpeaker();
-          currentSpeaker = spk;
-          spk.cork();
-          spk.write(pcmBuffer);
-          spk.uncork();
-          return;
+        if (!firstTextLogged) {
+          console.log(`[tts] first sentence at +${Date.now() - t0}ms: "${sentence.slice(0, 50)}${sentence.length > 50 ? "..." : ""}"`);
+          firstTextLogged = true;
         }
 
-        if (currentSpeaker !== spk) return;
-        spk!.write(pcmBuffer);
-      };
+        sendCommand(proc, { cmd: "generate", text: sentence });
 
-      // Read all chunks for this sentence
-      let isFirstChunk = spk === null;
-      for await (const pcmBuffer of readPcmChunks(proc)) {
-        if (spk && currentSpeaker !== spk) break; // interrupted
-        playOneChunk(pcmBuffer, isFirstChunk);
-        isFirstChunk = false;
+        for await (const pcmBuffer of readPcmChunks(proc)) {
+          if (interruptFlag) break;
+
+          const now = Date.now() - t0;
+          const audioDurationMs =
+            (pcmBuffer.length / (TTS_SAMPLE_RATE * (SPEAKER_BIT_DEPTH / 8) * SPEAKER_CHANNELS)) * 1000;
+          const genTimeMs = now - lastChunkReadyAt;
+          console.log(
+            `[tts] chunk ${chunkIndex} ready at +${now}ms (${(audioDurationMs / 1000).toFixed(1)}s audio, generated in ${(genTimeMs / 1000).toFixed(1)}s)`
+          );
+          lastChunkReadyAt = now;
+          chunkIndex++;
+
+          await writePcm(speakerInput, pcmBuffer);
+        }
+
+        if (interruptFlag) break;
       }
-
-      if (spk && currentSpeaker !== spk) break; // interrupted
-    }
-
-    // Signal end of playback
-    if (spk && currentSpeaker === spk) {
-      try {
-        await endAndWait(spk);
-      } catch {
-        // Swallow errors from speaker destroyed mid-playback (interruption)
-      } finally {
-        if (currentSpeaker === spk) currentSpeaker = null;
-      }
+    } finally {
+      speaking = false;
     }
   }
 
   /**
    * Interrupt current playback and generation immediately.
+   * Clears the VPIO ring buffer and cancels TTS generation.
    */
   function interrupt(): void {
     if (destroyed) return;
+    interruptFlag = true;
+    interruptPlayback();
     sendCommand(proc, { cmd: "interrupt" });
-    if (currentSpeaker) {
-      currentSpeaker.close(false);
-      currentSpeaker.destroy();
-      currentSpeaker = null;
-    }
-  }
-
-  function checkIsSpeaking(): boolean {
-    return currentSpeaker !== null;
   }
 
   /**
-   * Free all resources: kill the Python subprocess and destroy the speaker.
+   * Check whether TTS is currently active.
+   */
+  function checkIsSpeaking(): boolean {
+    return speaking;
+  }
+
+  /**
+   * Free all resources: kill the Python subprocess.
    */
   function destroyPlayer(): void {
     if (destroyed) return;
@@ -325,14 +307,11 @@ async function* readPcmChunks(proc: ChildProcess): AsyncGenerator<Buffer> {
   const stdout = proc.stdout!;
 
   while (true) {
-    // Read 4-byte length header
     const header = await readExactly(stdout, 4);
     const length = header.readUInt32BE(0);
 
-    // 0-length = end of generation
     if (length === 0) return;
 
-    // Read the PCM data
     const pcmData = await readExactly(stdout, length);
     yield pcmData;
   }
@@ -364,7 +343,6 @@ function readExactly(stream: NodeJS.ReadableStream, size: number): Promise<Buffe
         const remaining = size - received;
         const chunk = (stream as any).read(remaining) as Buffer | null;
         if (chunk === null) {
-          // Not enough data yet, wait for more
           stream.once("readable", tryRead);
           return;
         }
@@ -372,7 +350,6 @@ function readExactly(stream: NodeJS.ReadableStream, size: number): Promise<Buffe
         received += chunk.length;
       }
 
-      // Got all bytes -- clean up listeners before resolving
       stream.removeListener("error", onError);
       stream.removeListener("end", onEnd);
       const result = Buffer.concat(chunks);
@@ -387,30 +364,21 @@ function readExactly(stream: NodeJS.ReadableStream, size: number): Promise<Buffe
 }
 
 /**
- * Read PCM chunks and write them to a Speaker for a single generation.
- * Used by the speak() method.
- * @param proc - The child process to read from
- * @param spk - The Speaker to write to
- * @param isActive - Function that returns false if interrupted
+ * Write a PCM buffer to the speaker stream, respecting backpressure.
+ * @param stream - The VPIO speaker writable stream
+ * @param pcmBuffer - Raw PCM bytes to write
  */
-async function readAndPlayChunks(
-  proc: ChildProcess,
-  spk: Speaker,
-  isActive: () => boolean
-): Promise<void> {
-  let first = true;
-  for await (const pcmBuffer of readPcmChunks(proc)) {
-    if (!isActive()) break;
-
-    if (first) {
-      spk.cork();
-      spk.write(pcmBuffer);
-      spk.uncork();
-      first = false;
+function writePcm(stream: Writable, pcmBuffer: Buffer): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const ok = stream.write(pcmBuffer, (err: Error | null | undefined) => {
+      if (err) reject(err);
+    });
+    if (ok) {
+      resolve();
     } else {
-      await writeChunk(spk, pcmBuffer);
+      stream.once("drain", () => resolve());
     }
-  }
+  });
 }
 
 /**
@@ -424,7 +392,6 @@ async function* bufferSentences(texts: AsyncIterable<TextChunk>): AsyncGenerator
   let buffer = "";
 
   for await (const raw of texts) {
-    // Tagged chunk: flush buffer, then yield the chunk immediately
     if (typeof raw !== "string") {
       if (buffer.trim()) {
         yield buffer.trim();
@@ -436,7 +403,6 @@ async function* bufferSentences(texts: AsyncIterable<TextChunk>): AsyncGenerator
 
     buffer += raw;
 
-    // Try to extract complete sentences from the buffer
     while (buffer.length >= MIN_SENTENCE_LENGTH) {
       const match = SENTENCE_END_RE.exec(buffer.slice(MIN_SENTENCE_LENGTH - 1));
       if (!match) break;
@@ -449,48 +415,6 @@ async function* bufferSentences(texts: AsyncIterable<TextChunk>): AsyncGenerator
     }
   }
 
-  // Flush remaining text
   const remaining = buffer.trim();
   if (remaining) yield remaining;
-}
-
-/**
- * Write a chunk to an open Speaker, respecting backpressure.
- * @param spk - The Speaker instance
- * @param pcmBuffer - Raw PCM bytes to write
- */
-function writeChunk(spk: Speaker, pcmBuffer: Buffer): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
-    const ok = spk.write(pcmBuffer, (err: Error | null | undefined) => {
-      if (err) reject(err);
-    });
-    if (ok) {
-      resolve();
-    } else {
-      spk.once("drain", () => resolve());
-    }
-  });
-}
-
-/**
- * Signal EOF and wait for the Speaker to finish playing and close.
- * @param spk - The Speaker instance
- */
-function endAndWait(spk: Speaker): Promise<void> {
-  return new Promise<void>((resolve) => {
-    spk.on("close", () => resolve());
-    spk.end();
-  });
-}
-
-/**
- * Create a new Speaker instance configured for 24kHz mono 16-bit signed PCM.
- * @returns A new Speaker instance
- */
-function createSpeaker(): Speaker {
-  return new Speaker({
-    channels: SPEAKER_CHANNELS,
-    bitDepth: SPEAKER_BIT_DEPTH,
-    sampleRate: TTS_SAMPLE_RATE,
-  });
 }
