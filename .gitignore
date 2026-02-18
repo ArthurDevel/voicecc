@@ -17,3 +17,6 @@ sidecar/mic-vpio
 # Logs
 *.log
 npm-debug.log*
+
+# Generated from init/CLAUDE.md by postinstall
+/CLAUDE.md

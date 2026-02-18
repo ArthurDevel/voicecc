@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Claude Voice -- File Editor</title>
+  <title>Claude Voice</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -13,213 +13,298 @@
       color: #d4d4d4;
       height: 100vh;
       display: flex;
-      flex-direction: column;
     }
 
-    /* -- Header -- */
-    header {
-      background: #2d2d2d;
-      padding: 8px 16px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      border-bottom: 1px solid #404040;
-      flex-shrink: 0;
-    }
-    header h1 { font-size: 14px; font-weight: 600; color: #e0e0e0; }
-    #open-path {
-      font-size: 12px;
-      color: #888;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      max-width: 60%;
-    }
-
-    /* -- Main layout -- */
-    .container {
-      display: flex;
-      flex: 1;
-      overflow: hidden;
-    }
-
-    /* -- Sidebar (file browser) -- */
+    /* -- Sidebar -- */
     .sidebar {
-      width: 260px;
-      min-width: 200px;
+      width: 200px;
       background: #252526;
       border-right: 1px solid #404040;
       display: flex;
       flex-direction: column;
-      overflow: hidden;
+      flex-shrink: 0;
     }
-    .sidebar-header {
-      padding: 8px 12px;
-      font-size: 11px;
-      text-transform: uppercase;
+    .sidebar-nav {
+      flex: 1;
+      padding: 12px 0;
+    }
+    .sidebar-item {
+      display: block;
+      width: 100%;
+      padding: 8px 16px;
+      font-size: 13px;
       color: #888;
-      letter-spacing: 0.5px;
-      border-bottom: 1px solid #333;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-    .sidebar-header button {
       background: none;
       border: none;
-      color: #888;
+      text-align: left;
       cursor: pointer;
-      font-size: 14px;
+      font-family: inherit;
     }
-    .sidebar-header button:hover { color: #d4d4d4; }
-    #file-list {
-      flex: 1;
-      overflow-y: auto;
-      padding: 4px 0;
+    .sidebar-item:hover { color: #d4d4d4; background: #2a2d2e; }
+    .sidebar-item.active { color: #e0e0e0; background: #37373d; }
+    .sidebar-footer {
+      border-top: 1px solid #404040;
+      padding: 8px 0;
     }
-    .file-entry {
-      padding: 4px 12px;
-      font-size: 13px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-    .file-entry:hover { background: #2a2d2e; }
-    .file-entry.active { background: #37373d; }
-    .file-entry .icon { width: 16px; text-align: center; font-size: 12px; }
-    .dir-icon { color: #c09553; }
-    .file-icon { color: #6a9fb5; }
 
-    /* -- Editor area -- */
-    .editor-area {
+    /* -- Main area -- */
+    .main {
       flex: 1;
       display: flex;
       flex-direction: column;
       overflow: hidden;
     }
-    .editor-toolbar {
+
+    /* -- Page header -- */
+    .page-header {
       background: #2d2d2d;
-      padding: 6px 12px;
+      padding: 10px 16px;
       display: flex;
       align-items: center;
-      gap: 8px;
+      justify-content: space-between;
       border-bottom: 1px solid #404040;
       flex-shrink: 0;
     }
-    .editor-toolbar button {
+    .page-header h1 { font-size: 14px; font-weight: 600; color: #e0e0e0; }
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .toolbar button {
       background: #0e639c;
       color: #fff;
       border: none;
-      padding: 4px 12px;
+      padding: 5px 14px;
       border-radius: 3px;
       font-size: 12px;
       cursor: pointer;
     }
-    .editor-toolbar button:hover { background: #1177bb; }
-    .editor-toolbar button:disabled { background: #555; cursor: default; }
+    .toolbar button:hover { background: #1177bb; }
+    .toolbar button:disabled { background: #555; cursor: default; }
     #status {
       font-size: 12px;
       color: #888;
-      margin-left: auto;
     }
+
+    /* -- Editor -- */
     #editor {
       flex: 1;
       width: 100%;
       background: #1e1e1e;
       color: #d4d4d4;
       border: none;
-      padding: 12px 16px;
+      padding: 16px 20px;
       font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
       font-size: 13px;
-      line-height: 1.5;
+      line-height: 1.6;
       resize: none;
       outline: none;
       tab-size: 2;
     }
 
-    /* -- Empty state -- */
-    .empty-state {
+    /* -- Pages (show/hide) -- */
+    .page { display: none; flex: 1; flex-direction: column; overflow: hidden; }
+    .page.active { display: flex; }
+
+    /* -- Warning banner -- */
+    .warning {
+      background: #3e2f00;
+      border-bottom: 1px solid #665500;
+      padding: 8px 16px;
+      font-size: 12px;
+      color: #cca700;
+      display: none;
+      flex-shrink: 0;
+    }
+    .warning.visible { display: block; }
+    .warning code {
+      background: #2a2000;
+      padding: 1px 4px;
+      border-radius: 2px;
+    }
+
+    /* -- Start voice button -- */
+    .btn-start-voice {
+      display: block;
+      width: calc(100% - 24px);
+      margin: 12px 12px 8px;
+      padding: 7px 12px;
+      font-size: 12px;
+      font-family: inherit;
+      color: #fff;
+      background: #0e639c;
+      border: none;
+      border-radius: 3px;
+      cursor: pointer;
+      text-align: center;
+    }
+    .btn-start-voice:hover { background: #1177bb; }
+    .btn-start-voice:disabled { background: #555; cursor: default; }
+
+    /* -- Sidebar conversation list -- */
+    .sidebar-section-label {
+      padding: 12px 16px 4px;
+      font-size: 11px;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .sidebar-conversation {
+      display: block;
+      width: 100%;
+      padding: 6px 16px;
+      font-size: 12px;
+      color: #888;
+      background: none;
+      border: none;
+      text-align: left;
+      cursor: pointer;
+      font-family: inherit;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .sidebar-conversation:hover { color: #d4d4d4; background: #2a2d2e; }
+    .sidebar-conversation.active { color: #e0e0e0; background: #37373d; }
+
+    /* -- Conversation view -- */
+    .conversation-messages {
       flex: 1;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      overflow-y: auto;
+      padding: 16px 20px;
+    }
+    .msg {
+      margin-bottom: 16px;
+      max-width: 80%;
+    }
+    .msg-user {
+      margin-left: auto;
+      background: #264f78;
+      border-radius: 8px 8px 2px 8px;
+      padding: 8px 12px;
+      font-size: 13px;
+      line-height: 1.5;
+      color: #e0e0e0;
+    }
+    .msg-assistant {
+      background: #2d2d2d;
+      border-radius: 8px 8px 8px 2px;
+      padding: 8px 12px;
+      font-size: 13px;
+      line-height: 1.5;
+      color: #d4d4d4;
+      white-space: pre-wrap;
+    }
+    .msg-time {
+      font-size: 10px;
       color: #555;
-      font-size: 14px;
+      margin-top: 2px;
+    }
+    .conversation-empty {
+      color: #555;
+      font-size: 13px;
+      padding: 20px;
     }
   </style>
 </head>
 <body>
 
-<header>
-  <h1>Claude Voice -- File Editor</h1>
-  <span id="open-path">No file open</span>
-</header>
+<!-- Sidebar -->
+<div class="sidebar">
+  <div class="sidebar-nav">
+    <button id="btn-start-voice" class="btn-start-voice">Start Voice</button>
+    <div class="sidebar-section-label">Conversations</div>
+    <div id="conversation-list"></div>
+  </div>
+  <div class="sidebar-footer">
+    <button class="sidebar-item active" data-page="settings">Settings</button>
+  </div>
+</div>
 
-<div class="container">
-  <!-- Sidebar: file browser -->
-  <div class="sidebar">
-    <div class="sidebar-header">
-      <span>Explorer</span>
-      <button id="btn-up" title="Go up">&#x2191;</button>
+<!-- Main area -->
+<div class="main">
+
+  <!-- Conversation page -->
+  <div id="page-conversation" class="page">
+    <div class="page-header">
+      <h1 id="conversation-title">Conversation</h1>
     </div>
-    <div id="file-list"></div>
+    <div class="conversation-messages" id="conversation-messages">
+      <div class="conversation-empty">Select a conversation from the sidebar.</div>
+    </div>
   </div>
 
-  <!-- Editor area -->
-  <div class="editor-area">
-    <div class="editor-toolbar">
-      <button id="btn-save" disabled>Save</button>
-      <span id="status"></span>
+  <!-- Settings page (CLAUDE.md editor) -->
+  <div id="page-settings" class="page active">
+    <div class="page-header">
+      <h1>Settings -- CLAUDE.md</h1>
+      <div class="toolbar">
+        <span id="status"></span>
+        <button id="btn-save" disabled>Save</button>
+      </div>
     </div>
-    <textarea id="editor" spellcheck="false" placeholder="Select a file to edit..."></textarea>
+    <div id="warning" class="warning"></div>
+    <textarea id="editor" spellcheck="false" placeholder="Loading..."></textarea>
   </div>
+
 </div>
 
 <script>
 // ============================================================================
-// STATE
+// NAVIGATION
 // ============================================================================
 
-let currentDir = '';
-let currentFile = null;
-let isDirty = false;
+const sidebarItems = document.querySelectorAll('.sidebar-item[data-page]');
+const pages = document.querySelectorAll('.page');
 
-// ============================================================================
-// DOM REFS
-// ============================================================================
+/** Switch to a page and deactivate all sidebar items */
+function showPage(pageId) {
+  sidebarItems.forEach((i) => i.classList.remove('active'));
+  document.querySelectorAll('.sidebar-conversation').forEach((c) => c.classList.remove('active'));
 
-const fileListEl = document.getElementById('file-list');
-const editorEl = document.getElementById('editor');
-const btnSave = document.getElementById('btn-save');
-const btnUp = document.getElementById('btn-up');
-const statusEl = document.getElementById('status');
-const openPathEl = document.getElementById('open-path');
+  pages.forEach((p) => p.classList.remove('active'));
+  const target = document.getElementById('page-' + pageId);
+  if (target) target.classList.add('active');
+}
 
-// ============================================================================
-// EVENT HANDLERS
-// ============================================================================
-
-btnSave.addEventListener('click', saveFile);
-btnUp.addEventListener('click', goUp);
-
-editorEl.addEventListener('input', () => {
-  if (currentFile) {
-    isDirty = true;
-    btnSave.disabled = false;
-    statusEl.textContent = 'Modified';
-  }
+sidebarItems.forEach((item) => {
+  item.addEventListener('click', () => {
+    const target = item.getAttribute('data-page');
+    showPage(target);
+    item.classList.add('active');
+  });
 });
 
-// Ctrl+S / Cmd+S to save
+// ============================================================================
+// EDITOR STATE
+// ============================================================================
+
+let isDirty = false;
+
+const editorEl = document.getElementById('editor');
+const btnSave = document.getElementById('btn-save');
+const statusEl = document.getElementById('status');
+
+// ============================================================================
+// EDITOR EVENT HANDLERS
+// ============================================================================
+
+btnSave.addEventListener('click', save);
+
+editorEl.addEventListener('input', () => {
+  isDirty = true;
+  btnSave.disabled = false;
+  statusEl.textContent = 'Modified';
+});
+
 document.addEventListener('keydown', (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key === 's') {
     e.preventDefault();
-    if (currentFile && isDirty) saveFile();
+    if (isDirty) save();
   }
 });
 
-// Tab key inserts spaces instead of moving focus
 editorEl.addEventListener('keydown', (e) => {
   if (e.key === 'Tab') {
     e.preventDefault();
@@ -234,110 +319,188 @@ editorEl.addEventListener('keydown', (e) => {
 });
 
 // ============================================================================
-// API CALLS
+// EDITOR API
 // ============================================================================
 
-async function listDir(dirPath) {
-  const res = await fetch(`/api/files/list?path=${encodeURIComponent(dirPath)}`);
-  if (!res.ok) throw new Error((await res.json()).error);
-  return res.json();
-}
-
-async function readFile(filePath) {
-  const res = await fetch(`/api/files/read?path=${encodeURIComponent(filePath)}`);
-  if (!res.ok) throw new Error((await res.json()).error);
-  return res.json();
-}
-
-async function writeFileApi(filePath, content) {
-  const res = await fetch('/api/files/write', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path: filePath, content }),
-  });
-  if (!res.ok) throw new Error((await res.json()).error);
-  return res.json();
-}
-
-// ============================================================================
-// MAIN LOGIC
-// ============================================================================
-
-async function navigateTo(dirPath) {
+async function load() {
   try {
-    const data = await listDir(dirPath);
-    currentDir = data.path;
-    renderFileList(data.items);
-  } catch (err) {
-    statusEl.textContent = `Error: ${err.message}`;
-  }
-}
-
-function renderFileList(items) {
-  fileListEl.innerHTML = '';
-  for (const item of items) {
-    const el = document.createElement('div');
-    el.className = 'file-entry';
-    const iconClass = item.isDirectory ? 'dir-icon' : 'file-icon';
-    const iconChar = item.isDirectory ? '\u{1F4C1}' : '\u{1F4C4}';
-    el.innerHTML = `<span class="icon ${iconClass}">${iconChar}</span><span>${item.name}</span>`;
-
-    if (item.isDirectory) {
-      el.addEventListener('click', () => navigateTo(currentDir + '/' + item.name));
-    } else {
-      el.addEventListener('click', () => openFile(currentDir + '/' + item.name));
-    }
-    fileListEl.appendChild(el);
-  }
-}
-
-async function openFile(filePath) {
-  try {
-    statusEl.textContent = 'Loading...';
-    const data = await readFile(filePath);
-    currentFile = data.path;
+    const res = await fetch('/api/claude-md');
+    if (!res.ok) throw new Error((await res.json()).error);
+    const data = await res.json();
     editorEl.value = data.content;
-    openPathEl.textContent = data.path;
-    isDirty = false;
-    btnSave.disabled = true;
+    editorEl.placeholder = '';
     statusEl.textContent = '';
-
-    // Highlight active file in sidebar
-    document.querySelectorAll('.file-entry').forEach((el) => {
-      const name = el.querySelector('span:last-child').textContent;
-      el.classList.toggle('active', data.path.endsWith('/' + name));
-    });
   } catch (err) {
-    statusEl.textContent = `Error: ${err.message}`;
+    statusEl.textContent = 'Error loading file';
+    editorEl.placeholder = 'Could not load CLAUDE.md -- is the file present?';
   }
 }
 
-async function saveFile() {
-  if (!currentFile) return;
+async function save() {
   try {
     statusEl.textContent = 'Saving...';
-    await writeFileApi(currentFile, editorEl.value);
+    const res = await fetch('/api/claude-md', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: editorEl.value }),
+    });
+    if (!res.ok) throw new Error((await res.json()).error);
     isDirty = false;
     btnSave.disabled = true;
     statusEl.textContent = 'Saved';
     setTimeout(() => { if (statusEl.textContent === 'Saved') statusEl.textContent = ''; }, 2000);
   } catch (err) {
-    statusEl.textContent = `Error: ${err.message}`;
+    statusEl.textContent = 'Error saving';
   }
 }
 
-function goUp() {
-  if (!currentDir || currentDir === '/') return;
-  const parent = currentDir.substring(0, currentDir.lastIndexOf('/')) || '/';
-  navigateTo(parent);
+// ============================================================================
+// VOICE
+// ============================================================================
+
+const btnStartVoice = document.getElementById('btn-start-voice');
+
+btnStartVoice.addEventListener('click', startVoice);
+
+/** Send request to open Terminal.app with the voice sidecar. */
+async function startVoice() {
+  btnStartVoice.disabled = true;
+  btnStartVoice.textContent = 'Opening Terminal...';
+
+  try {
+    const res = await fetch('/api/voice/start', { method: 'POST' });
+    if (!res.ok) throw new Error('Failed to start');
+    btnStartVoice.textContent = 'Start Voice';
+  } catch (err) {
+    btnStartVoice.textContent = 'Error -- retry';
+  }
+
+  btnStartVoice.disabled = false;
+}
+
+// ============================================================================
+// CONVERSATIONS
+// ============================================================================
+
+const conversationListEl = document.getElementById('conversation-list');
+const conversationTitleEl = document.getElementById('conversation-title');
+const conversationMessagesEl = document.getElementById('conversation-messages');
+
+/**
+ * Fetch the list of conversations and populate the sidebar.
+ */
+async function loadConversations() {
+  try {
+    const res = await fetch('/api/conversations');
+    if (!res.ok) return;
+    const conversations = await res.json();
+
+    conversationListEl.innerHTML = '';
+
+    if (conversations.length === 0) {
+      conversationListEl.innerHTML = '<div style="padding:6px 16px;font-size:12px;color:#555;">No conversations yet.</div>';
+      return;
+    }
+
+    for (const conv of conversations) {
+      const btn = document.createElement('button');
+      btn.className = 'sidebar-conversation';
+      btn.title = conv.firstMessage;
+      btn.textContent = formatConversationLabel(conv);
+      btn.addEventListener('click', () => openConversation(conv.sessionId, btn));
+      conversationListEl.appendChild(btn);
+    }
+  } catch (err) {
+    console.error('Failed to load conversations:', err);
+  }
+}
+
+/**
+ * Format a conversation label for the sidebar.
+ * Shows the date and a truncated first message.
+ */
+function formatConversationLabel(conv) {
+  const date = new Date(conv.timestamp);
+  const dateStr = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  const preview = conv.firstMessage.slice(0, 40);
+  return dateStr + ' - ' + preview;
+}
+
+/**
+ * Open a specific conversation by session ID.
+ */
+async function openConversation(sessionId, btn) {
+  // Update sidebar selection
+  showPage('conversation');
+  if (btn) btn.classList.add('active');
+
+  conversationTitleEl.textContent = 'Loading...';
+  conversationMessagesEl.innerHTML = '';
+
+  try {
+    const res = await fetch('/api/conversations/' + sessionId);
+    if (!res.ok) throw new Error('Failed to load');
+    const messages = await res.json();
+
+    conversationTitleEl.textContent = 'Conversation (' + messages.length + ' messages)';
+
+    if (messages.length === 0) {
+      conversationMessagesEl.innerHTML = '<div class="conversation-empty">No messages in this session.</div>';
+      return;
+    }
+
+    for (const msg of messages) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'msg';
+
+      const bubble = document.createElement('div');
+      bubble.className = msg.role === 'user' ? 'msg-user' : 'msg-assistant';
+      bubble.textContent = msg.content;
+
+      const time = document.createElement('div');
+      time.className = 'msg-time';
+      time.textContent = new Date(msg.timestamp).toLocaleTimeString();
+
+      wrapper.appendChild(bubble);
+      wrapper.appendChild(time);
+      conversationMessagesEl.appendChild(wrapper);
+    }
+
+    // Scroll to bottom
+    conversationMessagesEl.scrollTop = conversationMessagesEl.scrollHeight;
+  } catch (err) {
+    conversationMessagesEl.innerHTML = '<div class="conversation-empty">Error loading conversation.</div>';
+    conversationTitleEl.textContent = 'Conversation';
+  }
+}
+
+// ============================================================================
+// STATUS CHECK
+// ============================================================================
+
+async function checkStatus() {
+  try {
+    const res = await fetch('/api/status');
+    if (!res.ok) return;
+    const data = await res.json();
+
+    if (data.userClaudeMdExists) {
+      const warningEl = document.getElementById('warning');
+      warningEl.innerHTML =
+        'A user-level <code>' + data.userClaudeMdPath + '</code> was detected. ' +
+        'Its instructions will also apply and may interfere with this project config.';
+      warningEl.classList.add('visible');
+    }
+  } catch {}
 }
 
 // ============================================================================
 // INIT
 // ============================================================================
 
-// Start at the project root (cwd of the server)
-navigateTo('.');
+load();
+checkStatus();
+loadConversations();
 </script>
 
 </body>
