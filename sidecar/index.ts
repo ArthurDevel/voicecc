@@ -33,7 +33,7 @@ import type { Endpointer } from "./endpointing.js";
 import type { ClaudeSession } from "./claude-session.js";
 import type { Narrator } from "./narration.js";
 import type { TtsPlayer } from "./tts.js";
-import type { VadEvent, VoiceLoopConfig, VoiceLoopState, VoiceLoopStatus } from "./types.js";
+import type { VadEvent, VoiceLoopConfig, VoiceLoopState, VoiceLoopStatus, TextChunk } from "./types.js";
 
 // ============================================================================
 // CONSTANTS
@@ -368,16 +368,18 @@ async function processClaudeResponse(transcript: string): Promise<void> {
   // Async generator that yields text chunks from Claude → narrator
   const session = claudeSession;
   const narr = narrator;
-  async function* textChunks(): AsyncGenerator<string> {
+  async function* textChunks(): AsyncGenerator<TextChunk> {
     const eventStream = session.sendMessage(transcript);
 
     for await (const event of eventStream) {
       if (interrupted) return;
 
+      // Tool narration is a complete sentence -- tag it for immediate TTS
+      const isToolEvent = event.type === "tool_start" || event.type === "tool_end";
       const chunks = narr.processEvent(event);
       for (const chunk of chunks) {
         if (interrupted) return;
-        yield chunk;
+        yield isToolEvent ? { text: chunk, flush: true } : chunk;
       }
     }
 
