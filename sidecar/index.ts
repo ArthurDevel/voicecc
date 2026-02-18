@@ -50,7 +50,7 @@ const TTS_SAMPLE_RATE = 24000;
 /** Minimum sustained speech duration (ms) before interrupting TTS playback.
  * VPIO echo cancellation filters out agent audio, so this only needs to
  * guard against brief noise spikes, not sustained echo. */
-const INTERRUPTION_THRESHOLD_MS = 500;
+const INTERRUPTION_THRESHOLD_MS = 1500;
 
 /** Default configuration for the voice loop */
 const DEFAULT_CONFIG: VoiceLoopConfig = {
@@ -500,7 +500,7 @@ function clearInterruptionTimer(): void {
  * Fire-and-forget -- errors are silently ignored.
  */
 function playReadyChime(): void {
-  spawn("afplay", [READY_CHIME_PATH]).on("error", () => {});
+  spawn("afplay", ["--volume", "6", READY_CHIME_PATH]).on("error", () => {});
 }
 
 /**
