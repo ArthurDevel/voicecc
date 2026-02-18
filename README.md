@@ -86,6 +86,12 @@ The voice loop runs locally with zero external API calls except to Claude:
 7. **Text-to-speech**: Kokoro-82M via mlx-audio on Apple Silicon GPU (~8x realtime)
 8. **Speaker playback**: Audio output through system speakers at 24kHz
 
+### TTS subprocess architecture
+
+TTS runs in a persistent Python child process (`sidecar/tts-server.py`) spawned once at startup. The Kokoro model is loaded onto the Apple Silicon GPU via mlx-audio and stays in memory for the entire session. Node.js communicates with it over stdio pipes — JSON commands on stdin, length-prefixed binary PCM audio on stdout. There is no HTTP server or network involved.
+
+See [`.docs/voice-pipeline-sequence.md`](.docs/voice-pipeline-sequence.md) for a full sequence diagram.
+
 ## Troubleshooting
 
 - **"sox not found"**: Install sox with `brew install sox`
