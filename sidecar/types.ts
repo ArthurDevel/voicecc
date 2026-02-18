@@ -23,10 +23,10 @@
 export interface VoiceLoopConfig {
   /** Path to the sherpa-onnx Whisper ONNX model directory */
   sttModelPath: string;
-  /** Kokoro voice ID for TTS output */
+  /** mlx-audio model ID for TTS (e.g. "prince-canuma/Kokoro-82M") */
+  ttsModel: string;
+  /** TTS voice ID (e.g. "af_heart" for Kokoro) */
   ttsVoice: string;
-  /** Kokoro model variant (e.g. "q8" for 86MB quantized) */
-  ttsModelVariant: string;
   /** Directory for cached model files */
   modelCacheDir: string;
   /** Audio sample rate in Hz (must match mic and VAD/STT expectations) */
@@ -81,10 +81,10 @@ export interface NarrationConfig {
  * Configuration for the TTS (text-to-speech) module.
  */
 export interface TtsConfig {
-  /** Kokoro voice ID */
+  /** mlx-audio model ID (e.g. "prince-canuma/Kokoro-82M") */
+  model: string;
+  /** Voice ID (e.g. "af_heart" for Kokoro) */
   voice: string;
-  /** Model variant (e.g. "q8" for quantized) */
-  modelVariant: string;
 }
 
 // ============================================================================

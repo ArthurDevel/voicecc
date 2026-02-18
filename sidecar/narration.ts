@@ -3,7 +3,7 @@
  *
  * Two modes of operation:
  * - Response mode: passes text_delta content through immediately for streaming
- *   TTS. Text chunking is handled downstream by kokoro-js TextSplitterStream.
+ *   TTS. Text is buffered into sentences downstream in the TTS module.
  * - Long-task mode: emits periodic template-based summaries during tool use
  *   (e.g. "Running Bash...", "Still working on Bash...").
  *
