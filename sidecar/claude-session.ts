@@ -155,7 +155,7 @@ async function createClaudeSession(
       }
 
       const t0 = Date.now();
-      let hasStreamedText = false;
+      let hasStreamedContent = false;
       const toolUseBlocks = new Set<number>();
       const thinkingBlocks = new Set<number>();
 
@@ -178,10 +178,12 @@ async function createClaudeSession(
 
           if (event.type === "content_block_start") {
             if (event.content_block.type === "tool_use") {
+              hasStreamedContent = true;
               toolUseBlocks.add(event.index);
               yield { type: "tool_start", content: "", toolName: event.content_block.name };
             }
             if (event.content_block.type === "thinking") {
+              hasStreamedContent = true;
               thinkingBlocks.add(event.index);
               console.log(`[claude] thinking started at +${Date.now() - t0}ms`);
               yield { type: "text_delta", content: "Thinking... " };
@@ -191,10 +193,10 @@ async function createClaudeSession(
 
           if (event.type === "content_block_delta") {
             if (event.delta.type === "text_delta") {
-              if (!hasStreamedText) {
+              if (!hasStreamedContent) {
                 console.log(`[claude] first delta at +${Date.now() - t0}ms`);
               }
-              hasStreamedText = true;
+              hasStreamedContent = true;
               yield { type: "text_delta", content: event.delta.text };
             }
             continue;
@@ -217,7 +219,7 @@ async function createClaudeSession(
 
         // Full assistant message — fallback if streaming didn't produce deltas
         if (msg.type === "assistant") {
-          if (hasStreamedText) {
+          if (hasStreamedContent) {
             console.log(`[claude] full message at +${Date.now() - t0}ms (skipped, already streamed)`);
           } else {
             console.log(`[claude] full message at +${Date.now() - t0}ms (no streaming, using fallback)`);
@@ -244,7 +246,7 @@ async function createClaudeSession(
 
         // Result — turn complete
         if (msg.type === "result") {
-          console.log(`[claude] result at +${Date.now() - t0}ms (streamed=${hasStreamedText})`);
+          console.log(`[claude] result at +${Date.now() - t0}ms (streamed=${hasStreamedContent})`);
           if (msg.is_error) {
             yield { type: "error", content: msg.subtype === "success" ? String((msg as any).result) : msg.subtype };
           }
