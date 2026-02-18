@@ -12,7 +12,7 @@
  */
 
 import { execSync } from "child_process";
-import { existsSync } from "fs";
+import { copyFileSync, existsSync } from "fs";
 import { join } from "path";
 
 // ============================================================================
@@ -36,6 +36,7 @@ const PYTHON_PACKAGES = [
 // ============================================================================
 
 function main() {
+  installClaudeMd();
   checkSystemDeps();
   setupPythonVenv();
   installPythonPackages();
@@ -47,6 +48,23 @@ function main() {
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
+
+/**
+ * Copy the project CLAUDE.md from init/ to the project root.
+ * Overwrites any existing CLAUDE.md to keep it in sync with the repo.
+ */
+function installClaudeMd() {
+  const src = join("init", "CLAUDE.md");
+  const dest = "CLAUDE.md";
+
+  if (!existsSync(src)) {
+    console.warn("init/CLAUDE.md not found, skipping.");
+    return;
+  }
+
+  copyFileSync(src, dest);
+  console.log("Installed CLAUDE.md to project root.");
+}
 
 /**
  * Check that required system binaries are available.
