@@ -46,6 +46,11 @@ class AsyncQueue<T> implements AsyncIterable<T> {
     }
   }
 
+  /** Discard all buffered items. Used to clear stale events after interruption. */
+  drain(): void {
+    this.buf.length = 0;
+  }
+
   /** Read one item (used by sendMessage to drain the event channel). */
   async next(): Promise<T | undefined> {
     if (this.buf.length > 0) return this.buf.shift()!;
@@ -153,6 +158,9 @@ async function createClaudeSession(
       if (!text.trim()) {
         throw new Error("Cannot send empty message.");
       }
+
+      // Drain stale events from a previous interrupted turn
+      sdkEvents.drain();
 
       const t0 = Date.now();
       let hasStreamedContent = false;
