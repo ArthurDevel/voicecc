@@ -432,6 +432,11 @@ async function processClaudeResponse(transcript: string): Promise<void> {
 function handleInterruptionDetection(event: VadEvent): void {
   if (event.type === "SPEECH_START") {
     if (interruptionTimer === null) {
+      // Start capturing audio immediately so we have the full utterance if this
+      // turns out to be an interruption
+      if (sttProcessor) sttProcessor.clearBuffer();
+      accumulating = true;
+
       interruptionTimer = setTimeout(() => {
         interruptionTimer = null;
         triggerInterruption();
@@ -441,7 +446,10 @@ function handleInterruptionDetection(event: VadEvent): void {
   }
 
   if (event.type === "SPEECH_END") {
+    // Speech ended before threshold -- not an interruption, discard audio
     clearInterruptionTimer();
+    accumulating = false;
+    if (sttProcessor) sttProcessor.clearBuffer();
   }
 }
 
@@ -454,10 +462,10 @@ function triggerInterruption(): void {
   interrupted = true;
   if (ttsPlayer) ttsPlayer.interrupt();
   if (claudeSession) claudeSession.interrupt();
-  if (sttProcessor) sttProcessor.clearBuffer();
 
   clearInterruptionTimer();
-  accumulating = true;
+  // Keep accumulating -- user is still speaking. Buffer already has audio from
+  // SPEECH_START onwards, so the full utterance will be transcribed on SPEECH_END.
 
   state = handleStateTransition(state, "user_interrupt");
 }
