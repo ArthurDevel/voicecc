@@ -217,6 +217,7 @@ export async function createTts(config: TtsConfig): Promise<TtsPlayer> {
     if (destroyed) return;
     sendCommand(proc, { cmd: "interrupt" });
     if (currentSpeaker) {
+      currentSpeaker.close(false);
       currentSpeaker.destroy();
       currentSpeaker = null;
     }
@@ -348,6 +349,16 @@ function readExactly(stream: NodeJS.ReadableStream, size: number): Promise<Buffe
     const chunks: Buffer[] = [];
     let received = 0;
 
+    const onError = (err: Error) => {
+      stream.removeListener("end", onEnd);
+      reject(err);
+    };
+
+    const onEnd = () => {
+      stream.removeListener("error", onError);
+      reject(new Error("Stream ended before reading enough bytes"));
+    };
+
     const tryRead = () => {
       while (received < size) {
         const remaining = size - received;
@@ -361,13 +372,15 @@ function readExactly(stream: NodeJS.ReadableStream, size: number): Promise<Buffe
         received += chunk.length;
       }
 
-      // Got all bytes
+      // Got all bytes -- clean up listeners before resolving
+      stream.removeListener("error", onError);
+      stream.removeListener("end", onEnd);
       const result = Buffer.concat(chunks);
       resolve(result.subarray(0, size));
     };
 
-    (stream as any).once("error", reject);
-    (stream as any).once("end", () => reject(new Error("Stream ended before reading enough bytes")));
+    stream.once("error", onError);
+    stream.once("end", onEnd);
 
     tryRead();
   });
