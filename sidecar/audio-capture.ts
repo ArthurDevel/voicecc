@@ -93,11 +93,24 @@ async function startCapture(micRate: number, speakerRate: number): Promise<Audio
 
 /**
  * Interrupt current speaker playback by clearing the VPIO ring buffer.
- * Sends SIGUSR1 to the mic-vpio process which clears pending audio.
+ * Sends SIGUSR1 to the mic-vpio process which clears pending audio
+ * and starts discarding any stale PCM data remaining in the OS pipe buffer.
  */
 function interruptPlayback(): void {
   if (vpioProcess) {
     vpioProcess.kill("SIGUSR1");
+  }
+}
+
+/**
+ * Resume speaker playback after an interrupt.
+ * Sends SIGUSR2 to the mic-vpio process which stops discarding stdin data,
+ * allowing new PCM audio to flow through to the ring buffer and speakers.
+ * Must be called before writing new audio after an interrupt.
+ */
+function resumePlayback(): void {
+  if (vpioProcess) {
+    vpioProcess.kill("SIGUSR2");
   }
 }
 
@@ -203,5 +216,5 @@ function bufferToFloat32(buffer: Buffer): Float32Array {
   return float32;
 }
 
-export { startCapture, stopCapture, interruptPlayback, isCapturing, bufferToFloat32 };
+export { startCapture, stopCapture, interruptPlayback, resumePlayback, isCapturing, bufferToFloat32 };
 export type { AudioIO };
