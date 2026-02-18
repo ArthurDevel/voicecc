@@ -18,6 +18,7 @@
 import { homedir } from "os";
 import { Readable } from "stream";
 import { join } from "path";
+import { spawn } from "child_process";
 
 import { startCapture, stopCapture, bufferToFloat32 } from "./audio-capture.js";
 import { createVad } from "./vad.js";
@@ -39,9 +40,12 @@ import type { VadEvent, VoiceLoopConfig, VoiceLoopState, VoiceLoopStatus, TextCh
 // CONSTANTS
 // ============================================================================
 
+/** macOS system sound played when the agent finishes speaking and starts listening */
+const READY_CHIME_PATH = "/System/Library/Sounds/Glass.aiff";
+
 /** Minimum sustained speech duration (ms) before interrupting TTS playback.
  * Set high enough to avoid false triggers from speaker echo picked up by the mic. */
-const INTERRUPTION_THRESHOLD_MS = 800;
+const INTERRUPTION_THRESHOLD_MS = 1500;
 
 /** Default configuration for the voice loop */
 const DEFAULT_CONFIG: VoiceLoopConfig = {
@@ -78,8 +82,8 @@ let state: VoiceLoopState = { status: "idle", sessionId: null };
 /** Whether STT is currently accumulating audio (between SPEECH_START and SPEECH_END) */
 let accumulating = false;
 
-/** Timestamp when speech started during SPEAKING state (for interruption filter) */
-let speechStartDuringSpeaking: number | null = null;
+/** Timer that fires after INTERRUPTION_THRESHOLD_MS of sustained speech during playback */
+let interruptionTimer: ReturnType<typeof setTimeout> | null = null;
 
 /** Set to true when user interrupts -- checked by processClaudeResponse to bail out */
 let interrupted = false;
@@ -143,6 +147,7 @@ async function startVoiceLoop(config: VoiceLoopConfig): Promise<void> {
   process.on("SIGTERM", signalHandler);
 
   console.log("Voice mode active");
+  playReadyChime();
 
   // Transition to LISTENING
   state = handleStateTransition(state, "init_complete");
@@ -217,7 +222,7 @@ async function stopVoiceLoop(): Promise<void> {
   narrator = null;
   activeConfig = null;
   accumulating = false;
-  speechStartDuringSpeaking = null;
+  clearInterruptionTimer();
 
   state = { status: "idle", sessionId: null };
   stopping = false;
@@ -403,6 +408,7 @@ async function processClaudeResponse(transcript: string): Promise<void> {
   }
 
   console.log("[debug] Response processing complete");
+  playReadyChime();
 
   // Transition back to LISTENING
   state = handleStateTransition(state, "response_complete");
@@ -411,37 +417,32 @@ async function processClaudeResponse(transcript: string): Promise<void> {
   if (vadProcessor) vadProcessor.reset();
   if (endpointer) endpointer.reset();
   accumulating = false;
-  speechStartDuringSpeaking = null;
+  clearInterruptionTimer();
 }
 
 /**
  * Detect sustained speech during SPEAKING/PROCESSING state for interruption.
  *
- * Tracks SPEECH_START timestamps and triggers interruption if speech
- * is sustained for longer than INTERRUPTION_THRESHOLD_MS (300ms).
+ * On SPEECH_START, starts a timer for INTERRUPTION_THRESHOLD_MS.
+ * On SPEECH_END, clears the timer. If speech is sustained long enough
+ * for the timer to fire, triggers interruption.
  *
  * @param event - The VAD event to evaluate
  */
 function handleInterruptionDetection(event: VadEvent): void {
   if (event.type === "SPEECH_START") {
-    if (speechStartDuringSpeaking === null) {
-      speechStartDuringSpeaking = Date.now();
-    }
-    return;
-  }
-
-  if (event.type === "SPEECH_CONTINUE") {
-    if (speechStartDuringSpeaking !== null) {
-      const duration = Date.now() - speechStartDuringSpeaking;
-      if (duration >= INTERRUPTION_THRESHOLD_MS) {
+    if (interruptionTimer === null) {
+      interruptionTimer = setTimeout(() => {
+        interruptionTimer = null;
         triggerInterruption();
-      }
+      }, INTERRUPTION_THRESHOLD_MS);
     }
     return;
   }
 
-  // SPEECH_END -- speech stopped before threshold, reset tracking
-  speechStartDuringSpeaking = null;
+  if (event.type === "SPEECH_END") {
+    clearInterruptionTimer();
+  }
 }
 
 /**
@@ -455,8 +456,8 @@ function triggerInterruption(): void {
   if (claudeSession) claudeSession.interrupt();
   if (sttProcessor) sttProcessor.clearBuffer();
 
-  speechStartDuringSpeaking = null;
-  accumulating = false;
+  clearInterruptionTimer();
+  accumulating = true;
 
   state = handleStateTransition(state, "user_interrupt");
 }
@@ -464,6 +465,24 @@ function triggerInterruption(): void {
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
+
+/**
+ * Clear the interruption detection timer if active.
+ */
+function clearInterruptionTimer(): void {
+  if (interruptionTimer !== null) {
+    clearTimeout(interruptionTimer);
+    interruptionTimer = null;
+  }
+}
+
+/**
+ * Play the ready chime to signal the user that the agent is listening.
+ * Fire-and-forget -- errors are silently ignored.
+ */
+function playReadyChime(): void {
+  spawn("afplay", [READY_CHIME_PATH]).on("error", () => {});
+}
 
 /**
  * Pure function that computes the next voice loop state from the current state
