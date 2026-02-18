@@ -105,18 +105,19 @@ const MIN_SENTENCE_LENGTH = 20;
  * @throws Error if subprocess fails to start or model fails to load
  */
 export async function createTts(config: TtsConfig): Promise<TtsPlayer> {
-  const args = [TTS_SERVER_SCRIPT, config.model, config.voice];
+  const cmd = config.serverCommand ?? [PYTHON_BIN, TTS_SERVER_SCRIPT, config.model, config.voice];
 
-  const proc = spawn(PYTHON_BIN, args, {
+  const proc = spawn(cmd[0], cmd.slice(1), {
     stdio: ["pipe", "pipe", "pipe"],
   });
 
   await waitForReady(proc);
 
-  const { speakerInput, interruptPlayback } = config;
+  const { speakerInput, interruptPlayback, resumePlayback } = config;
   let destroyed = false;
   let speaking = false;
   let interruptFlag = false;
+  let wasInterrupted = false;
 
   /**
    * Generate audio for a single text string and play it.
@@ -127,6 +128,10 @@ export async function createTts(config: TtsConfig): Promise<TtsPlayer> {
 
     interruptFlag = false;
     speaking = true;
+    if (wasInterrupted) {
+      resumePlayback();
+      wasInterrupted = false;
+    }
 
     sendCommand(proc, { cmd: "generate", text });
 
@@ -157,6 +162,10 @@ export async function createTts(config: TtsConfig): Promise<TtsPlayer> {
 
     interruptFlag = false;
     speaking = true;
+    if (wasInterrupted) {
+      resumePlayback();
+      wasInterrupted = false;
+    }
 
     try {
       for await (const sentence of bufferSentences(texts)) {
@@ -224,6 +233,7 @@ export async function createTts(config: TtsConfig): Promise<TtsPlayer> {
   function interrupt(): void {
     if (destroyed) return;
     interruptFlag = true;
+    wasInterrupted = true;
     interruptPlayback();
     sendCommand(proc, { cmd: "interrupt" });
   }
