@@ -29,8 +29,6 @@ export interface VoiceLoopConfig {
   ttsVoice: string;
   /** Directory for cached model files */
   modelCacheDir: string;
-  /** Audio sample rate in Hz (must match mic and VAD/STT expectations) */
-  sampleRate: number;
   /** Endpointing configuration for turn detection */
   endpointing: EndpointingConfig;
   /** Narration configuration for Claude response processing */
