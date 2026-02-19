@@ -55,6 +55,7 @@ const MIME_TYPES: Record<string, string> = {
  * @returns Resolves when the server is listening
  */
 export async function startDashboard(): Promise<void> {
+  await loadDeviceTokens();
   for (const port of PORTS_TO_TRY) {
     try {
       await listenOnPort(port);
@@ -624,6 +625,7 @@ async function handlePairDevice(req: IncomingMessage, res: ServerResponse): Prom
   const token = randomUUID();
   const userAgent = req.headers["user-agent"] ?? "unknown";
   deviceTokens.set(token, { pairedAt: Date.now(), userAgent });
+  saveDeviceTokens().catch(() => {});
 
   sendJson(res, 200, { token });
 }
@@ -655,6 +657,30 @@ let webrtcConfigured = false;
 const pairingCodes = new Map<string, { expiresAt: number; attempts: number }>();
 /** Paired device tokens: token -> { pairedAt, userAgent } */
 const deviceTokens = new Map<string, { pairedAt: number; userAgent: string }>();
+
+/** Path to persist device tokens across restarts */
+const DEVICE_TOKENS_PATH = join(process.cwd(), ".device-tokens.json");
+
+/** Load device tokens from disk on startup. */
+async function loadDeviceTokens(): Promise<void> {
+  try {
+    const data = JSON.parse(await readFile(DEVICE_TOKENS_PATH, "utf-8"));
+    for (const [token, info] of Object.entries(data)) {
+      deviceTokens.set(token, info as { pairedAt: number; userAgent: string });
+    }
+  } catch {
+    // File doesn't exist or is invalid -- start fresh
+  }
+}
+
+/** Save device tokens to disk. */
+async function saveDeviceTokens(): Promise<void> {
+  const data: Record<string, { pairedAt: number; userAgent: string }> = {};
+  for (const [token, info] of deviceTokens) {
+    data[token] = info;
+  }
+  await writeFile(DEVICE_TOKENS_PATH, JSON.stringify(data), "utf-8");
+}
 
 /** Pairing code config */
 const PAIRING_CODE_TTL_MS = 5 * 60 * 1000;
