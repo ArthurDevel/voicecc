@@ -165,8 +165,7 @@ export async function createTts(config: TtsConfig): Promise<TtsPlayer> {
     const t0 = Date.now();
     let firstTextLogged = false;
     let chunkIndex = 0;
-    let firstWriteAt = 0;
-    let totalAudioMs = 0;
+    let playbackFinishAt = 0;
 
     interruptFlag = false;
     speaking = true;
@@ -205,10 +204,11 @@ export async function createTts(config: TtsConfig): Promise<TtsPlayer> {
           );
           chunkIndex++;
 
-          if (firstWriteAt === 0) firstWriteAt = Date.now();
-          totalAudioMs += audioDurationMs;
-
           await writePcm(speakerInput, pcmBuffer);
+
+          // Track estimated playback end. If the speaker buffer drained during a
+          // gap (e.g. tool call), new audio starts from now, not after previous audio.
+          playbackFinishAt = Math.max(playbackFinishAt, Date.now()) + audioDurationMs;
         }
 
         if (!loopBroken) midGeneration = false;
@@ -216,9 +216,8 @@ export async function createTts(config: TtsConfig): Promise<TtsPlayer> {
       }
 
       // Wait for buffered audio to finish playing through the speakers
-      if (!interruptFlag && firstWriteAt > 0) {
-        const elapsedSinceFirstWrite = Date.now() - firstWriteAt;
-        const remainingMs = totalAudioMs - elapsedSinceFirstWrite;
+      if (!interruptFlag && playbackFinishAt > 0) {
+        const remainingMs = playbackFinishAt - Date.now();
         if (remainingMs > 0) {
           console.log(`[tts] waiting ${(remainingMs / 1000).toFixed(1)}s for playback to finish`);
           await new Promise<void>((resolve) => {

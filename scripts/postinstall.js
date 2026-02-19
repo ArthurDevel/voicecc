@@ -77,8 +77,27 @@ function compileMicVpio() {
   const source = join("sidecar", "mic-vpio.swift");
   const binary = join("sidecar", "mic-vpio");
 
+  if (process.platform !== "darwin") {
+    console.error("\n[voicecc] ERROR: macOS is required.");
+    console.error("  voicecc uses macOS VPIO for echo cancellation and mlx-audio for TTS.");
+    console.error("  It cannot run on Linux or Windows.\n");
+    process.exit(1);
+  }
+
+  if (!commandExists("swiftc")) {
+    console.error("\n[voicecc] ERROR: Swift compiler (swiftc) not found.");
+    console.error("  Install Xcode Command Line Tools: xcode-select --install\n");
+    process.exit(1);
+  }
+
   console.log("Compiling mic-vpio (VPIO echo cancellation)...");
-  run(`swiftc -O -o ${binary} ${source} -framework AudioToolbox -framework CoreAudio`);
+  try {
+    run(`swiftc -O -o ${binary} ${source} -framework AudioToolbox -framework CoreAudio`);
+  } catch (err) {
+    console.error("\n[voicecc] ERROR: Failed to compile mic-vpio.swift.");
+    console.error("  Make sure Xcode Command Line Tools are installed: xcode-select --install\n");
+    process.exit(1);
+  }
   console.log("mic-vpio compiled successfully");
 }
 
@@ -92,8 +111,9 @@ function checkSystemDeps() {
   if (!commandExists("espeak-ng")) missing.push("espeak-ng");
 
   if (missing.length > 0) {
-    console.error(`\nMissing system dependencies: ${missing.join(", ")}`);
-    console.error(`Install them with: brew install ${missing.join(" ")}`);
+    console.error(`\n[voicecc] ERROR: Missing system dependencies: ${missing.join(", ")}`);
+    console.error(`  Install with: brew install ${missing.join(" ")}`);
+    console.error(`  Then re-run: npm install\n`);
     process.exit(1);
   }
 
@@ -109,8 +129,20 @@ function setupPythonVenv() {
     return;
   }
 
+  if (!commandExists("python3")) {
+    console.error("\n[voicecc] ERROR: python3 not found.");
+    console.error("  Install Python 3 via: brew install python3\n");
+    process.exit(1);
+  }
+
   console.log(`Creating Python venv at ${VENV_DIR}...`);
-  run(`python3 -m venv ${VENV_DIR}`);
+  try {
+    run(`python3 -m venv ${VENV_DIR}`);
+  } catch (err) {
+    console.error("\n[voicecc] ERROR: Failed to create Python virtual environment.");
+    console.error("  Make sure python3 is installed: brew install python3\n");
+    process.exit(1);
+  }
 }
 
 /**
@@ -118,7 +150,15 @@ function setupPythonVenv() {
  */
 function installPythonPackages() {
   console.log("Installing Python TTS packages...");
-  run(`${PIP} install ${PYTHON_PACKAGES.join(" ")}`);
+  try {
+    run(`${PIP} install ${PYTHON_PACKAGES.join(" ")}`);
+  } catch (err) {
+    console.error("\n[voicecc] ERROR: Failed to install Python TTS packages.");
+    console.error("  This may be due to missing build tools or incompatible Python version.");
+    console.error("  Required packages: " + PYTHON_PACKAGES.join(", "));
+    console.error("  Try deleting sidecar/.venv and re-running: npm install\n");
+    process.exit(1);
+  }
 }
 
 /**
@@ -126,7 +166,13 @@ function installPythonPackages() {
  */
 function downloadSpacyModel() {
   console.log("Downloading spaCy English model...");
-  run(`${PYTHON} -m spacy download en_core_web_sm`);
+  try {
+    run(`${PYTHON} -m spacy download en_core_web_sm`);
+  } catch (err) {
+    console.error("\n[voicecc] ERROR: Failed to download spaCy English model.");
+    console.error("  Try manually: sidecar/.venv/bin/python3 -m spacy download en_core_web_sm\n");
+    process.exit(1);
+  }
 }
 
 /**
