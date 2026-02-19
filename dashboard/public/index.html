@@ -374,6 +374,71 @@
     .btn-start-voice:hover { background: #1177bb; }
     .btn-start-voice:disabled { background: #555; cursor: default; }
 
+    /* -- Browser call button -- */
+    .btn-browser-call {
+      display: block;
+      width: calc(100% - 24px);
+      margin: 0 12px 8px;
+      padding: 7px 12px;
+      font-size: 12px;
+      font-family: inherit;
+      color: #fff;
+      background: #2ea043;
+      border: none;
+      border-radius: 3px;
+      cursor: pointer;
+      text-align: center;
+    }
+    .btn-browser-call:hover { background: #3fb950; }
+    .btn-browser-call:disabled { background: #555; cursor: default; color: #999; }
+
+    /* -- Browser call modal -- */
+    .qr-container {
+      display: flex;
+      justify-content: center;
+      margin: 16px 0;
+    }
+    .qr-container img, .qr-container table {
+      border-radius: 6px;
+    }
+    .call-url {
+      font-size: 12px;
+      color: #999;
+      word-break: break-all;
+      margin: 8px 0 4px;
+    }
+    .call-url a {
+      color: #3794ff;
+      text-decoration: none;
+    }
+    .call-url a:hover { text-decoration: underline; }
+    .pairing-code {
+      font-size: 36px;
+      font-weight: 700;
+      letter-spacing: 12px;
+      color: #e0e0e0;
+      font-family: "SF Mono", "Fira Code", monospace;
+      margin: 20px 0 8px;
+      text-align: center;
+    }
+    .pairing-countdown {
+      font-size: 12px;
+      color: #888;
+      text-align: center;
+      margin-bottom: 16px;
+    }
+    .btn-regenerate {
+      background: #333;
+      border: 1px solid #404040;
+      color: #d4d4d4;
+      padding: 6px 16px;
+      font-size: 12px;
+      cursor: pointer;
+      border-radius: 3px;
+      font-family: inherit;
+    }
+    .btn-regenerate:hover { background: #404040; }
+
     /* -- Sidebar conversation list -- */
     .sidebar-section-label {
       padding: 12px 16px 4px;
@@ -446,6 +511,7 @@
 <div class="sidebar">
   <div class="sidebar-nav">
     <button id="btn-start-voice" class="btn-start-voice">Start Voice</button>
+    <button id="btn-browser-call" class="btn-browser-call" disabled>Call via Browser</button>
     <div class="sidebar-section-label">Conversations</div>
     <div id="conversation-list"></div>
   </div>
@@ -491,6 +557,10 @@
       <button class="btn-integration" id="btn-twilio">
         <span class="integration-dot" id="twilio-int-dot"></span>
         Twilio
+      </button>
+      <button class="btn-integration" id="btn-webrtc" style="margin-left:8px;">
+        <span class="integration-dot" id="webrtc-int-dot"></span>
+        WebRTC
       </button>
     </div>
 
@@ -600,9 +670,95 @@
         Set your Account SID and Auth Token (step 3) to fetch your phone number.
       </div>
     </div>
+
   </div>
 </div>
 
+<!-- WebRTC Setup Modal -->
+<div class="modal-overlay" id="modal-webrtc">
+  <div class="modal">
+    <button class="modal-close" id="btn-close-webrtc-modal">&times;</button>
+    <h2>Browser Calling (WebRTC)</h2>
+
+    <div class="setup-step">
+      <div class="setup-step-title"><span class="setup-step-number">1</span>Twilio credentials</div>
+      <div class="setup-step-desc">
+        Create a free account at <a href="https://www.twilio.com/try-twilio" target="_blank">twilio.com/try-twilio</a>,
+        then copy your Account SID and Auth Token from the console dashboard.
+      </div>
+      <div class="setup-paste-row">
+        <input type="text" id="wrtc-account-sid" placeholder="Account SID (ACxxxxxxxx...)" />
+        <button id="btn-wrtc-apply-sid">Apply</button>
+      </div>
+      <div class="setup-paste-row">
+        <input type="text" id="wrtc-auth-token" placeholder="Auth Token" />
+        <button id="btn-wrtc-apply-token">Apply</button>
+      </div>
+    </div>
+
+    <hr class="setup-divider" />
+
+    <div class="setup-step">
+      <div class="setup-step-title"><span class="setup-step-number">2</span>ngrok</div>
+      <div class="setup-step-desc">
+        ngrok tunnels your local server so Twilio can reach it.
+        Install from <a href="https://ngrok.com/download" target="_blank">ngrok.com/download</a>
+        or via: <code>brew install ngrok</code>
+      </div>
+      <div class="setup-paste-row">
+        <span id="wrtc-ngrok-status" style="font-size:12px;color:#999;">Checking...</span>
+        <button id="btn-wrtc-check-ngrok" style="background:#333;border:1px solid #404040;color:#999;">Re-check</button>
+      </div>
+      <div class="setup-paste-row">
+        <input type="text" id="wrtc-ngrok-token" placeholder="ngrok authtoken (from dashboard.ngrok.com)" />
+        <button id="btn-wrtc-apply-ngrok">Apply</button>
+      </div>
+    </div>
+
+    <hr class="setup-divider" />
+
+    <div class="setup-step">
+      <div class="setup-step-title"><span class="setup-step-number">3</span>Start server</div>
+      <div class="setup-step-desc" id="wrtc-server-desc">
+        Launches the Twilio voice server and ngrok tunnel.
+      </div>
+      <div class="setup-paste-row" id="wrtc-server-actions">
+        <button id="btn-wrtc-start" style="flex:1;">Start Twilio Server</button>
+      </div>
+    </div>
+
+    <hr class="setup-divider" />
+
+    <div class="setup-step">
+      <div class="setup-step-title"><span class="setup-step-number">4</span>Enable browser calling</div>
+      <div class="setup-step-desc" id="wrtc-setup-desc">
+        Auto-creates a Twilio API Key and TwiML Application.
+        No phone number required.
+      </div>
+      <div class="setup-paste-row" id="wrtc-setup-actions">
+        <button id="btn-setup-webrtc" style="flex:1;background:#2ea043;" disabled>Set Up Browser Calling</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Browser Call Modal (QR + Pairing Code) -->
+<div class="modal-overlay" id="modal-browser-call">
+  <div class="modal" style="text-align:center;">
+    <button class="modal-close" id="btn-close-call-modal">&times;</button>
+    <h2>Call via Browser</h2>
+    <p style="font-size:12px;color:#999;margin-bottom:12px;">
+      Scan the QR code or open the link on any device, then enter the pairing code.
+    </p>
+    <div class="qr-container" id="qr-container"></div>
+    <div class="call-url" id="call-url"></div>
+    <div class="pairing-code" id="pairing-code">------</div>
+    <div class="pairing-countdown" id="pairing-countdown"></div>
+    <button class="btn-regenerate" id="btn-regenerate">Regenerate Code</button>
+  </div>
+</div>
+
+<script src="https://unpkg.com/qrcode-generator@1.4.4/qrcode.js"></script>
 <script>
 // ============================================================================
 // NAVIGATION
@@ -780,6 +936,7 @@ async function saveSettings() {
 // ============================================================================
 
 const twilioIntDot = document.getElementById('twilio-int-dot');
+const webrtcIntDot = document.getElementById('webrtc-int-dot');
 
 /** Fetch current Twilio server status from the API. */
 async function checkTwilioStatus() {
@@ -788,14 +945,23 @@ async function checkTwilioStatus() {
     if (!res.ok) return;
     const data = await res.json();
     lastTwilioData = data;
-    // Update integration dot
+    // Update integration dots
     if (twilioIntDot) {
       twilioIntDot.className = 'integration-dot' + (data.running ? ' running' : '');
     }
-    // Update modal steps if it's open
+    if (webrtcIntDot) {
+      webrtcIntDot.className = 'integration-dot' + (data.webrtcReady && data.running ? ' running' : '');
+    }
+    // Update browser call button
+    updateBrowserCallButton();
+    // Update modal steps if Twilio modal is open
     if (modalSetup && modalSetup.classList.contains('visible')) {
       updateModalStep6();
       updateModalStep7();
+    }
+    // Update WebRTC modal if open
+    if (modalWebrtc && modalWebrtc.classList.contains('visible')) {
+      updateWebrtcModal();
     }
   } catch {}
 }
@@ -856,6 +1022,111 @@ async function fetchPhoneNumbers() {
 // Poll Twilio status every 5 seconds
 checkTwilioStatus();
 setInterval(checkTwilioStatus, 5000);
+
+// ============================================================================
+// BROWSER CALL MODAL (QR + PAIRING)
+// ============================================================================
+
+const btnBrowserCall = document.getElementById('btn-browser-call');
+const modalBrowserCall = document.getElementById('modal-browser-call');
+const btnCloseCallModal = document.getElementById('btn-close-call-modal');
+const btnRegenerate = document.getElementById('btn-regenerate');
+const qrContainer = document.getElementById('qr-container');
+const callUrlEl = document.getElementById('call-url');
+const pairingCodeEl = document.getElementById('pairing-code');
+const pairingCountdownEl = document.getElementById('pairing-countdown');
+
+let countdownInterval = null;
+
+/** Update the browser call button based on Twilio status */
+function updateBrowserCallButton() {
+  if (!lastTwilioData || !lastTwilioData.running || !lastTwilioData.webrtcReady || !lastTwilioData.ngrokUrl) {
+    btnBrowserCall.disabled = true;
+    return;
+  }
+  btnBrowserCall.disabled = false;
+}
+
+/** Open the browser call modal and generate a pairing code */
+btnBrowserCall.addEventListener('click', () => {
+  modalBrowserCall.classList.add('visible');
+  generatePairingCode();
+});
+
+btnCloseCallModal.addEventListener('click', closeBrowserCallModal);
+modalBrowserCall.addEventListener('click', (e) => {
+  if (e.target === modalBrowserCall) closeBrowserCallModal();
+});
+btnRegenerate.addEventListener('click', generatePairingCode);
+
+/** Close the browser call modal and stop countdown */
+function closeBrowserCallModal() {
+  modalBrowserCall.classList.remove('visible');
+  if (countdownInterval) {
+    clearInterval(countdownInterval);
+    countdownInterval = null;
+  }
+}
+
+/** Generate a pairing code and render the QR code */
+async function generatePairingCode() {
+  pairingCodeEl.textContent = '------';
+  pairingCountdownEl.textContent = '';
+  qrContainer.innerHTML = '';
+  callUrlEl.innerHTML = '';
+
+  try {
+    const res = await fetch('/api/webrtc/generate-code', { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to generate code');
+
+    // Display the pairing code with spaces for readability
+    const code = data.code;
+    pairingCodeEl.textContent = code.slice(0, 3) + ' ' + code.slice(3);
+
+    // Build the call page URL using the ngrok URL (proxied to dashboard by twilio-server)
+    const baseUrl = lastTwilioData.ngrokUrl;
+    const callPageUrl = baseUrl + '/call.html';
+
+    // Render QR code
+    const qr = qrcode(0, 'M');
+    qr.addData(callPageUrl);
+    qr.make();
+    qrContainer.innerHTML = qr.createImgTag(5, 0);
+
+    // Show URL + open link
+    callUrlEl.innerHTML = '<a href="' + callPageUrl + '" target="_blank">' + callPageUrl + '</a>';
+
+    // Start countdown
+    startCountdown(data.expiresAt);
+  } catch (err) {
+    pairingCodeEl.textContent = 'Error';
+    pairingCountdownEl.textContent = err.message || 'Failed to generate code';
+  }
+}
+
+/** Start a countdown timer until the pairing code expires */
+function startCountdown(expiresAt) {
+  if (countdownInterval) clearInterval(countdownInterval);
+
+  function update() {
+    const remaining = Math.max(0, Math.floor((expiresAt - Date.now()) / 1000));
+    if (remaining <= 0) {
+      pairingCountdownEl.textContent = 'Code expired';
+      pairingCodeEl.style.opacity = '0.4';
+      clearInterval(countdownInterval);
+      countdownInterval = null;
+      return;
+    }
+    const mins = Math.floor(remaining / 60);
+    const secs = remaining % 60;
+    pairingCountdownEl.textContent = 'Expires in ' + mins + ':' + String(secs).padStart(2, '0');
+    pairingCodeEl.style.opacity = '1';
+  }
+
+  update();
+  countdownInterval = setInterval(update, 1000);
+}
 
 // ============================================================================
 // SETUP GUIDE MODAL
@@ -1060,6 +1331,182 @@ btnApplyToken.addEventListener('click', () => {
 
 // Bind the initial save-and-start button (step 6 is re-rendered dynamically)
 bindModalSaveAndStart();
+
+// ============================================================================
+// WEBRTC SETUP MODAL
+// ============================================================================
+
+const modalWebrtc = document.getElementById('modal-webrtc');
+const btnWebrtc = document.getElementById('btn-webrtc');
+const btnCloseWebrtcModal = document.getElementById('btn-close-webrtc-modal');
+const wrtcAccountSid = document.getElementById('wrtc-account-sid');
+const wrtcAuthToken = document.getElementById('wrtc-auth-token');
+const wrtcNgrokStatus = document.getElementById('wrtc-ngrok-status');
+const wrtcNgrokToken = document.getElementById('wrtc-ngrok-token');
+const wrtcServerDesc = document.getElementById('wrtc-server-desc');
+const wrtcServerActions = document.getElementById('wrtc-server-actions');
+const wrtcSetupDesc = document.getElementById('wrtc-setup-desc');
+const wrtcSetupActions = document.getElementById('wrtc-setup-actions');
+
+btnWebrtc.addEventListener('click', async () => {
+  modalWebrtc.classList.add('visible');
+  checkWrtcNgrok();
+  // Pre-fill from server settings
+  try {
+    const res = await fetch('/api/settings');
+    if (res.ok) {
+      const data = await res.json();
+      if (data.TWILIO_ACCOUNT_SID) wrtcAccountSid.value = data.TWILIO_ACCOUNT_SID;
+      if (data.TWILIO_AUTH_TOKEN) wrtcAuthToken.value = data.TWILIO_AUTH_TOKEN;
+      if (data.NGROK_AUTHTOKEN) wrtcNgrokToken.value = data.NGROK_AUTHTOKEN;
+    }
+  } catch {}
+  updateWrtcServer();
+  updateWrtcSetup();
+});
+
+btnCloseWebrtcModal.addEventListener('click', () => {
+  modalWebrtc.classList.remove('visible');
+});
+
+modalWebrtc.addEventListener('click', (e) => {
+  if (e.target === modalWebrtc) modalWebrtc.classList.remove('visible');
+});
+
+// -- Step 1: Credential apply buttons --
+document.getElementById('btn-wrtc-apply-sid').addEventListener('click', () => {
+  const value = wrtcAccountSid.value.trim();
+  if (value) saveSetting('TWILIO_ACCOUNT_SID', value, document.getElementById('btn-wrtc-apply-sid'));
+});
+document.getElementById('btn-wrtc-apply-token').addEventListener('click', () => {
+  const value = wrtcAuthToken.value.trim();
+  if (value) saveSetting('TWILIO_AUTH_TOKEN', value, document.getElementById('btn-wrtc-apply-token'));
+});
+
+// -- Step 2: ngrok check + authtoken --
+async function checkWrtcNgrok() {
+  wrtcNgrokStatus.textContent = 'Checking...';
+  wrtcNgrokStatus.style.color = '#999';
+  try {
+    const res = await fetch('/api/twilio/check-ngrok');
+    if (!res.ok) throw new Error();
+    const data = await res.json();
+    wrtcNgrokStatus.textContent = data.installed ? 'ngrok is installed' : 'ngrok not found';
+    wrtcNgrokStatus.style.color = data.installed ? '#2ea043' : '#d73a49';
+  } catch {
+    wrtcNgrokStatus.textContent = 'Could not check';
+    wrtcNgrokStatus.style.color = '#999';
+  }
+}
+
+document.getElementById('btn-wrtc-check-ngrok').addEventListener('click', checkWrtcNgrok);
+document.getElementById('btn-wrtc-apply-ngrok').addEventListener('click', () => {
+  const value = wrtcNgrokToken.value.trim();
+  if (value) saveSetting('NGROK_AUTHTOKEN', value, document.getElementById('btn-wrtc-apply-ngrok'));
+});
+
+// -- Step 3: Server start/stop --
+function updateWrtcServer() {
+  if (lastTwilioData && lastTwilioData.running) {
+    wrtcServerDesc.innerHTML = 'Server is running.' +
+      (lastTwilioData.ngrokUrl ? ' ngrok URL: <code>' + lastTwilioData.ngrokUrl + '</code>' : '');
+    wrtcServerActions.innerHTML = '<button id="btn-wrtc-stop" style="flex:1;background:#6e3630;">Stop Server</button>';
+    document.getElementById('btn-wrtc-stop').addEventListener('click', async () => {
+      await stopTwilioServer();
+      updateWrtcServer();
+      updateWrtcSetup();
+    });
+  } else {
+    wrtcServerDesc.textContent = 'Launches the Twilio voice server and ngrok tunnel.';
+    wrtcServerActions.innerHTML = '<button id="btn-wrtc-start" style="flex:1;">Start Twilio Server</button>';
+    bindWrtcStart();
+  }
+}
+
+function bindWrtcStart() {
+  const btn = document.getElementById('btn-wrtc-start');
+  if (!btn) return;
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+    // Save credentials first
+    const payload = {};
+    if (wrtcAccountSid.value.trim()) payload.TWILIO_ACCOUNT_SID = wrtcAccountSid.value.trim();
+    if (wrtcAuthToken.value.trim()) payload.TWILIO_AUTH_TOKEN = wrtcAuthToken.value.trim();
+    if (wrtcNgrokToken.value.trim()) payload.NGROK_AUTHTOKEN = wrtcNgrokToken.value.trim();
+    if (Object.keys(payload).length > 0) {
+      await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+    }
+    btn.textContent = 'Starting...';
+    try {
+      const res = await fetch('/api/twilio/start', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to start');
+      await checkTwilioStatus();
+      updateWrtcServer();
+      updateWrtcSetup();
+    } catch (err) {
+      btn.textContent = err.message || 'Failed to start';
+      btn.style.background = '#6e3630';
+      btn.disabled = false;
+      await checkTwilioStatus();
+      setTimeout(() => {
+        btn.textContent = 'Start Twilio Server';
+        btn.style.background = '';
+      }, 4000);
+    }
+  });
+}
+
+// -- Step 4: WebRTC setup --
+function updateWrtcSetup() {
+  if (lastTwilioData && lastTwilioData.webrtcReady) {
+    wrtcSetupDesc.textContent = 'Browser calling is configured. Use the "Call via Browser" button in the sidebar.';
+    wrtcSetupActions.innerHTML = '<span style="font-size:12px;color:#2ea043;">Ready</span>';
+  } else if (!lastTwilioData || !lastTwilioData.running) {
+    wrtcSetupDesc.textContent = 'Start the server first (step 3), then set up browser calling.';
+    wrtcSetupActions.innerHTML = '<button id="btn-setup-webrtc" style="flex:1;background:#2ea043;" disabled>Set Up Browser Calling</button>';
+    bindWebrtcSetup();
+  } else {
+    wrtcSetupDesc.textContent = 'Auto-creates a Twilio API Key and TwiML Application. No phone number required.';
+    wrtcSetupActions.innerHTML = '<button id="btn-setup-webrtc" style="flex:1;background:#2ea043;">Set Up Browser Calling</button>';
+    bindWebrtcSetup();
+  }
+}
+
+function bindWebrtcSetup() {
+  const btn = document.getElementById('btn-setup-webrtc');
+  if (!btn) return;
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    btn.textContent = 'Setting up...';
+    try {
+      const res = await fetch('/api/twilio/setup-webrtc', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Setup failed');
+      await checkTwilioStatus();
+      updateWrtcSetup();
+    } catch (err) {
+      btn.textContent = err.message || 'Error';
+      btn.style.background = '#6e3630';
+      btn.disabled = false;
+      setTimeout(() => {
+        btn.textContent = 'Set Up Browser Calling';
+        btn.style.background = '#2ea043';
+      }, 3000);
+    }
+  });
+}
+
+/** Called by checkTwilioStatus when WebRTC modal is open */
+function updateWebrtcModal() {
+  updateWrtcServer();
+  updateWrtcSetup();
+}
 
 // ============================================================================
 // CONVERSATIONS

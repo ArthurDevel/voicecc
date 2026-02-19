@@ -13,6 +13,7 @@ sidecar/mic-vpio
 
 # Environment (contains secrets)
 .env
+.ngrok-dashboard.yml
 
 # OS
 .DS_Store
