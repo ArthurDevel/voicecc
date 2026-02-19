@@ -11,6 +11,9 @@ dist/
 # Compiled binaries
 sidecar/mic-vpio
 
+# Environment (contains secrets)
+.env
+
 # OS
 .DS_Store
 

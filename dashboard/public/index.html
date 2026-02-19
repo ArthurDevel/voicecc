@@ -124,6 +124,238 @@
       border-radius: 2px;
     }
 
+    /* -- Settings panel -- */
+    .settings-panel {
+      border-bottom: 1px solid #404040;
+      padding: 16px 20px;
+      flex-shrink: 0;
+    }
+    .settings-panel h2 {
+      font-size: 13px;
+      font-weight: 600;
+      color: #e0e0e0;
+      margin-bottom: 12px;
+    }
+    .settings-row {
+      display: flex;
+      align-items: center;
+      margin-bottom: 8px;
+      gap: 10px;
+    }
+    .settings-row label {
+      font-size: 12px;
+      color: #999;
+      width: 200px;
+      flex-shrink: 0;
+    }
+    .settings-row input {
+      flex: 1;
+      max-width: 340px;
+      background: #1e1e1e;
+      border: 1px solid #404040;
+      color: #d4d4d4;
+      padding: 5px 8px;
+      font-size: 12px;
+      font-family: "SF Mono", "Fira Code", monospace;
+      border-radius: 3px;
+      outline: none;
+    }
+    .settings-row input:focus {
+      border-color: #0e639c;
+    }
+    .btn-reveal {
+      background: none;
+      border: 1px solid #404040;
+      color: #888;
+      padding: 5px 8px;
+      font-size: 11px;
+      cursor: pointer;
+      border-radius: 3px;
+      font-family: inherit;
+    }
+    .btn-reveal:hover { color: #d4d4d4; border-color: #666; }
+    .settings-actions {
+      margin-top: 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .settings-actions button {
+      background: #0e639c;
+      color: #fff;
+      border: none;
+      padding: 5px 14px;
+      border-radius: 3px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .settings-actions button:hover { background: #1177bb; }
+    .settings-actions button:disabled { background: #555; cursor: default; }
+    .settings-status {
+      font-size: 12px;
+      color: #888;
+    }
+
+    /* -- Modal -- */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.6);
+      z-index: 100;
+      justify-content: center;
+      align-items: center;
+    }
+    .modal-overlay.visible {
+      display: flex;
+    }
+    .modal {
+      background: #252526;
+      border: 1px solid #404040;
+      border-radius: 6px;
+      width: 560px;
+      max-height: 80vh;
+      overflow-y: auto;
+      padding: 20px 24px;
+    }
+    .modal h2 {
+      font-size: 15px;
+      font-weight: 600;
+      color: #e0e0e0;
+      margin-bottom: 16px;
+    }
+    .modal-close {
+      float: right;
+      background: none;
+      border: none;
+      color: #888;
+      font-size: 18px;
+      cursor: pointer;
+      padding: 0 4px;
+      line-height: 1;
+    }
+    .modal-close:hover { color: #d4d4d4; }
+    .setup-step {
+      margin-bottom: 16px;
+    }
+    .setup-step-number {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      background: #0e639c;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 600;
+      text-align: center;
+      line-height: 20px;
+      border-radius: 50%;
+      margin-right: 8px;
+      flex-shrink: 0;
+    }
+    .setup-step-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #e0e0e0;
+      margin-bottom: 4px;
+    }
+    .setup-step-desc {
+      font-size: 12px;
+      color: #999;
+      line-height: 1.5;
+      margin-left: 28px;
+    }
+    .setup-step-desc code {
+      background: #1e1e1e;
+      padding: 1px 5px;
+      border-radius: 3px;
+      font-family: "SF Mono", "Fira Code", monospace;
+      font-size: 11px;
+      color: #ce9178;
+    }
+    .setup-step-desc a {
+      color: #3794ff;
+      text-decoration: none;
+    }
+    .setup-step-desc a:hover { text-decoration: underline; }
+    .setup-paste-row {
+      display: flex;
+      gap: 8px;
+      margin: 8px 0 0 28px;
+      align-items: center;
+    }
+    .setup-paste-row input {
+      flex: 1;
+      background: #1e1e1e;
+      border: 1px solid #404040;
+      color: #d4d4d4;
+      padding: 5px 8px;
+      font-size: 12px;
+      font-family: "SF Mono", "Fira Code", monospace;
+      border-radius: 3px;
+      outline: none;
+    }
+    .setup-paste-row input:focus { border-color: #0e639c; }
+    .setup-paste-row button {
+      background: #0e639c;
+      color: #fff;
+      border: none;
+      padding: 5px 10px;
+      border-radius: 3px;
+      font-size: 11px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .setup-paste-row button:hover { background: #1177bb; }
+    .setup-paste-row button.applied {
+      background: #2ea043;
+    }
+    .setup-divider {
+      border: none;
+      border-top: 1px solid #404040;
+      margin: 16px 0;
+    }
+    /* -- Integrations section -- */
+    .integrations-panel {
+      padding: 16px 20px;
+      border-bottom: 1px solid #404040;
+    }
+    .integrations-panel h2 {
+      font-size: 13px;
+      font-weight: 600;
+      color: #e0e0e0;
+      margin-bottom: 12px;
+    }
+    .btn-integration {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      width: 80px;
+      height: 80px;
+      background: #2d2d2d;
+      border: 1px solid #404040;
+      border-radius: 6px;
+      color: #d4d4d4;
+      font-size: 12px;
+      cursor: pointer;
+      font-family: inherit;
+      gap: 6px;
+    }
+    .btn-integration:hover {
+      background: #37373d;
+      border-color: #555;
+    }
+    .btn-integration .integration-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #666;
+    }
+    .btn-integration .integration-dot.running {
+      background: #2ea043;
+    }
+
+
     /* -- Start voice button -- */
     .btn-start-voice {
       display: block;
@@ -235,10 +467,36 @@
     </div>
   </div>
 
-  <!-- Settings page (CLAUDE.md editor) -->
+  <!-- Settings page -->
   <div id="page-settings" class="page active">
     <div class="page-header">
-      <h1>Settings -- CLAUDE.md</h1>
+      <h1>Settings</h1>
+    </div>
+
+    <!-- .env settings panel -->
+    <div class="settings-panel">
+      <div class="settings-row">
+        <label for="setting-max-sessions">MAX_CONCURRENT_SESSIONS</label>
+        <input type="text" id="setting-max-sessions" placeholder="2" />
+      </div>
+      <div class="settings-actions">
+        <button id="btn-save-settings">Save</button>
+        <span class="settings-status" id="settings-status"></span>
+      </div>
+    </div>
+
+    <!-- Integrations -->
+    <div class="integrations-panel">
+      <h2>Integrations</h2>
+      <button class="btn-integration" id="btn-twilio">
+        <span class="integration-dot" id="twilio-int-dot"></span>
+        Twilio
+      </button>
+    </div>
+
+    <!-- CLAUDE.md editor -->
+    <div class="page-header" style="border-top: 1px solid #404040;">
+      <h1>CLAUDE.md</h1>
       <div class="toolbar">
         <span id="status"></span>
         <button id="btn-save" disabled>Save</button>
@@ -248,6 +506,101 @@
     <textarea id="editor" spellcheck="false" placeholder="Loading..."></textarea>
   </div>
 
+</div>
+
+<!-- Twilio Setup Guide Modal -->
+<div class="modal-overlay" id="modal-setup">
+  <div class="modal">
+    <button class="modal-close" id="btn-close-modal">&times;</button>
+    <h2>Twilio Voice Setup</h2>
+
+    <div class="setup-step">
+      <div class="setup-step-title"><span class="setup-step-number">1</span>Create a Twilio account</div>
+      <div class="setup-step-desc">
+        Sign up at <a href="https://www.twilio.com/try-twilio" target="_blank">twilio.com/try-twilio</a>.
+        The free trial includes a phone number and enough credits for testing.
+      </div>
+    </div>
+
+    <div class="setup-step">
+      <div class="setup-step-title"><span class="setup-step-number">2</span>Get a phone number</div>
+      <div class="setup-step-desc">
+        In the Twilio console, go to <strong>Phone Numbers</strong> &rarr; <strong>Buy a Number</strong>.
+        Pick any number with voice capability.
+      </div>
+    </div>
+
+    <div class="setup-step">
+      <div class="setup-step-title"><span class="setup-step-number">3</span>Copy your Account SID and Auth Token</div>
+      <div class="setup-step-desc">
+        Find both on the Twilio console dashboard under <strong>Account Info</strong>.
+      </div>
+      <div class="setup-paste-row">
+        <input type="text" id="setup-account-sid" placeholder="Account SID (ACxxxxxxxx...)" />
+        <button id="btn-apply-sid">Apply</button>
+      </div>
+      <div class="setup-paste-row">
+        <input type="text" id="setup-auth-token" placeholder="Auth Token" />
+        <button id="btn-apply-token">Apply</button>
+      </div>
+    </div>
+
+    <hr class="setup-divider" />
+
+    <div class="setup-step">
+      <div class="setup-step-title"><span class="setup-step-number">4</span>Install ngrok</div>
+      <div class="setup-step-desc">
+        ngrok exposes your local server to the internet so Twilio can reach it.
+        It will be started automatically when you launch the Twilio server.<br/>
+        Install from <a href="https://ngrok.com/download" target="_blank">ngrok.com/download</a>
+        or via: <code>brew install ngrok</code>
+      </div>
+      <div class="setup-paste-row">
+        <span id="ngrok-status" style="font-size:12px;color:#999;">Checking...</span>
+        <button id="btn-check-ngrok" style="background:#333;border:1px solid #404040;color:#999;">Re-check</button>
+      </div>
+    </div>
+
+    <div class="setup-step">
+      <div class="setup-step-title"><span class="setup-step-number">5</span>Configure ngrok authtoken</div>
+      <div class="setup-step-desc">
+        ngrok requires an account. Sign up at <a href="https://dashboard.ngrok.com/signup" target="_blank">dashboard.ngrok.com/signup</a>,
+        then copy your authtoken from <a href="https://dashboard.ngrok.com/get-started/your-authtoken" target="_blank">the dashboard</a>.
+        Paste it here:
+      </div>
+      <div class="setup-paste-row">
+        <input type="text" id="setup-ngrok-token" placeholder="Paste your ngrok authtoken" />
+        <button id="btn-apply-ngrok-token">Apply</button>
+      </div>
+    </div>
+
+    <div class="setup-step">
+      <div class="setup-step-title"><span class="setup-step-number">6</span>Save and start</div>
+      <div class="setup-step-desc" id="modal-step6-desc">
+        Click below to save your settings and launch the Twilio server + ngrok.
+        The ngrok URL will be detected automatically.
+      </div>
+      <div class="setup-paste-row" id="modal-step6-actions">
+        <button id="btn-modal-save-and-start" style="flex:1;">Save Settings &amp; Start Twilio Server</button>
+      </div>
+    </div>
+
+    <div class="setup-step">
+      <div class="setup-step-title"><span class="setup-step-number">7</span>Configure the Twilio webhook</div>
+      <div class="setup-step-desc" id="modal-step7-desc">
+        Start the server first (step 6), then the webhook URL will appear here.
+      </div>
+    </div>
+
+    <hr class="setup-divider" />
+
+    <div class="setup-step">
+      <div class="setup-step-title"><span class="setup-step-number">8</span>Your phone number</div>
+      <div class="setup-step-desc" id="modal-step8-desc">
+        Set your Account SID and Auth Token (step 3) to fetch your phone number.
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -379,6 +732,336 @@ async function startVoice() {
 }
 
 // ============================================================================
+// SETTINGS (.env)
+// ============================================================================
+
+const settingMaxSessions = document.getElementById('setting-max-sessions');
+const btnSaveSettings = document.getElementById('btn-save-settings');
+const settingsStatus = document.getElementById('settings-status');
+
+btnSaveSettings.addEventListener('click', saveSettings);
+
+/** Load .env settings from the server. */
+async function loadSettings() {
+  try {
+    const res = await fetch('/api/settings');
+    if (!res.ok) return;
+    const data = await res.json();
+    settingMaxSessions.value = data.MAX_CONCURRENT_SESSIONS || '';
+  } catch (err) {
+    settingsStatus.textContent = 'Error loading settings';
+  }
+}
+
+/** Save settings to the server (merges with existing .env). */
+async function saveSettings() {
+  try {
+    settingsStatus.textContent = 'Saving...';
+    btnSaveSettings.disabled = true;
+
+    const res = await fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ MAX_CONCURRENT_SESSIONS: settingMaxSessions.value }),
+    });
+    if (!res.ok) throw new Error('Failed to save');
+
+    settingsStatus.textContent = 'Saved';
+    setTimeout(() => { if (settingsStatus.textContent === 'Saved') settingsStatus.textContent = ''; }, 2000);
+  } catch (err) {
+    settingsStatus.textContent = 'Error saving settings';
+  } finally {
+    btnSaveSettings.disabled = false;
+  }
+}
+
+// ============================================================================
+// TWILIO STATUS
+// ============================================================================
+
+const twilioIntDot = document.getElementById('twilio-int-dot');
+
+/** Fetch current Twilio server status from the API. */
+async function checkTwilioStatus() {
+  try {
+    const res = await fetch('/api/twilio/status');
+    if (!res.ok) return;
+    const data = await res.json();
+    lastTwilioData = data;
+    // Update integration dot
+    if (twilioIntDot) {
+      twilioIntDot.className = 'integration-dot' + (data.running ? ' running' : '');
+    }
+    // Update modal steps if it's open
+    if (modalSetup && modalSetup.classList.contains('visible')) {
+      updateModalStep6();
+      updateModalStep7();
+    }
+  } catch {}
+}
+
+/** Start the Twilio server via the API. */
+async function startTwilioServer() {
+  try {
+    const res = await fetch('/api/twilio/start', { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to start');
+    await checkTwilioStatus();
+  } catch (err) {
+    await checkTwilioStatus();
+  }
+}
+
+/** Stop the Twilio server via the API. */
+async function stopTwilioServer() {
+  try {
+    await fetch('/api/twilio/stop', { method: 'POST' });
+    await checkTwilioStatus();
+  } catch {}
+}
+
+/** Fetch Twilio phone numbers (shown in modal only) */
+let phoneNumbersFetched = false;
+let fetchedPhoneNumbers = [];
+
+async function fetchPhoneNumbers() {
+  if (phoneNumbersFetched) return;
+  try {
+    const res = await fetch('/api/twilio/phone-numbers');
+    const data = await res.json();
+    if (!res.ok) {
+      if (modalSetup && modalSetup.classList.contains('visible')) {
+        modalStep8Desc.textContent = data.error || 'Failed to fetch phone number';
+      }
+      return;
+    }
+    if (data.numbers && data.numbers.length > 0) {
+      phoneNumbersFetched = true;
+      fetchedPhoneNumbers = data.numbers;
+      if (modalSetup && modalSetup.classList.contains('visible')) {
+        updateModalStep8();
+      }
+    } else {
+      if (modalSetup && modalSetup.classList.contains('visible')) {
+        modalStep8Desc.textContent = 'No phone numbers found. Buy one in the Twilio console (step 2).';
+      }
+    }
+  } catch (err) {
+    if (modalSetup && modalSetup.classList.contains('visible')) {
+      modalStep8Desc.textContent = 'Failed to fetch phone number. Check your credentials.';
+    }
+  }
+}
+
+// Poll Twilio status every 5 seconds
+checkTwilioStatus();
+setInterval(checkTwilioStatus, 5000);
+
+// ============================================================================
+// SETUP GUIDE MODAL
+// ============================================================================
+
+const modalSetup = document.getElementById('modal-setup');
+const btnTwilio = document.getElementById('btn-twilio');
+const btnCloseModal = document.getElementById('btn-close-modal');
+const btnApplyToken = document.getElementById('btn-apply-token');
+const btnApplySid = document.getElementById('btn-apply-sid');
+const setupAccountSid = document.getElementById('setup-account-sid');
+const setupAuthToken = document.getElementById('setup-auth-token');
+const ngrokStatusEl = document.getElementById('ngrok-status');
+const btnCheckNgrok = document.getElementById('btn-check-ngrok');
+const modalStep6Desc = document.getElementById('modal-step6-desc');
+const modalStep6Actions = document.getElementById('modal-step6-actions');
+const modalStep7Desc = document.getElementById('modal-step7-desc');
+const modalStep8Desc = document.getElementById('modal-step8-desc');
+
+/** Track last known twilio status for the modal */
+let lastTwilioData = null;
+
+btnTwilio.addEventListener('click', async () => {
+  modalSetup.classList.add('visible');
+  checkNgrokInstalled();
+  // Pre-fill from server settings
+  try {
+    const res = await fetch('/api/settings');
+    if (res.ok) {
+      const data = await res.json();
+      if (data.TWILIO_ACCOUNT_SID) setupAccountSid.value = data.TWILIO_ACCOUNT_SID;
+      if (data.TWILIO_AUTH_TOKEN) setupAuthToken.value = data.TWILIO_AUTH_TOKEN;
+      if (data.NGROK_AUTHTOKEN) setupNgrokToken.value = data.NGROK_AUTHTOKEN;
+    }
+  } catch {}
+  updateModalStep6();
+  updateModalStep7();
+  updateModalStep8();
+});
+
+btnCloseModal.addEventListener('click', () => {
+  modalSetup.classList.remove('visible');
+});
+
+/** Close modal when clicking the overlay background */
+modalSetup.addEventListener('click', (e) => {
+  if (e.target === modalSetup) modalSetup.classList.remove('visible');
+});
+
+/** Update modal step 6 to reflect whether the server is already running */
+function updateModalStep6() {
+  if (lastTwilioData && lastTwilioData.running) {
+    modalStep6Desc.innerHTML = 'Server is running.' +
+      (lastTwilioData.ngrokUrl
+        ? ' ngrok URL: <code>' + lastTwilioData.ngrokUrl + '</code>'
+        : '');
+    modalStep6Actions.innerHTML = '<button id="btn-modal-stop" style="flex:1;background:#6e3630;">Stop Twilio Server</button>';
+    document.getElementById('btn-modal-stop').addEventListener('click', async () => {
+      await stopTwilioServer();
+      updateModalStep6();
+      updateModalStep7();
+    });
+  } else {
+    modalStep6Desc.textContent = 'Click below to save your settings and launch the Twilio server + ngrok. The ngrok URL will be detected automatically.';
+    modalStep6Actions.innerHTML = '<button id="btn-modal-save-and-start" style="flex:1;">Save Settings & Start Twilio Server</button>';
+    bindModalSaveAndStart();
+  }
+}
+
+/** Update modal step 7 to show the actual webhook URL when server is running */
+function updateModalStep7() {
+  if (lastTwilioData && lastTwilioData.running && lastTwilioData.ngrokUrl) {
+    const webhookUrl = lastTwilioData.ngrokUrl + '/twilio/incoming-call';
+    modalStep7Desc.innerHTML =
+      'In the Twilio console, go to your phone number\'s configuration.<br/>' +
+      'Under <strong>Voice & Fax</strong> &rarr; <strong>A Call Comes In</strong>, set:<br/>' +
+      '<code style="user-select:all;cursor:text;">' + webhookUrl + '</code><br/>' +
+      'Method: <strong>HTTP POST</strong>';
+  } else {
+    modalStep7Desc.textContent = 'Start the server first (step 6), then the webhook URL will appear here.';
+  }
+}
+
+/** Update modal step 8 to show fetched phone numbers */
+function updateModalStep8() {
+  if (fetchedPhoneNumbers.length > 0) {
+    modalStep8Desc.innerHTML = 'Call this number to talk to Claude:<br/>' +
+      '<strong style="color:#d4d4d4;font-size:16px;font-family:SF Mono,Fira Code,monospace;display:inline-block;margin-top:4px;">' +
+      fetchedPhoneNumbers.map(n => n.phoneNumber).join('</strong><br/><strong style="color:#d4d4d4;font-size:16px;font-family:SF Mono,Fira Code,monospace;">') +
+      '</strong>';
+  } else if (setupAccountSid.value && setupAuthToken.value) {
+    modalStep8Desc.textContent = 'Fetching phone number...';
+    fetchPhoneNumbers();
+  } else {
+    modalStep8Desc.textContent = 'Set your Account SID and Auth Token (step 3) to fetch your phone number.';
+  }
+}
+
+/** Bind the save-and-start button click handler (called after re-rendering step 6) */
+function bindModalSaveAndStart() {
+  const btn = document.getElementById('btn-modal-save-and-start');
+  if (!btn) return;
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+    // Save all modal fields to .env
+    const payload = {};
+    if (setupAccountSid.value.trim()) payload.TWILIO_ACCOUNT_SID = setupAccountSid.value.trim();
+    if (setupAuthToken.value.trim()) payload.TWILIO_AUTH_TOKEN = setupAuthToken.value.trim();
+    if (setupNgrokToken.value.trim()) payload.NGROK_AUTHTOKEN = setupNgrokToken.value.trim();
+    if (Object.keys(payload).length > 0) {
+      await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+    }
+    btn.textContent = 'Starting...';
+    try {
+      const res = await fetch('/api/twilio/start', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to start');
+      await checkTwilioStatus();
+      updateModalStep6();
+      updateModalStep7();
+    } catch (err) {
+      btn.textContent = err.message || 'Failed to start';
+      btn.style.background = '#6e3630';
+      btn.disabled = false;
+      await checkTwilioStatus();
+      setTimeout(() => {
+        btn.textContent = 'Save Settings & Start Twilio Server';
+        btn.style.background = '';
+      }, 4000);
+    }
+  });
+}
+
+/** Check if ngrok is installed and update the status indicator */
+async function checkNgrokInstalled() {
+  ngrokStatusEl.textContent = 'Checking...';
+  ngrokStatusEl.style.color = '#999';
+  try {
+    const res = await fetch('/api/twilio/check-ngrok');
+    if (!res.ok) throw new Error();
+    const data = await res.json();
+    if (data.installed) {
+      ngrokStatusEl.textContent = 'ngrok is installed';
+      ngrokStatusEl.style.color = '#2ea043';
+    } else {
+      ngrokStatusEl.textContent = 'ngrok not found';
+      ngrokStatusEl.style.color = '#d73a49';
+    }
+  } catch {
+    ngrokStatusEl.textContent = 'Could not check';
+    ngrokStatusEl.style.color = '#999';
+  }
+}
+
+btnCheckNgrok.addEventListener('click', checkNgrokInstalled);
+
+/** Save a single setting to .env via the API */
+async function saveSetting(key, value, btn) {
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+  try {
+    const res = await fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ [key]: value }),
+    });
+    if (!res.ok) throw new Error('Failed to save');
+    btn.textContent = 'Saved';
+    btn.classList.add('applied');
+  } catch {
+    btn.textContent = 'Error';
+  }
+  btn.disabled = false;
+  setTimeout(() => {
+    btn.textContent = 'Apply';
+    btn.classList.remove('applied');
+  }, 1500);
+}
+
+const setupNgrokToken = document.getElementById('setup-ngrok-token');
+const btnApplyNgrokToken = document.getElementById('btn-apply-ngrok-token');
+
+btnApplyNgrokToken.addEventListener('click', () => {
+  const value = setupNgrokToken.value.trim();
+  if (value) saveSetting('NGROK_AUTHTOKEN', value, btnApplyNgrokToken);
+});
+
+btnApplySid.addEventListener('click', () => {
+  const value = setupAccountSid.value.trim();
+  if (value) saveSetting('TWILIO_ACCOUNT_SID', value, btnApplySid);
+});
+
+btnApplyToken.addEventListener('click', () => {
+  const value = setupAuthToken.value.trim();
+  if (value) saveSetting('TWILIO_AUTH_TOKEN', value, btnApplyToken);
+});
+
+// Bind the initial save-and-start button (step 6 is re-rendered dynamically)
+bindModalSaveAndStart();
+
+// ============================================================================
 // CONVERSATIONS
 // ============================================================================
 
@@ -500,6 +1183,7 @@ async function checkStatus() {
 
 load();
 checkStatus();
+loadSettings();
 loadConversations();
 </script>
 
