@@ -32,6 +32,7 @@ import json
 import struct
 import signal
 import threading
+import queue
 import numpy as np
 
 # ============================================================================
@@ -75,29 +76,41 @@ def main():
     sys.stderr.write("READY\n")
     sys.stderr.flush()
 
-    # State shared with interrupt
+    # State shared between stdin reader thread and main thread
     interrupted = threading.Event()
+    command_queue = queue.Queue()
 
     # Ignore SIGINT — let the parent Node.js process handle it
     signal.signal(signal.SIGINT, signal.SIG_IGN)
 
-    # Command loop
-    for line in sys.stdin:
-        line = line.strip()
-        if not line:
-            continue
+    # Read stdin on a background thread so interrupt commands are processed
+    # immediately, even while handle_generate is running on the main thread.
+    def stdin_reader():
+        for line in sys.stdin:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                cmd = json.loads(line)
+            except json.JSONDecodeError as e:
+                log(f"ERROR: Invalid JSON: {e}")
+                continue
 
-        try:
-            cmd = json.loads(line)
-        except json.JSONDecodeError as e:
-            log(f"ERROR: Invalid JSON: {e}")
-            continue
+            if cmd.get("cmd") == "interrupt":
+                interrupted.set()
+            else:
+                command_queue.put(cmd)
+
+    reader = threading.Thread(target=stdin_reader, daemon=True)
+    reader.start()
+
+    # Main thread: process generate/quit commands from the queue
+    while True:
+        cmd = command_queue.get()
 
         if cmd.get("cmd") == "generate":
             interrupted.clear()
             handle_generate(model, cmd.get("text", ""), voice, interrupted)
-        elif cmd.get("cmd") == "interrupt":
-            interrupted.set()
         elif cmd.get("cmd") == "quit":
             break
         else:

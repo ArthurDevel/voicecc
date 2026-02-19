@@ -36,9 +36,12 @@ const CHUNK_DELAY_MS = parseInt(process.argv[3] || "10");
 /** Monotonically increasing generation counter. First generate = 1. */
 let genCounter = 0;
 
-/** Serial command queue (like Python's blocking for-line-in-stdin loop) */
+/** Serial command queue for generate commands */
 const pendingCommands = [];
 let processing = false;
+
+/** Interrupt flag -- set immediately when interrupt command arrives */
+let interrupted = false;
 
 // ============================================================================
 // HELPERS
@@ -81,19 +84,19 @@ async function drainQueue() {
 
 async function handleCommand(cmd) {
   if (cmd.cmd === "generate") {
+    interrupted = false;
     genCounter++;
     const tag = genCounter & 0xff;
 
     for (let i = 0; i < CHUNKS_PER_GENERATE; i++) {
+      if (interrupted) break;
       await sleep(CHUNK_DELAY_MS);
+      if (interrupted) break;
       writeChunk(tag);
     }
 
     writeEndMarker();
   }
-  // "interrupt" is deliberately ignored -- simulates the Python bug where
-  // the main thread can't read the interrupt command while blocked in
-  // the generate loop writing audio to stdout.
 }
 
 // ============================================================================
@@ -114,6 +117,14 @@ rl.on("line", (line) => {
 
   if (cmd.cmd === "quit") {
     process.exit(0);
+  }
+
+  // Handle interrupt immediately -- not through the serial queue.
+  // The event loop processes this between awaits in handleCommand,
+  // so the interrupted flag is visible to the generate loop.
+  if (cmd.cmd === "interrupt") {
+    interrupted = true;
+    return;
   }
 
   pendingCommands.push(cmd);
