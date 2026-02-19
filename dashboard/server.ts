@@ -16,7 +16,7 @@ import { homedir } from "os";
 import { fileURLToPath } from "url";
 import { createReadStream } from "fs";
 import { createInterface } from "readline";
-import { execFile } from "child_process";
+import { execFile, spawn, ChildProcess } from "child_process";
 
 // ============================================================================
 // CONSTANTS
@@ -27,6 +27,7 @@ const PORTS_TO_TRY = [3456, 3457, 3458, 3459, 3460];
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const PUBLIC_DIR = join(__dirname, "public");
 const CLAUDE_MD_PATH = join(process.cwd(), "CLAUDE.md");
+const ENV_PATH = join(process.cwd(), ".env");
 const USER_CLAUDE_MD_PATH = join(homedir(), ".claude", "CLAUDE.md");
 
 /** Directory where Claude Code stores session JSONL files for this project.
@@ -112,6 +113,22 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     } else if (pathname.startsWith("/api/conversations/") && req.method === "GET") {
       const sessionId = pathname.slice("/api/conversations/".length);
       await handleGetConversation(sessionId, res);
+    } else if (pathname === "/api/settings" && req.method === "GET") {
+      await handleGetSettings(res);
+    } else if (pathname === "/api/settings" && req.method === "POST") {
+      await handleUpdateSettings(req, res);
+    } else if (pathname === "/api/twilio/status" && req.method === "GET") {
+      sendJson(res, 200, getTwilioStatus());
+    } else if (pathname === "/api/twilio/start" && req.method === "POST") {
+      await handleTwilioStart(res);
+    } else if (pathname === "/api/twilio/stop" && req.method === "POST") {
+      await handleTwilioStop(res);
+    } else if (pathname === "/api/twilio/check-ngrok" && req.method === "GET") {
+      await handleCheckNgrok(res);
+    } else if (pathname === "/api/twilio/ngrok-authtoken" && req.method === "POST") {
+      await handleNgrokAuthtoken(req, res);
+    } else if (pathname === "/api/twilio/phone-numbers" && req.method === "GET") {
+      await handleGetPhoneNumbers(res);
     } else {
       await handleStaticFile(pathname, res);
     }
@@ -193,6 +210,408 @@ end tell`;
     }
     sendJson(res, 200, { success: true });
   });
+}
+
+// ============================================================================
+// SETTINGS HANDLERS
+// ============================================================================
+
+/**
+ * Read the .env file and return its key-value pairs as JSON.
+ * Masks the TWILIO_AUTH_TOKEN value, showing only the last 4 characters.
+ * GET /api/settings
+ *
+ * @param res - Server response
+ */
+async function handleGetSettings(res: ServerResponse): Promise<void> {
+  if (!(await fileExists(ENV_PATH))) {
+    sendJson(res, 200, {});
+    return;
+  }
+
+  const content = await readFile(ENV_PATH, "utf-8");
+  const settings = parseEnvFile(content);
+
+  // Mask auth tokens -- show only last 4 chars
+  for (const key of ["TWILIO_AUTH_TOKEN", "NGROK_AUTHTOKEN"]) {
+    if (settings[key]) {
+      const val = settings[key];
+      settings[key] = val.length > 4 ? "****" + val.slice(-4) : "****" + val;
+    }
+  }
+
+  sendJson(res, 200, settings);
+}
+
+/**
+ * Write key-value pairs to the .env file.
+ * If TWILIO_AUTH_TOKEN starts with "****", preserves the existing value.
+ * POST /api/settings
+ *
+ * @param req - Incoming HTTP request with JSON body of key-value pairs
+ * @param res - Server response
+ */
+async function handleUpdateSettings(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const body = await readBody(req);
+  const incoming: Record<string, string> = JSON.parse(body);
+
+  // Read existing settings and merge (don't wipe keys not present in the payload)
+  const existingContent = await readFile(ENV_PATH, "utf-8").catch(() => "");
+  const settings = parseEnvFile(existingContent);
+
+  for (const [key, value] of Object.entries(incoming)) {
+    // If auth tokens are masked, preserve the existing value
+    if ((key === "TWILIO_AUTH_TOKEN" || key === "NGROK_AUTHTOKEN") && value.startsWith("****")) {
+      continue;
+    }
+    settings[key] = value;
+  }
+
+  const lines = Object.entries(settings).map(([k, v]) => `${k}=${v}`);
+  await writeFile(ENV_PATH, lines.join("\n") + "\n", "utf-8");
+  sendJson(res, 200, { success: true });
+}
+
+/**
+ * Parse a .env file string into a key-value record.
+ * Handles lines in the format KEY=VALUE, ignores empty lines and comments.
+ *
+ * @param content - Raw .env file content
+ * @returns Parsed key-value pairs
+ */
+function parseEnvFile(content: string): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const line of content.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eqIndex = trimmed.indexOf("=");
+    if (eqIndex === -1) continue;
+    const key = trimmed.slice(0, eqIndex).trim();
+    const value = trimmed.slice(eqIndex + 1).trim();
+    result[key] = value;
+  }
+  return result;
+}
+
+// ============================================================================
+// TWILIO HANDLERS
+// ============================================================================
+
+/**
+ * Start the Twilio server and ngrok.
+ * POST /api/twilio/start
+ *
+ * @param res - Server response
+ */
+async function handleTwilioStart(res: ServerResponse): Promise<void> {
+  try {
+    await startTwilio();
+    sendJson(res, 200, { success: true });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to start Twilio";
+    sendJson(res, 500, { error: message });
+  }
+}
+
+/**
+ * Stop the Twilio server and ngrok.
+ * POST /api/twilio/stop
+ *
+ * @param res - Server response
+ */
+async function handleTwilioStop(res: ServerResponse): Promise<void> {
+  await stopTwilio();
+  sendJson(res, 200, { success: true });
+}
+
+/**
+ * Check if ngrok is installed by attempting to run `ngrok version`.
+ * GET /api/twilio/check-ngrok
+ *
+ * @param res - Server response
+ */
+async function handleCheckNgrok(res: ServerResponse): Promise<void> {
+  const installed = await new Promise<boolean>((resolve) => {
+    try {
+      const child = execFile("ngrok", ["version"], (err) => resolve(!err));
+      child.on("error", () => {}); // Suppress duplicate error event
+    } catch {
+      resolve(false);
+    }
+  });
+  sendJson(res, 200, { installed });
+}
+
+/**
+ * Configure ngrok authtoken by running `ngrok config add-authtoken <token>`.
+ * POST /api/twilio/ngrok-authtoken
+ * Body: { "token": "..." }
+ *
+ * @param req - Incoming HTTP request with JSON body
+ * @param res - Server response
+ */
+async function handleNgrokAuthtoken(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const body = await readBody(req);
+  const { token } = JSON.parse(body);
+  if (!token || typeof token !== "string") {
+    sendJson(res, 400, { error: "Missing 'token' in request body" });
+    return;
+  }
+
+  const result = await new Promise<{ ok: boolean; output: string }>((resolve) => {
+    try {
+      const child = execFile("ngrok", ["config", "add-authtoken", token.trim()], (err, stdout, stderr) => {
+        resolve({ ok: !err, output: (stdout || stderr || "").trim() });
+      });
+      child.on("error", () => resolve({ ok: false, output: "ngrok is not installed" }));
+    } catch {
+      resolve({ ok: false, output: "Failed to run ngrok" });
+    }
+  });
+
+  if (result.ok) {
+    sendJson(res, 200, { success: true, output: result.output });
+  } else {
+    sendJson(res, 500, { error: result.output });
+  }
+}
+
+/**
+ * Fetch phone numbers from the Twilio API using Account SID and Auth Token.
+ * GET /api/twilio/phone-numbers
+ *
+ * @param res - Server response
+ */
+async function handleGetPhoneNumbers(res: ServerResponse): Promise<void> {
+  const envContent = await readFile(ENV_PATH, "utf-8").catch(() => "");
+  const envVars = parseEnvFile(envContent);
+
+  const accountSid = envVars.TWILIO_ACCOUNT_SID;
+  const authToken = envVars.TWILIO_AUTH_TOKEN;
+
+  if (!accountSid || !authToken) {
+    sendJson(res, 400, { error: "TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN must be set" });
+    return;
+  }
+
+  const apiUrl = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/IncomingPhoneNumbers.json`;
+  const auth = Buffer.from(`${accountSid}:${authToken}`).toString("base64");
+
+  const apiRes = await fetch(apiUrl, {
+    headers: { Authorization: `Basic ${auth}` },
+  });
+
+  if (!apiRes.ok) {
+    const body = await apiRes.text();
+    sendJson(res, apiRes.status, { error: `Twilio API error: ${body}` });
+    return;
+  }
+
+  const data = await apiRes.json();
+  const numbers = (data.incoming_phone_numbers ?? []).map(
+    (n: { phone_number: string; friendly_name: string }) => ({
+      phoneNumber: n.phone_number,
+      friendlyName: n.friendly_name,
+    })
+  );
+
+  sendJson(res, 200, { numbers });
+}
+
+// ============================================================================
+// TWILIO PROCESS MANAGEMENT
+// ============================================================================
+
+/** ngrok child process handle */
+let ngrokProcess: ChildProcess | null = null;
+/** Twilio server child process handle */
+let twilioProcess: ChildProcess | null = null;
+/** Current Twilio status exposed via the REST API */
+let twilioStatus: { running: boolean; ngrokUrl: string | null; error: string | null } = {
+  running: false,
+  ngrokUrl: null,
+  error: null,
+};
+
+const NGROK_POLL_INTERVAL_MS = 500;
+const NGROK_POLL_TIMEOUT_MS = 10000;
+
+/**
+ * Start ngrok and the Twilio server.
+ * Reads TWILIO_AUTH_TOKEN and TWILIO_PORT from .env. Spawns ngrok, polls for
+ * the public HTTPS URL, writes it back to .env as TWILIO_WEBHOOK_URL, then
+ * spawns the Twilio server process.
+ *
+ * @returns Resolves when both processes are running
+ */
+export async function startTwilio(): Promise<void> {
+  if (twilioStatus.running) {
+    throw new Error("Twilio server is already running");
+  }
+
+  // Read .env and validate auth token
+  const envContent = await readFile(ENV_PATH, "utf-8").catch(() => "");
+  const envVars = parseEnvFile(envContent);
+
+  if (!envVars.TWILIO_AUTH_TOKEN) {
+    throw new Error("TWILIO_AUTH_TOKEN is not set in .env");
+  }
+
+  const port = envVars.TWILIO_PORT || "8080";
+
+  // Start ngrok -- capture stderr so we can report errors
+  let ngrokStderr = "";
+  const ngrokEnv: Record<string, string> = { ...process.env as Record<string, string> };
+  if (envVars.NGROK_AUTHTOKEN) {
+    ngrokEnv.NGROK_AUTHTOKEN = envVars.NGROK_AUTHTOKEN;
+  }
+  ngrokProcess = spawn("ngrok", ["http", port], {
+    cwd: process.cwd(),
+    stdio: ["ignore", "ignore", "pipe"],
+    env: ngrokEnv,
+  });
+
+  ngrokProcess.stderr?.on("data", (chunk: Buffer) => {
+    ngrokStderr += chunk.toString();
+  });
+
+  // Wait for ngrok to either start successfully or fail to spawn
+  await new Promise<void>((resolve, reject) => {
+    ngrokProcess!.on("error", (err: NodeJS.ErrnoException) => {
+      ngrokProcess = null;
+      if (err.code === "ENOENT") {
+        reject(new Error("ngrok is not installed. Install it from https://ngrok.com/download"));
+      } else {
+        reject(new Error(`Failed to start ngrok: ${err.message}`));
+      }
+    });
+    // If the process spawns without immediate error, continue
+    ngrokProcess!.on("spawn", () => resolve());
+  });
+
+  ngrokProcess.on("exit", (code) => {
+    if (twilioStatus.running) {
+      twilioStatus = { running: false, ngrokUrl: null, error: `ngrok exited unexpectedly (code ${code})` };
+      stopTwilio();
+    }
+  });
+
+  // Poll ngrok local API for the public HTTPS URL.
+  // Pass a callback to detect if ngrok exited early.
+  const ngrokUrl = await pollNgrokUrl(() => {
+    if (ngrokProcess === null || ngrokProcess.exitCode !== null) {
+      const hint = ngrokStderr.trim();
+      return hint || "ngrok exited immediately. Run 'ngrok http 8080' manually to see the error.";
+    }
+    return null;
+  });
+
+  // Write the detected URL back to .env
+  await writeEnvKey("TWILIO_WEBHOOK_URL", ngrokUrl);
+
+  // Start the Twilio server
+  twilioProcess = spawn("npx", ["tsx", "sidecar/twilio-server.ts"], {
+    cwd: process.cwd(),
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  twilioProcess.stdout?.on("data", (chunk: Buffer) => {
+    process.stdout.write(`[twilio-server] ${chunk.toString()}`);
+  });
+  twilioProcess.stderr?.on("data", (chunk: Buffer) => {
+    process.stderr.write(`[twilio-server] ${chunk.toString()}`);
+  });
+
+  twilioProcess.on("exit", (code) => {
+    if (twilioStatus.running) {
+      twilioStatus = { running: false, ngrokUrl: null, error: `Twilio server exited unexpectedly (code ${code})` };
+      stopTwilio();
+    }
+  });
+
+  twilioStatus = { running: true, ngrokUrl, error: null };
+  console.log(`Twilio server started. ngrok URL: ${ngrokUrl}`);
+}
+
+/**
+ * Stop both the Twilio server and ngrok processes.
+ *
+ * @returns Resolves when both processes are killed
+ */
+export async function stopTwilio(): Promise<void> {
+  if (twilioProcess && !twilioProcess.killed) {
+    twilioProcess.kill("SIGTERM");
+  }
+  twilioProcess = null;
+
+  if (ngrokProcess && !ngrokProcess.killed) {
+    ngrokProcess.kill("SIGTERM");
+  }
+  ngrokProcess = null;
+
+  twilioStatus = { running: false, ngrokUrl: null, error: null };
+}
+
+/**
+ * Return the current Twilio server status.
+ *
+ * @returns Status object with running state, ngrok URL, and any error
+ */
+function getTwilioStatus(): { running: boolean; ngrokUrl: string | null; error: string | null } {
+  return twilioStatus;
+}
+
+/**
+ * Poll ngrok's local API to discover the public HTTPS tunnel URL.
+ * Retries every NGROK_POLL_INTERVAL_MS for up to NGROK_POLL_TIMEOUT_MS.
+ * If checkEarlyExit returns a non-null string, aborts immediately with that error.
+ *
+ * @param checkEarlyExit - Returns an error message if ngrok exited, null otherwise
+ * @returns The public HTTPS URL
+ */
+async function pollNgrokUrl(checkEarlyExit: () => string | null): Promise<string> {
+  const deadline = Date.now() + NGROK_POLL_TIMEOUT_MS;
+
+  while (Date.now() < deadline) {
+    // Check if ngrok died before we even got a tunnel URL
+    const earlyExitError = checkEarlyExit();
+    if (earlyExitError) {
+      await stopTwilio();
+      throw new Error(earlyExitError);
+    }
+
+    try {
+      const res = await fetch("http://127.0.0.1:4040/api/tunnels");
+      if (res.ok) {
+        const data = await res.json();
+        const tunnel = data.tunnels?.find((t: { public_url: string }) => t.public_url.startsWith("https://"));
+        if (tunnel) {
+          return tunnel.public_url;
+        }
+      }
+    } catch {
+      // ngrok not ready yet, keep polling
+    }
+    await new Promise((resolve) => setTimeout(resolve, NGROK_POLL_INTERVAL_MS));
+  }
+
+  // Timed out -- clean up ngrok
+  await stopTwilio();
+  throw new Error("Timed out waiting for ngrok tunnel URL");
+}
+
+/**
+ * Update a single key in the .env file, preserving all other values.
+ *
+ * @param key - The env variable name to set
+ * @param value - The value to write
+ */
+async function writeEnvKey(key: string, value: string): Promise<void> {
+  const content = await readFile(ENV_PATH, "utf-8").catch(() => "");
+  const envVars = parseEnvFile(content);
+  envVars[key] = value;
+  const lines = Object.entries(envVars).map(([k, v]) => `${k}=${v}`);
+  await writeFile(ENV_PATH, lines.join("\n") + "\n", "utf-8");
 }
 
 // ============================================================================
