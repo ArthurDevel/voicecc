@@ -18,7 +18,7 @@
 import "dotenv/config";
 
 import { randomUUID } from "crypto";
-import { createServer } from "http";
+import { createServer, request as httpRequest } from "http";
 import { homedir } from "os";
 import { join } from "path";
 
@@ -117,10 +117,18 @@ async function startTwilioServer(): Promise<void> {
   // Extract the host from the webhook URL for TwiML WebSocket URLs
   const webhookHost = new URL(webhookUrl).host;
 
+  const dashboardPort = parseInt(process.env.DASHBOARD_PORT ?? "", 10);
+
   // Create HTTP server
   const server = createServer((req, res) => {
     if (req.method === "POST" && req.url === "/twilio/incoming-call") {
       handleIncomingCall(req, res, authToken, webhookUrl, webhookHost);
+      return;
+    }
+
+    // Proxy all other requests to the dashboard server
+    if (dashboardPort) {
+      proxyToDashboard(req, res, dashboardPort);
       return;
     }
 
@@ -179,9 +187,10 @@ function handleIncomingCall(
     // Parse URL-encoded POST body into key-value params
     const params = parseUrlEncodedBody(body);
 
-    // Validate Twilio signature
+    // Validate Twilio signature (use full URL -- Twilio signs against the complete endpoint URL)
+    const validationUrl = webhookUrl.replace(/\/$/, "") + req.url;
     const signature = req.headers["x-twilio-signature"] as string;
-    if (!signature || !twilio.validateRequest(authToken, signature, webhookUrl, params)) {
+    if (!signature || !twilio.validateRequest(authToken, signature, validationUrl, params)) {
       console.log("Rejected incoming call: invalid Twilio signature");
       res.writeHead(403, { "Content-Type": "text/plain" });
       res.end("Forbidden");
@@ -384,6 +393,37 @@ function parseUrlEncodedBody(body: string): Record<string, string> {
   }
 
   return params;
+}
+
+/**
+ * Proxy an HTTP request to the dashboard server on localhost.
+ * Forwards the request method, path, headers, and body.
+ *
+ * @param req - Original incoming request
+ * @param res - Response to write the proxied result to
+ * @param dashboardPort - Port the dashboard server is listening on
+ */
+function proxyToDashboard(req: IncomingMessage, res: ServerResponse, dashboardPort: number): void {
+  const proxyReq = httpRequest(
+    {
+      hostname: "127.0.0.1",
+      port: dashboardPort,
+      path: req.url,
+      method: req.method,
+      headers: req.headers,
+    },
+    (proxyRes) => {
+      res.writeHead(proxyRes.statusCode ?? 502, proxyRes.headers);
+      proxyRes.pipe(res);
+    },
+  );
+
+  proxyReq.on("error", () => {
+    res.writeHead(502, { "Content-Type": "text/plain" });
+    res.end("Dashboard unavailable");
+  });
+
+  req.pipe(proxyReq);
 }
 
 // ============================================================================
