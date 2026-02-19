@@ -142,11 +142,12 @@ export async function createTts(config: TtsConfig): Promise<TtsPlayer> {
     midGeneration = true;
 
     try {
+      let loopBroken = false;
       for await (const pcmBuffer of readPcmChunks(proc)) {
-        if (interruptFlag) break;
+        if (interruptFlag) { loopBroken = true; break; }
         await writePcm(speakerInput, pcmBuffer);
       }
-      if (!interruptFlag) midGeneration = false;
+      if (!loopBroken) midGeneration = false;
     } finally {
       speaking = false;
     }
@@ -191,8 +192,9 @@ export async function createTts(config: TtsConfig): Promise<TtsPlayer> {
         sendCommand(proc, { cmd: "generate", text: sentence });
         midGeneration = true;
 
+        let loopBroken = false;
         for await (const pcmBuffer of readPcmChunks(proc)) {
-          if (interruptFlag) break;
+          if (interruptFlag) { loopBroken = true; break; }
 
           const now = Date.now() - t0;
           const audioDurationMs =
@@ -209,7 +211,7 @@ export async function createTts(config: TtsConfig): Promise<TtsPlayer> {
           await writePcm(speakerInput, pcmBuffer);
         }
 
-        if (!interruptFlag) midGeneration = false;
+        if (!loopBroken) midGeneration = false;
         if (interruptFlag) break;
       }
 
