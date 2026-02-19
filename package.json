@@ -1,5 +1,5 @@
 {
-  "name": "claude-code-voice",
+  "name": "voicecc",
   "version": "1.0.0",
   "description": "Voice mode plugin for Claude Code -- hands-free interaction via local STT/TTS/VAD",
   "type": "module",
@@ -7,6 +7,19 @@
     "start": "tsx run.ts",
     "postinstall": "node scripts/postinstall.js"
   },
+  "files": [
+    "run.ts",
+    "sidecar/",
+    "dashboard/",
+    "scripts/",
+    "init/",
+    "skills/",
+    ".claude-plugin/",
+    "tsconfig.json"
+  ],
+  "os": [
+    "darwin"
+  ]
   "dependencies": {
     "@anthropic-ai/claude-code": "^1.0.0",
     "@anthropic-ai/sdk": "^0.39.0",
