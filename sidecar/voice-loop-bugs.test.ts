@@ -221,6 +221,72 @@ test("BUG: after interrupt, next speakStream plays stale audio from previous gen
 });
 
 // ============================================================================
+// BUG 3: Slow drain blocks next turn when server ignores interrupt
+// ============================================================================
+
+/**
+ * Verifies that after interrupt, the next speakStream starts playing new audio
+ * within a bounded time -- regardless of how much audio the previous generation
+ * still has left to produce. Fails when the server ignores interrupt commands
+ * and the Node side must wait for the entire remaining generation to drain.
+ */
+test("BUG: after interrupt, next speakStream should start playing within bounded time", { timeout: 15_000 }, async () => {
+  // Slow mock: 30 chunks at 100ms each = 3000ms total generation per sentence.
+  // After interrupt at ~200ms (~2 chunks), remaining drain: ~2800ms.
+  const counts = { interrupt: 0, resume: 0 };
+  const speakerOutput = new PassThrough();
+
+  const config: TtsConfig = {
+    model: "test",
+    voice: "test",
+    speakerInput: speakerOutput,
+    interruptPlayback: () => { counts.interrupt++; },
+    resumePlayback: () => { counts.resume++; },
+    serverCommand: ["node", TAGGED_MOCK_SERVER, "30", "100"],
+  };
+
+  const player = await createTts(config);
+
+  try {
+    const firstStream = player.speakStream(singleSentence("First sentence."));
+
+    // Wait for a couple of chunks, then interrupt
+    await new Promise((r) => setTimeout(r, 200));
+    player.interrupt();
+    await firstStream;
+
+    // Measure time from starting second speakStream to first chunk of gen 2 (0x02).
+    // The listener also fires for buffered gen-1 data, so we filter by tag.
+    const t0 = Date.now();
+    let firstNewChunkAt = 0;
+
+    speakerOutput.on("data", (chunk: Buffer) => {
+      if (firstNewChunkAt === 0 && chunk[0] === 0x02) {
+        firstNewChunkAt = Date.now();
+      }
+    });
+
+    await player.speakStream(singleSentence("Second sentence."));
+
+    const elapsed = firstNewChunkAt - t0;
+    const maxAllowedMs = 1000;
+
+    assert.ok(
+      firstNewChunkAt > 0,
+      "Should have received at least one gen-2 chunk during second speakStream"
+    );
+    assert.ok(
+      elapsed < maxAllowedMs,
+      `First new chunk took ${elapsed}ms (limit: ${maxAllowedMs}ms). ` +
+      `The server ignored the interrupt command, so drainStaleChunks had to wait ` +
+      `for the entire remaining generation before the new turn could start.`
+    );
+  } finally {
+    player.destroy();
+  }
+});
+
+// ============================================================================
 // BUG 2: Stale Claude session events after interrupt
 // ============================================================================
 
