@@ -23,11 +23,11 @@ import { createInterface } from "readline";
 /** 10ms of 24kHz mono 16-bit silence */
 const CHUNK_SIZE = 480;
 
-/** Number of chunks per generate command */
-const CHUNKS_PER_GENERATE = 15;
+/** Number of chunks per generate command (overridable via argv[2]) */
+const CHUNKS_PER_GENERATE = parseInt(process.argv[2] || "15");
 
-/** Delay between chunks (ms) -- simulates real TTS generation latency */
-const CHUNK_DELAY_MS = 10;
+/** Delay between chunks in ms (overridable via argv[3]) */
+const CHUNK_DELAY_MS = parseInt(process.argv[3] || "10");
 
 // ============================================================================
 // STATE
