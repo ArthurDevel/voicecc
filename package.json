@@ -24,12 +24,16 @@
     "@anthropic-ai/claude-code": "^1.0.0",
     "@anthropic-ai/sdk": "^0.39.0",
     "avr-vad": "^1.0.0",
+    "dotenv": "^16.4.0",
     "node-record-lpcm16": "^1.0.1",
     "sherpa-onnx-node": "^1.11.0",
-    "tsx": "^4.19.0"
+    "twilio": "^5.0.0",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "@types/ws": "^8.5.0",
+    "tsx": "^4.19.0",
     "typescript": "^5.7.0"
   }
 }

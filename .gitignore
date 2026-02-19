@@ -11,6 +11,11 @@ dist/
 # Compiled binaries
 sidecar/mic-vpio
 
+# Environment (contains secrets)
+.env
+.ngrok-dashboard.yml
+.device-tokens.json
+
 # OS
 .DS_Store
 
