@@ -118,6 +118,7 @@ export async function createTts(config: TtsConfig): Promise<TtsPlayer> {
   let speaking = false;
   let interruptFlag = false;
   let wasInterrupted = false;
+  let midGeneration = false;
 
   /**
    * Generate audio for a single text string and play it.
@@ -129,17 +130,23 @@ export async function createTts(config: TtsConfig): Promise<TtsPlayer> {
     interruptFlag = false;
     speaking = true;
     if (wasInterrupted) {
+      if (midGeneration) {
+        await drainStaleChunks(proc);
+        midGeneration = false;
+      }
       resumePlayback();
       wasInterrupted = false;
     }
 
     sendCommand(proc, { cmd: "generate", text });
+    midGeneration = true;
 
     try {
       for await (const pcmBuffer of readPcmChunks(proc)) {
         if (interruptFlag) break;
         await writePcm(speakerInput, pcmBuffer);
       }
+      if (!interruptFlag) midGeneration = false;
     } finally {
       speaking = false;
     }
@@ -163,6 +170,10 @@ export async function createTts(config: TtsConfig): Promise<TtsPlayer> {
     interruptFlag = false;
     speaking = true;
     if (wasInterrupted) {
+      if (midGeneration) {
+        await drainStaleChunks(proc);
+        midGeneration = false;
+      }
       resumePlayback();
       wasInterrupted = false;
     }
@@ -178,6 +189,7 @@ export async function createTts(config: TtsConfig): Promise<TtsPlayer> {
 
         const sentAt = Date.now();
         sendCommand(proc, { cmd: "generate", text: sentence });
+        midGeneration = true;
 
         for await (const pcmBuffer of readPcmChunks(proc)) {
           if (interruptFlag) break;
@@ -197,6 +209,7 @@ export async function createTts(config: TtsConfig): Promise<TtsPlayer> {
           await writePcm(speakerInput, pcmBuffer);
         }
 
+        if (!interruptFlag) midGeneration = false;
         if (interruptFlag) break;
       }
 
@@ -331,6 +344,17 @@ function waitForReady(proc: ChildProcess): Promise<void> {
  */
 function sendCommand(proc: ChildProcess, cmd: Record<string, unknown>): void {
   proc.stdin!.write(JSON.stringify(cmd) + "\n");
+}
+
+/**
+ * Drain stale PCM data from the subprocess stdout after an interruption.
+ * Reads and discards remaining chunks until the end marker (0-length frame).
+ * @param proc - The child process to drain from
+ */
+async function drainStaleChunks(proc: ChildProcess): Promise<void> {
+  for await (const _chunk of readPcmChunks(proc)) {
+    // Discard stale chunks until end marker
+  }
 }
 
 /**
