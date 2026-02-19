@@ -2,16 +2,32 @@
 
 A Claude Code plugin that adds a `/voice` command for hands-free voice interaction with local speech-to-text, text-to-speech, and voice activity detection.
 
-## Prerequisites
+## Installation
+
+### Prerequisites
 
 - macOS with Apple Silicon (M1/M2/M3/M4)
 - Node.js 18+
 - Python 3.10+
+- Xcode Command Line Tools (`xcode-select --install`)
 - sox and espeak-ng (`brew install sox espeak-ng`)
 - An Anthropic API key (already present if using Claude Code)
-- Headphones recommended (no echo cancellation in v1)
 
-## Setup
+### Install from registry
+
+```bash
+npm install voicecc --registry http://gitea-rksscoo0o4c8o44k0s84c8s4.65.109.15.3.sslip.io/api/packages/ArthurDevel/npm/
+```
+
+The postinstall script will compile the VPIO binary, set up a Python venv, and install TTS dependencies automatically.
+
+### Update to latest version
+
+```bash
+npm update voicecc --registry http://gitea-rksscoo0o4c8o44k0s84c8s4.65.109.15.3.sslip.io/api/packages/ArthurDevel/npm/
+```
+
+### Install from source
 
 ```bash
 # 1. Install system dependencies
