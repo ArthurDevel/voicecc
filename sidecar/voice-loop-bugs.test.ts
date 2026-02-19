@@ -287,6 +287,70 @@ test("BUG: after interrupt, next speakStream should start playing within bounded
 });
 
 // ============================================================================
+// BUG 4: Listening chime plays while TTS audio is still playing (gappy chunks)
+// ============================================================================
+
+/**
+ * Verifies that speakStream waits for all audio to finish playing even when
+ * chunks arrive with large gaps between them (e.g. during tool calls).
+ *
+ * The playback wait calculates remainingMs = totalAudioMs - (now - firstWriteAt).
+ * When gaps between chunk deliveries exceed total audio duration, remainingMs
+ * goes negative and the wait is skipped -- the listening chime plays while the
+ * last chunk is still audible.
+ */
+test("BUG: speakStream resolves before audio finishes when chunks arrive with gaps", { timeout: 10_000 }, async () => {
+  // Mock: 15 chunks at 1ms delay = ~15ms generation, 150ms audio per sentence.
+  const counts = { interrupt: 0, resume: 0 };
+  const speakerOutput = new PassThrough();
+
+  const config: TtsConfig = {
+    model: "test",
+    voice: "test",
+    speakerInput: speakerOutput,
+    interruptPlayback: () => { counts.interrupt++; },
+    resumePlayback: () => { counts.resume++; },
+    serverCommand: ["node", TAGGED_MOCK_SERVER, "15", "1"],
+  };
+
+  const player = await createTts(config);
+
+  try {
+    let lastWriteTime = 0;
+    speakerOutput.on("data", () => { lastWriteTime = Date.now(); });
+
+    // Yield 3 flush-tagged sentences with 300ms gaps (simulates tool call delays).
+    // totalAudioMs = 3 * 150ms = 450ms.  totalGapTime = 2 * 300ms = 600ms.
+    // Since gapTime > audioTime, the wait calculation goes negative.
+    async function* gappySentences(): AsyncGenerator<TextChunk> {
+      yield { text: "First sentence from the tool call.", flush: true };
+      await new Promise((r) => setTimeout(r, 300));
+      yield { text: "Second sentence after a tool result.", flush: true };
+      await new Promise((r) => setTimeout(r, 300));
+      yield { text: "Third and final sentence of the response.", flush: true };
+    }
+
+    await player.speakStream(gappySentences());
+    const resolveTime = Date.now();
+
+    // The last sentence produces ~150ms of audio. speakStream should not resolve
+    // until that audio has had time to play through the speaker.
+    // BUG: remainingMs = 450 - ~630 = -180ms → skips wait entirely.
+    const waitAfterLastWrite = resolveTime - lastWriteTime;
+
+    assert.ok(
+      waitAfterLastWrite >= 100,
+      `speakStream resolved only ${waitAfterLastWrite}ms after last PCM write, ` +
+      `but the last sentence has ~150ms of audio still playing. ` +
+      `The playback wait calculation does not account for gaps between chunk deliveries ` +
+      `(e.g. during tool calls), so remainingMs goes negative and the wait is skipped.`
+    );
+  } finally {
+    player.destroy();
+  }
+});
+
+// ============================================================================
 // BUG 2: Stale Claude session events after interrupt
 // ============================================================================
 
