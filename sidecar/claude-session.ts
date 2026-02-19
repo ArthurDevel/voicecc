@@ -17,6 +17,9 @@
 import { query as claudeQuery, type Query, type Options, type SDKMessage, type SDKUserMessage } from "@anthropic-ai/claude-code";
 import type { ClaudeSessionConfig, ClaudeStreamEvent } from "./types.js";
 
+/** Injectable query function signature for testing. Matches the SDK query() contract. */
+export type QueryFn = (params: { prompt: AsyncIterable<SDKUserMessage>; options: Options }) => Query;
+
 // ============================================================================
 // ASYNC QUEUE
 // ============================================================================
@@ -100,10 +103,12 @@ const DEFAULT_SYSTEM_PROMPT =
 
 async function createClaudeSession(
   config: ClaudeSessionConfig,
+  queryOverride?: QueryFn,
 ): Promise<ClaudeSession> {
   const systemPrompt = config.systemPrompt || DEFAULT_SYSTEM_PROMPT;
   let sessionId = "";
   let closed = false;
+  let lastTurnCompletedCleanly = true;
 
   // Persistent input stream — user messages are pushed here across turns
   const userMessages = new AsyncQueue<SDKUserMessage>();
@@ -128,7 +133,8 @@ async function createClaudeSession(
   // events until the first user message is consumed, so we don't block
   // waiting for a system init event here. Session ID is captured when
   // the system event arrives during the first turn.
-  const q = claudeQuery({ prompt: userMessages, options });
+  const queryFn = queryOverride ?? claudeQuery;
+  const q = queryFn({ prompt: userMessages, options });
 
   // Background: pump SDK events into our channel
   (async () => {
@@ -159,8 +165,15 @@ async function createClaudeSession(
         throw new Error("Cannot send empty message.");
       }
 
-      // Drain stale events from a previous interrupted turn
+      // If the previous turn was interrupted, consume remaining events until its result
+      if (!lastTurnCompletedCleanly) {
+        while (true) {
+          const msg = await sdkEvents.next();
+          if (!msg || msg.type === "result") break;
+        }
+      }
       sdkEvents.drain();
+      lastTurnCompletedCleanly = false;
 
       const t0 = Date.now();
       let hasStreamedContent = false;
@@ -254,6 +267,7 @@ async function createClaudeSession(
 
         // Result — turn complete
         if (msg.type === "result") {
+          lastTurnCompletedCleanly = true;
           console.log(`[claude] result at +${Date.now() - t0}ms (streamed=${hasStreamedContent})`);
           if (msg.is_error) {
             yield { type: "error", content: msg.subtype === "success" ? String((msg as any).result) : msg.subtype };
