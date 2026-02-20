@@ -16,6 +16,7 @@
  * - Acquire a session lock at start, release on stop
  */
 
+import { readFileSync } from "fs";
 import { Writable } from "stream";
 
 import { createVad } from "./vad.js";
@@ -25,6 +26,9 @@ import { createClaudeSession } from "./claude-session.js";
 import { createNarrator } from "./narration.js";
 import { createTts } from "./tts.js";
 import { acquireSessionLock } from "./session-lock.js";
+
+import { dirname, join } from "path";
+import { fileURLToPath } from "url";
 
 import type { AudioAdapter } from "./audio-adapter.js";
 import type { SessionLock } from "./session-lock.js";
@@ -42,6 +46,16 @@ import type { VadEvent, VoiceLoopState, VoiceLoopStatus, TextChunk, EndpointingC
 
 /** Default max concurrent sessions (overridden by .env) */
 const DEFAULT_MAX_SESSIONS = 2;
+
+/** Pre-recorded startup greeting (24kHz 16-bit mono PCM). Null if file is missing. */
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const STARTUP_PCM: Buffer | null = (() => {
+  try {
+    return readFileSync(join(__dirname, "assets", "startup.pcm"));
+  } catch {
+    return null;
+  }
+})();
 
 // ============================================================================
 // INTERFACES
@@ -439,6 +453,16 @@ export async function createVoiceSession(
 
   // ---- Initialization ----
 
+  // Fire-and-forget the startup greeting so it plays while modules initialize.
+  // Short delay lets the audio device settle before playback.
+  if (STARTUP_PCM) {
+    setTimeout(() => {
+      adapter.writeSpeaker(STARTUP_PCM).catch((err) => {
+        console.error(`Failed to play startup audio: ${err}`);
+      });
+    }, 1000);
+  }
+
   // Wrap adapter.writeSpeaker in a Node.js Writable stream for TTS config
   const speakerWritable = new Writable({
     write(chunk: Buffer, _encoding: string, callback: (err?: Error | null) => void) {
@@ -446,26 +470,24 @@ export async function createVoiceSession(
     },
   });
 
-  // Start audio I/O first -- adapter starts quickly and we need the speaker
-  // stream to pass to TTS. Audio data buffers until we attach the onAudio handler.
-  console.log("Initializing audio I/O...");
+  // Claude session and TTS are the slowest to initialize (process spawns + model
+  // loading). Run them in parallel since they are independent.
+  console.log("Initializing Claude session + TTS in parallel...");
+  const [claudeResult, ttsResult] = await Promise.all([
+    createClaudeSession(config.claudeSession),
+    createTts({
+      model: config.ttsModel,
+      voice: config.ttsVoice,
+      speakerInput: speakerWritable,
+      interruptPlayback: () => adapter.interrupt(),
+      resumePlayback: () => adapter.resume(),
+    }),
+  ]);
+  claudeSession = claudeResult;
+  ttsPlayer = ttsResult;
 
-  // Initialize Claude session -- spawns the persistent process so it's ready
-  // by the time the user speaks (eliminates process startup from TTFT).
-  console.log("Initializing Claude session...");
-  claudeSession = await createClaudeSession(config.claudeSession);
-
-  // TTS uses mlx-audio (Python subprocess on Apple Silicon GPU).
-  // Speaker output goes through the adapter's writeSpeaker.
-  console.log("Initializing TTS (downloading model on first run, may take a minute)...");
-  ttsPlayer = await createTts({
-    model: config.ttsModel,
-    voice: config.ttsVoice,
-    speakerInput: speakerWritable,
-    interruptPlayback: () => adapter.interrupt(),
-    resumePlayback: () => adapter.resume(),
-  });
-
+  // VAD and STT both load ONNX runtimes -- keep them sequential to avoid
+  // native library conflicts within the same Node process.
   console.log("Initializing VAD...");
   vadProcessor = await createVad(handleVadEvent);
 
