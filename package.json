@@ -5,12 +5,17 @@
   "type": "module",
   "scripts": {
     "start": "tsx run.ts",
-    "postinstall": "node scripts/postinstall.js"
+    "dev:dashboard": "cd dashboard && npx vite",
+    "build:dashboard": "cd dashboard && npx vite build",
+    "postinstall": "node scripts/postinstall.js && npm run build:dashboard"
   },
   "files": [
     "run.ts",
     "sidecar/",
-    "dashboard/",
+    "services/",
+    "dashboard/dist/",
+    "dashboard/server.ts",
+    "dashboard/routes/",
     "scripts/",
     "init/",
     "skills/",
@@ -23,17 +28,28 @@
   "dependencies": {
     "@anthropic-ai/claude-code": "^1.0.0",
     "@anthropic-ai/sdk": "^0.39.0",
+    "@hono/node-server": "^1.19.9",
+    "@twilio/voice-sdk": "^2.18.0",
     "avr-vad": "^1.0.0",
     "dotenv": "^16.4.0",
+    "hono": "^4.12.0",
     "node-record-lpcm16": "^1.0.1",
+    "qrcode.react": "^4.2.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "react-router-dom": "^7.13.0",
     "sherpa-onnx-node": "^1.11.0",
     "twilio": "^5.0.0",
     "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
     "@types/ws": "^8.5.0",
+    "@vitejs/plugin-react": "^5.1.4",
     "tsx": "^4.19.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "vite": "^7.3.1"
   }
 }
