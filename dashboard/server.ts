@@ -117,6 +117,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     } else if (pathname.startsWith("/api/conversations/") && req.method === "GET") {
       const sessionId = pathname.slice("/api/conversations/".length);
       await handleGetConversation(sessionId, res);
+    } else if (pathname === "/api/mcp-servers" && req.method === "GET") {
+      await handleGetMcpServers(res);
     } else if (pathname === "/api/settings" && req.method === "GET") {
       await handleGetSettings(res);
     } else if (pathname === "/api/settings" && req.method === "POST") {
@@ -305,6 +307,81 @@ function parseEnvFile(content: string): Record<string, string> {
     result[key] = value;
   }
   return result;
+}
+
+// ============================================================================
+// MCP SERVERS HANDLER
+// ============================================================================
+
+/** Parsed MCP server entry returned by the API */
+interface McpServerEntry {
+  name: string;
+  url: string;
+  type: "http" | "stdio";
+  status: "connected" | "failed" | "needs_auth";
+}
+
+/**
+ * List MCP servers configured in Claude Code and their connection status.
+ * Runs `claude mcp list` and parses the output.
+ * GET /api/mcp-servers
+ *
+ * @param res - Server response
+ */
+async function handleGetMcpServers(res: ServerResponse): Promise<void> {
+  const claudePath = join(homedir(), ".local", "bin", "claude");
+  const output = await new Promise<string>((resolve) => {
+    execFile(claudePath, ["mcp", "list"], { timeout: 15000 }, (err, stdout, stderr) => {
+      if (err) {
+        console.error("[mcp-servers] execFile error:", err.message);
+        console.error("[mcp-servers] stderr:", stderr);
+        resolve(stderr || err.message);
+        return;
+      }
+      resolve(stdout);
+    });
+  });
+
+  const servers = parseMcpListOutput(output);
+  sendJson(res, 200, { servers });
+}
+
+/**
+ * Parse the text output of `claude mcp list` into structured entries.
+ * Each line has the format: `<name>: <url-or-command> (HTTP) - <icon> <status>`
+ *
+ * @param output - Raw CLI output
+ * @returns Array of parsed MCP server entries
+ */
+function parseMcpListOutput(output: string): McpServerEntry[] {
+  const servers: McpServerEntry[] = [];
+  const lines = output.split("\n");
+
+  for (const line of lines) {
+    const match = line.match(/^(\S+): (.+?) - (?:✓|✗|⚠)\s*(.+)$/);
+    if (!match) continue;
+
+    const name = match[1];
+    let urlOrCommand = match[2].trim();
+    const statusText = match[3].trim().toLowerCase();
+
+    // Determine type from "(HTTP)" suffix
+    const isHttp = urlOrCommand.includes("(HTTP)");
+    const type: "http" | "stdio" = isHttp ? "http" : "stdio";
+    urlOrCommand = urlOrCommand.replace(/\s*\(HTTP\)\s*$/, "").trim();
+
+    // Map status text
+    let status: McpServerEntry["status"] = "failed";
+    if (statusText.includes("connected")) {
+      status = "connected";
+    } else if (statusText.includes("auth")) {
+      status = "needs_auth";
+    }
+
+    servers.push({ name, url: urlOrCommand, type, status });
+  }
+
+  return servers;
 }
 
 // ============================================================================
