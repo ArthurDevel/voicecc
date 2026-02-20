@@ -1,0 +1,842 @@
+/* ============================================================================
+ * Global styles for the Claude Voice dashboard.
+ *
+ * Ported from the inline CSS in index.html and call.html.
+ * VS Code dark theme with monospace fonts.
+ * ============================================================================ */
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
+  background: #1e1e1e;
+  color: #d4d4d4;
+  height: 100vh;
+}
+
+#root {
+  height: 100vh;
+}
+
+/* ============================================================================
+ * SIDEBAR
+ * ============================================================================ */
+
+.sidebar {
+  width: 200px;
+  background: #252526;
+  border-right: 1px solid #404040;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.sidebar-nav {
+  flex: 1;
+  padding: 12px 0;
+}
+
+.sidebar-item {
+  display: block;
+  width: 100%;
+  padding: 8px 16px;
+  font-size: 13px;
+  color: #888;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.sidebar-item:hover { color: #d4d4d4; background: #2a2d2e; }
+.sidebar-item.active { color: #e0e0e0; background: #37373d; }
+
+.sidebar-footer {
+  border-top: 1px solid #404040;
+  padding: 8px 0;
+}
+
+.sidebar-section-label {
+  padding: 12px 16px 4px;
+  font-size: 11px;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.sidebar-conversation {
+  display: block;
+  width: 100%;
+  padding: 6px 16px;
+  font-size: 12px;
+  color: #888;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-conversation:hover { color: #d4d4d4; background: #2a2d2e; }
+.sidebar-conversation.active { color: #e0e0e0; background: #37373d; }
+
+/* ============================================================================
+ * START VOICE + BROWSER CALL BUTTONS
+ * ============================================================================ */
+
+.btn-start-voice {
+  display: block;
+  width: calc(100% - 24px);
+  margin: 12px 12px 8px;
+  padding: 7px 12px;
+  font-size: 12px;
+  font-family: inherit;
+  color: #fff;
+  background: #0e639c;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  text-align: center;
+}
+
+.btn-start-voice:hover { background: #1177bb; }
+.btn-start-voice:disabled { background: #555; cursor: default; }
+
+.btn-browser-call {
+  display: block;
+  width: calc(100% - 24px);
+  margin: 0 12px 8px;
+  padding: 7px 12px;
+  font-size: 12px;
+  font-family: inherit;
+  color: #fff;
+  background: #2ea043;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  text-align: center;
+}
+
+.btn-browser-call:hover { background: #3fb950; }
+.btn-browser-call:disabled { background: #555; cursor: default; color: #999; }
+
+/* ============================================================================
+ * MAIN AREA
+ * ============================================================================ */
+
+.main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.page {
+  display: none;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.page.active {
+  display: flex;
+}
+
+/* ============================================================================
+ * PAGE HEADER + TOOLBAR
+ * ============================================================================ */
+
+.page-header {
+  background: #2d2d2d;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #404040;
+  flex-shrink: 0;
+}
+
+.page-header h1 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #e0e0e0;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.toolbar button {
+  background: #0e639c;
+  color: #fff;
+  border: none;
+  padding: 5px 14px;
+  border-radius: 3px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.toolbar button:hover { background: #1177bb; }
+.toolbar button:disabled { background: #555; cursor: default; }
+
+#status {
+  font-size: 12px;
+  color: #888;
+}
+
+/* ============================================================================
+ * WARNING BANNER
+ * ============================================================================ */
+
+.warning {
+  background: #3e2f00;
+  border-bottom: 1px solid #665500;
+  padding: 8px 16px;
+  font-size: 12px;
+  color: #cca700;
+  display: none;
+  flex-shrink: 0;
+}
+
+.warning.visible { display: block; }
+
+.warning code {
+  background: #2a2000;
+  padding: 1px 4px;
+  border-radius: 2px;
+}
+
+/* ============================================================================
+ * EDITOR
+ * ============================================================================ */
+
+#editor {
+  flex: 1;
+  width: 100%;
+  background: #1e1e1e;
+  color: #d4d4d4;
+  border: none;
+  padding: 16px 20px;
+  font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  resize: none;
+  outline: none;
+  tab-size: 2;
+}
+
+/* ============================================================================
+ * SETTINGS PANEL
+ * ============================================================================ */
+
+.settings-panel {
+  border-bottom: 1px solid #404040;
+  padding: 16px 20px;
+  flex-shrink: 0;
+}
+
+.settings-panel h2 {
+  font-size: 13px;
+  font-weight: 600;
+  color: #e0e0e0;
+  margin-bottom: 12px;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+  gap: 10px;
+}
+
+.settings-row label {
+  font-size: 12px;
+  color: #999;
+  width: 200px;
+  flex-shrink: 0;
+}
+
+.settings-row input {
+  flex: 1;
+  max-width: 340px;
+  background: #1e1e1e;
+  border: 1px solid #404040;
+  color: #d4d4d4;
+  padding: 5px 8px;
+  font-size: 12px;
+  font-family: "SF Mono", "Fira Code", monospace;
+  border-radius: 3px;
+  outline: none;
+}
+
+.settings-row input:focus { border-color: #0e639c; }
+
+.settings-actions {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.settings-actions button {
+  background: #0e639c;
+  color: #fff;
+  border: none;
+  padding: 5px 14px;
+  border-radius: 3px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.settings-actions button:hover { background: #1177bb; }
+.settings-actions button:disabled { background: #555; cursor: default; }
+
+.settings-status {
+  font-size: 12px;
+  color: #888;
+}
+
+/* ============================================================================
+ * INTEGRATIONS
+ * ============================================================================ */
+
+.integrations-panel {
+  padding: 16px 20px;
+  border-bottom: 1px solid #404040;
+}
+
+.integrations-panel h2 {
+  font-size: 13px;
+  font-weight: 600;
+  color: #e0e0e0;
+  margin-bottom: 12px;
+}
+
+.btn-integration {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 80px;
+  height: 80px;
+  background: #2d2d2d;
+  border: 1px solid #404040;
+  border-radius: 6px;
+  color: #d4d4d4;
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+  gap: 6px;
+}
+
+.btn-integration:hover {
+  background: #37373d;
+  border-color: #555;
+}
+
+.integration-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #666;
+}
+
+.integration-dot.running {
+  background: #2ea043;
+}
+
+/* ============================================================================
+ * MCP SERVERS
+ * ============================================================================ */
+
+.mcp-panel {
+  padding: 16px 20px;
+  border-bottom: 1px solid #404040;
+}
+
+.mcp-panel h2 {
+  font-size: 13px;
+  font-weight: 600;
+  color: #e0e0e0;
+  margin-bottom: 12px;
+}
+
+.mcp-server-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mcp-server-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  background: #2d2d2d;
+  border: 1px solid #404040;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.mcp-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #666;
+  flex-shrink: 0;
+}
+
+.mcp-dot.connected { background: #2ea043; }
+.mcp-dot.failed { background: #d73a49; }
+.mcp-dot.needs-auth { background: #d29922; }
+
+.mcp-server-name {
+  color: #e0e0e0;
+  font-weight: 600;
+  min-width: 100px;
+}
+
+.mcp-server-url {
+  color: #888;
+  font-family: "SF Mono", "Fira Code", monospace;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.mcp-server-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: #333;
+  color: #999;
+  border: 1px solid #404040;
+  flex-shrink: 0;
+}
+
+.mcp-server-status {
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.mcp-server-status.connected { color: #2ea043; }
+.mcp-server-status.failed { color: #d73a49; }
+button.mcp-server-status.needs-auth {
+  color: #d29922;
+  cursor: pointer;
+  background: none;
+  border: 1px solid #d29922;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 11px;
+}
+button.mcp-server-status.needs-auth:hover {
+  background: rgba(210, 153, 34, 0.15);
+}
+
+.mcp-loading, .mcp-error {
+  font-size: 12px;
+  color: #888;
+  padding: 4px 0;
+}
+
+.mcp-error { color: #d73a49; }
+
+/* ============================================================================
+ * MODAL
+ * ============================================================================ */
+
+.modal-overlay {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 100;
+  justify-content: center;
+  align-items: center;
+}
+
+.modal-overlay.visible {
+  display: flex;
+}
+
+.modal {
+  background: #252526;
+  border: 1px solid #404040;
+  border-radius: 6px;
+  width: 560px;
+  max-height: 80vh;
+  overflow-y: auto;
+  padding: 20px 24px;
+}
+
+.modal h2 {
+  font-size: 15px;
+  font-weight: 600;
+  color: #e0e0e0;
+  margin-bottom: 16px;
+}
+
+.modal-close {
+  float: right;
+  background: none;
+  border: none;
+  color: #888;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.modal-close:hover { color: #d4d4d4; }
+
+.setup-step {
+  margin-bottom: 16px;
+}
+
+.setup-step-number {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  background: #0e639c;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+  line-height: 20px;
+  border-radius: 50%;
+  margin-right: 8px;
+  flex-shrink: 0;
+}
+
+.setup-step-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #e0e0e0;
+  margin-bottom: 4px;
+}
+
+.setup-step-desc {
+  font-size: 12px;
+  color: #999;
+  line-height: 1.5;
+  margin-left: 28px;
+}
+
+.setup-step-desc code {
+  background: #1e1e1e;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-family: "SF Mono", "Fira Code", monospace;
+  font-size: 11px;
+  color: #ce9178;
+}
+
+.setup-step-desc a {
+  color: #3794ff;
+  text-decoration: none;
+}
+
+.setup-step-desc a:hover { text-decoration: underline; }
+
+.setup-paste-row {
+  display: flex;
+  gap: 8px;
+  margin: 8px 0 0 28px;
+  align-items: center;
+}
+
+.setup-paste-row input {
+  flex: 1;
+  background: #1e1e1e;
+  border: 1px solid #404040;
+  color: #d4d4d4;
+  padding: 5px 8px;
+  font-size: 12px;
+  font-family: "SF Mono", "Fira Code", monospace;
+  border-radius: 3px;
+  outline: none;
+}
+
+.setup-paste-row input:focus { border-color: #0e639c; }
+
+.setup-paste-row button {
+  background: #0e639c;
+  color: #fff;
+  border: none;
+  padding: 5px 10px;
+  border-radius: 3px;
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.setup-paste-row button:hover { background: #1177bb; }
+
+.setup-paste-row button.applied {
+  background: #2ea043;
+}
+
+.setup-divider {
+  border: none;
+  border-top: 1px solid #404040;
+  margin: 16px 0;
+}
+
+/* ============================================================================
+ * CONVERSATION VIEW
+ * ============================================================================ */
+
+.conversation-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+}
+
+.msg {
+  margin-bottom: 16px;
+  max-width: 80%;
+}
+
+.msg-user {
+  margin-left: auto;
+  background: #264f78;
+  border-radius: 8px 8px 2px 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #e0e0e0;
+}
+
+.msg-assistant {
+  background: #2d2d2d;
+  border-radius: 8px 8px 8px 2px;
+  padding: 8px 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #d4d4d4;
+  white-space: pre-wrap;
+}
+
+.msg-time {
+  font-size: 10px;
+  color: #555;
+  margin-top: 2px;
+}
+
+.conversation-empty {
+  color: #555;
+  font-size: 13px;
+  padding: 20px;
+}
+
+/* ============================================================================
+ * BROWSER CALL MODAL (QR + PAIRING)
+ * ============================================================================ */
+
+.qr-container {
+  display: flex;
+  justify-content: center;
+  margin: 16px 0;
+}
+
+.qr-container img, .qr-container svg, .qr-container table {
+  border-radius: 6px;
+}
+
+.call-url {
+  font-size: 12px;
+  color: #999;
+  word-break: break-all;
+  margin: 8px 0 4px;
+}
+
+.call-url a {
+  color: #3794ff;
+  text-decoration: none;
+}
+
+.call-url a:hover { text-decoration: underline; }
+
+.pairing-code {
+  font-size: 36px;
+  font-weight: 700;
+  letter-spacing: 12px;
+  color: #e0e0e0;
+  font-family: "SF Mono", "Fira Code", monospace;
+  margin: 20px 0 8px;
+  text-align: center;
+}
+
+.pairing-countdown {
+  font-size: 12px;
+  color: #888;
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+.btn-regenerate {
+  background: #333;
+  border: 1px solid #404040;
+  color: #d4d4d4;
+  padding: 6px 16px;
+  font-size: 12px;
+  cursor: pointer;
+  border-radius: 3px;
+  font-family: inherit;
+}
+
+.btn-regenerate:hover { background: #404040; }
+
+/* ============================================================================
+ * CALL PAGE (standalone /call route)
+ * ============================================================================ */
+
+.call-container {
+  width: 100%;
+  max-width: 400px;
+  padding: 32px 24px;
+  text-align: center;
+  margin: 0 auto;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.call-container h1 {
+  font-size: 20px;
+  font-weight: 600;
+  color: #e0e0e0;
+  margin-bottom: 8px;
+}
+
+.subtitle {
+  font-size: 13px;
+  color: #888;
+  margin-bottom: 32px;
+}
+
+.call-state {
+  text-align: center;
+}
+
+.pin-inputs {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+
+.pin-inputs input {
+  width: 44px;
+  height: 56px;
+  text-align: center;
+  font-size: 24px;
+  font-weight: 600;
+  font-family: inherit;
+  background: #2d2d2d;
+  border: 2px solid #404040;
+  border-radius: 6px;
+  color: #e0e0e0;
+  outline: none;
+}
+
+.pin-inputs input:focus {
+  border-color: #0e639c;
+}
+
+.btn {
+  display: inline-block;
+  padding: 12px 32px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.btn:hover { opacity: 0.85; }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.btn-pair {
+  background: #0e639c;
+  color: #fff;
+}
+
+.btn-call {
+  background: #2ea043;
+  color: #fff;
+  font-size: 16px;
+  padding: 14px 48px;
+}
+
+.btn-hangup {
+  background: #d73a49;
+  color: #fff;
+  font-size: 16px;
+  padding: 14px 48px;
+}
+
+.error-msg {
+  color: #f85149;
+  font-size: 13px;
+  margin-top: 12px;
+  min-height: 18px;
+}
+
+.status-msg {
+  color: #888;
+  font-size: 13px;
+  margin-top: 12px;
+}
+
+/* Active call pulse animation */
+.pulse-ring {
+  display: inline-block;
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: rgba(46, 160, 67, 0.3);
+  margin-bottom: 24px;
+  position: relative;
+}
+
+.pulse-ring::before {
+  content: "";
+  position: absolute;
+  inset: 20px;
+  border-radius: 50%;
+  background: #2ea043;
+}
+
+.pulse-ring::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid #2ea043;
+  animation: pulse 2s ease-out infinite;
+}
+
+@keyframes pulse {
+  0% { transform: scale(1); opacity: 0.6; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+.call-label {
+  font-size: 15px;
+  color: #2ea043;
+  margin-bottom: 24px;
+}

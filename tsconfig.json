@@ -11,6 +11,12 @@
     "declaration": true,
     "sourceMap": true
   },
-  "include": ["run.ts", "sidecar/**/*.ts", "dashboard/**/*.ts"],
-  "exclude": ["node_modules", "dist"]
+  "include": [
+    "run.ts",
+    "sidecar/**/*.ts",
+    "dashboard/**/*.ts",
+    "services/**/*.ts",
+    "dashboard/routes/**/*.ts"
+  ],
+  "exclude": ["node_modules", "dist", "dashboard/src"]
 }
