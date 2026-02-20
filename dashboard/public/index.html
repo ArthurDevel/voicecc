@@ -356,6 +356,79 @@
     }
 
 
+    /* -- MCP servers panel -- */
+    .mcp-panel {
+      padding: 16px 20px;
+      border-bottom: 1px solid #404040;
+    }
+    .mcp-panel h2 {
+      font-size: 13px;
+      font-weight: 600;
+      color: #e0e0e0;
+      margin-bottom: 12px;
+    }
+    .mcp-server-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .mcp-server-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 10px;
+      background: #2d2d2d;
+      border: 1px solid #404040;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    .mcp-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #666;
+      flex-shrink: 0;
+    }
+    .mcp-dot.connected { background: #2ea043; }
+    .mcp-dot.failed { background: #d73a49; }
+    .mcp-dot.needs-auth { background: #d29922; }
+    .mcp-server-name {
+      color: #e0e0e0;
+      font-weight: 600;
+      min-width: 100px;
+    }
+    .mcp-server-url {
+      color: #888;
+      font-family: "SF Mono", "Fira Code", monospace;
+      font-size: 11px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      flex: 1;
+    }
+    .mcp-server-badge {
+      font-size: 10px;
+      padding: 1px 6px;
+      border-radius: 3px;
+      background: #333;
+      color: #999;
+      border: 1px solid #404040;
+      flex-shrink: 0;
+    }
+    .mcp-server-status {
+      font-size: 11px;
+      flex-shrink: 0;
+    }
+    .mcp-server-status.connected { color: #2ea043; }
+    .mcp-server-status.failed { color: #d73a49; }
+    .mcp-server-status.needs-auth { color: #d29922; }
+    .mcp-loading, .mcp-error {
+      font-size: 12px;
+      color: #888;
+      padding: 4px 0;
+    }
+    .mcp-error { color: #d73a49; }
+
     /* -- Start voice button -- */
     .btn-start-voice {
       display: block;
@@ -562,6 +635,14 @@
         <span class="integration-dot" id="webrtc-int-dot"></span>
         WebRTC
       </button>
+    </div>
+
+    <!-- MCP Servers -->
+    <div class="mcp-panel">
+      <h2>MCP Servers</h2>
+      <div id="mcp-server-list" class="mcp-server-list">
+        <div class="mcp-loading">Loading...</div>
+      </div>
     </div>
 
     <!-- CLAUDE.md editor -->
@@ -928,6 +1009,53 @@ async function saveSettings() {
     settingsStatus.textContent = 'Error saving settings';
   } finally {
     btnSaveSettings.disabled = false;
+  }
+}
+
+// ============================================================================
+// MCP SERVERS
+// ============================================================================
+
+const mcpServerListEl = document.getElementById('mcp-server-list');
+
+/** Fetch MCP server list and render into the panel. */
+async function loadMcpServers() {
+  mcpServerListEl.innerHTML = '<div class="mcp-loading">Loading...</div>';
+
+  try {
+    const res = await fetch('/api/mcp-servers');
+    if (!res.ok) throw new Error('Failed to load');
+    const data = await res.json();
+
+    if (!data.servers || data.servers.length === 0) {
+      mcpServerListEl.innerHTML = '<div class="mcp-loading">No MCP servers configured.</div>';
+      return;
+    }
+
+    mcpServerListEl.innerHTML = '';
+    for (const server of data.servers) {
+      const row = document.createElement('div');
+      row.className = 'mcp-server-row';
+
+      const dotClass = server.status === 'connected' ? 'connected'
+        : server.status === 'needs_auth' ? 'needs-auth'
+        : 'failed';
+
+      const statusLabel = server.status === 'connected' ? 'Connected'
+        : server.status === 'needs_auth' ? 'Needs auth'
+        : 'Failed';
+
+      row.innerHTML =
+        '<span class="mcp-dot ' + dotClass + '"></span>' +
+        '<span class="mcp-server-name">' + server.name + '</span>' +
+        '<span class="mcp-server-url" title="' + server.url + '">' + server.url + '</span>' +
+        '<span class="mcp-server-badge">' + server.type.toUpperCase() + '</span>' +
+        '<span class="mcp-server-status ' + dotClass + '">' + statusLabel + '</span>';
+
+      mcpServerListEl.appendChild(row);
+    }
+  } catch (err) {
+    mcpServerListEl.innerHTML = '<div class="mcp-error">Failed to load MCP servers.</div>';
   }
 }
 
@@ -1631,6 +1759,7 @@ async function checkStatus() {
 load();
 checkStatus();
 loadSettings();
+loadMcpServers();
 loadConversations();
 </script>
 
