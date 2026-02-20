@@ -63,11 +63,10 @@ export interface Narrator {
  * @param config - Narration configuration (summaryIntervalMs controls long-task summary frequency)
  * @returns A Narrator instance
  */
-export function createNarrator(config: NarrationConfig): Narrator {
+export function createNarrator(config: NarrationConfig, onEmit?: (text: string) => void): Narrator {
   // -- internal state --
   let currentToolName: string | null = null;
   let summaryTimer: NodeJS.Timeout | null = null;
-  let pendingSummaries: string[] = [];
   let inLongTask = false;
 
   /**
@@ -105,7 +104,6 @@ export function createNarrator(config: NarrationConfig): Narrator {
   function reset(): void {
     currentToolName = null;
     clearSummaryTimer();
-    pendingSummaries = [];
     inLongTask = false;
   }
 
@@ -119,7 +117,7 @@ export function createNarrator(config: NarrationConfig): Narrator {
    * Handle a text_delta event: pass through immediately, exit long-task mode.
    * Text chunking for TTS is handled downstream by TextSplitterStream.
    * @param event - The text_delta event
-   * @returns Array containing the delta text (plus any pending summaries)
+   * @returns Array containing the delta text
    */
   function handleTextDelta(event: ClaudeStreamEvent): string[] {
     // Text arriving means Claude is responding directly -- leave long-task mode
@@ -129,7 +127,7 @@ export function createNarrator(config: NarrationConfig): Narrator {
       currentToolName = null;
     }
 
-    const results = drainPendingSummaries();
+    const results: string[] = [];
     if (event.content) {
       const clean = stripMarkdown(event.content);
       if (clean) results.push(clean);
@@ -152,36 +150,32 @@ export function createNarrator(config: NarrationConfig): Narrator {
     clearSummaryTimer();
     startSummaryTimer();
 
-    const results = drainPendingSummaries();
-    results.push(`Running ${toolName}...`);
-    return results;
+    return [`Running ${toolName}...`];
   }
 
   /**
    * Handle a tool_end event: clear current tool context but stay in long-task
    * mode since more tools might follow.
-   * @returns Array of any pending summaries
+   * @returns Empty array
    */
   function handleToolEnd(): string[] {
     currentToolName = null;
-    return drainPendingSummaries();
+    return [];
   }
 
   /**
    * Handle result or error events: flush all remaining text and reset state.
-   * @returns Array of any remaining text and pending summaries
+   * @returns Array of any remaining text
    */
   function handleTerminal(): string[] {
-    const results = drainPendingSummaries();
     const remaining = flush();
-    results.push(...remaining);
 
     // Full reset for next turn
     clearSummaryTimer();
     currentToolName = null;
     inLongTask = false;
 
-    return results;
+    return remaining;
   }
 
   /**
@@ -191,7 +185,10 @@ export function createNarrator(config: NarrationConfig): Narrator {
   function startSummaryTimer(): void {
     summaryTimer = setInterval(() => {
       const name = currentToolName ?? "the task";
-      pendingSummaries.push(`Still working on ${name}...`);
+      const summary = `Still working on ${name}...`;
+      if (onEmit) {
+        onEmit(summary);
+      }
     }, config.summaryIntervalMs);
   }
 
@@ -203,18 +200,5 @@ export function createNarrator(config: NarrationConfig): Narrator {
       clearInterval(summaryTimer);
       summaryTimer = null;
     }
-  }
-
-  /**
-   * Drain all pending summaries from the queue and return them.
-   * @returns Array of summary strings that were queued by the timer
-   */
-  function drainPendingSummaries(): string[] {
-    if (pendingSummaries.length === 0) {
-      return [];
-    }
-    const drained = [...pendingSummaries];
-    pendingSummaries = [];
-    return drained;
   }
 }

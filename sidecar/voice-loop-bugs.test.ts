@@ -443,3 +443,80 @@ test("BUG: after interrupt, next sendMessage receives stale events from previous
     await session.close();
   }
 });
+
+// ============================================================================
+// BUG 5: Narration summaries queue up and burst at tool_end
+// ============================================================================
+
+/**
+ * Verifies that periodic summaries from long-running tools are emitted
+ * immediately as they're generated (via the timer), not queued up and
+ * drained all at once when the tool ends.
+ *
+ * Current behavior: "Still working on Write..." messages accumulate in
+ * pendingSummaries array during tool execution, then all get drained in
+ * a burst when tool_end or text_delta arrives. User hears silence for
+ * the entire tool duration, then multiple rapid "still working" messages.
+ *
+ * Expected: Each timer tick should emit exactly one summary string that
+ * gets spoken immediately via TTS.
+ */
+test("BUG: narration summaries should emit immediately, not queue and burst at end", { timeout: 15_000 }, async () => {
+  const { createNarrator } = await import("./narration.js");
+
+  const emittedTexts: Array<{ text: string; timestamp: number }> = [];
+  const startTime = Date.now();
+
+  const narrator = createNarrator({
+    summaryIntervalMs: 100, // Fire every 100ms for fast test
+  }, (text: string) => {
+    emittedTexts.push({ text, timestamp: Date.now() - startTime });
+  });
+
+  // Simulate a long-running tool (Write tool taking 450ms)
+  const toolStart: ClaudeStreamEvent = { type: "tool_start", toolName: "Write" };
+  const initialTexts = narrator.processEvent(toolStart);
+
+  for (const text of initialTexts) {
+    emittedTexts.push({ text, timestamp: Date.now() - startTime });
+  }
+
+  // Wait 450ms while timer fires multiple times
+  await new Promise((r) => setTimeout(r, 450));
+
+  // Tool ends
+  const toolEnd: ClaudeStreamEvent = { type: "tool_end" };
+  const endTexts = narrator.processEvent(toolEnd);
+
+  for (const text of endTexts) {
+    emittedTexts.push({ text, timestamp: Date.now() - startTime });
+  }
+
+  // Expected: 4 summary emissions spaced ~100ms apart:
+  //   t=0ms:   "Running Write..."
+  //   t=100ms: "Still working on Write..."
+  //   t=200ms: "Still working on Write..."
+  //   t=300ms: "Still working on Write..."
+  //   t=400ms: "Still working on Write..." (last one before tool_end at 450ms)
+  //   t=450ms: tool_end drains any remaining (should be 0)
+
+  const stillWorkingMessages = emittedTexts.filter(e => e.text.includes("Still working"));
+
+  assert.ok(
+    stillWorkingMessages.length >= 3,
+    `Expected at least 3 "Still working" messages over 450ms with 100ms interval, got ${stillWorkingMessages.length}`
+  );
+
+  // Check if messages came in gradually (not all at once at the end)
+  const timestamps = stillWorkingMessages.map(e => e.timestamp);
+  const allAtEnd = timestamps.every(t => t > 400); // All after 400ms = burst at end
+
+  assert.ok(
+    !allAtEnd,
+    `All ${stillWorkingMessages.length} "Still working" messages arrived after 400ms (timestamps: ${timestamps}). ` +
+    `They were queued in pendingSummaries and drained in a burst at tool_end, ` +
+    `instead of being emitted immediately as the timer fired.`
+  );
+
+  narrator.reset();
+});

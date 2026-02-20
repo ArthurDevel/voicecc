@@ -317,6 +317,7 @@ export async function createVoiceSession(
     // Async generator that yields text chunks from Claude -> narrator
     const session = claudeSession;
     const narr = narrator;
+    const player = ttsPlayer;
     async function* textChunks(): AsyncGenerator<TextChunk> {
       const eventStream = session.sendMessage(transcript);
 
@@ -498,7 +499,12 @@ export async function createVoiceSession(
   endpointer = createEndpointer(config.endpointing);
 
   console.log("Initializing narrator...");
-  narrator = createNarrator(config.narration);
+  narrator = createNarrator(config.narration, async (summary: string) => {
+    if (interrupted || !ttsPlayer) return;
+    await ttsPlayer.speakStream((async function*() {
+      yield { text: summary, flush: true };
+    })());
+  });
 
   console.log("Voice mode active");
   adapter.playChime();
