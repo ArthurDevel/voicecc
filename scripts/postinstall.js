@@ -39,6 +39,7 @@ const PYTHON_PACKAGES = [
 
 function main() {
   installClaudeMd();
+  buildDashboard();
   compileMicVpio();
   checkSystemDeps();
   setupPythonVenv();
@@ -57,6 +58,21 @@ function main() {
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
+
+/**
+ * Build the dashboard frontend via Vite.
+ */
+function buildDashboard() {
+  console.log("Building dashboard...");
+  try {
+    run("cd dashboard && npx vite build");
+  } catch (err) {
+    console.error("\n[voicecc] ERROR: Failed to build dashboard.");
+    console.error("  Try manually: cd dashboard && npx vite build\n");
+    process.exit(1);
+  }
+  console.log("Dashboard built successfully");
+}
 
 /**
  * Copy the project CLAUDE.md from init/ to the project root.
