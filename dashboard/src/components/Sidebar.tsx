@@ -22,6 +22,7 @@ import type { TwilioStatus } from "../pages/Home";
 
 interface SidebarProps {
   twilioStatus: TwilioStatus;
+  authStatus: boolean | null;
 }
 
 interface ConversationSummary {
@@ -35,7 +36,7 @@ interface ConversationSummary {
 // COMPONENT
 // ============================================================================
 
-export function Sidebar({ twilioStatus }: SidebarProps) {
+export function Sidebar({ twilioStatus, authStatus }: SidebarProps) {
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [voiceButtonText, setVoiceButtonText] = useState("Start Voice");
   const [voiceDisabled, setVoiceDisabled] = useState(false);
@@ -89,16 +90,32 @@ export function Sidebar({ twilioStatus }: SidebarProps) {
 
   return (
     <div className="sidebar">
-      {/* App Logo */}
+      {/* App Logo + Auth status */}
       <div style={{
         padding: "24px 16px 8px 24px",
-        fontSize: "28px",
-        fontWeight: "400",
-        fontFamily: "'IBM Plex Serif', serif",
-        letterSpacing: "-0.5px",
-        color: "var(--text-primary)"
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
       }}>
-        VoiceCC
+        <span style={{
+          fontSize: "28px",
+          fontWeight: "400",
+          fontFamily: "'IBM Plex Serif', serif",
+          letterSpacing: "-0.5px",
+          color: "var(--text-primary)",
+        }}>
+          VoiceCC
+        </span>
+        <span
+          title={authStatus === null ? "Checking Claude auth..." : authStatus ? "Claude authenticated" : "Claude not authenticated"}
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: "50%",
+            background: authStatus === null ? "#666" : authStatus ? "var(--accent-color)" : "#d73a49",
+            flexShrink: 0,
+          }}
+        />
       </div>
 
       {/* Top action buttons styled as primary/secondary */}
