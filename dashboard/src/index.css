@@ -627,6 +627,250 @@ button.mcp-server-status.needs-auth:hover {
   color: #d73a49;
 }
 
+/* Delete button on server rows */
+.mcp-delete-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.mcp-delete-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.mcp-delete-btn:hover {
+  color: #d73a49;
+}
+
+.mcp-delete-btn.disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.mcp-delete-btn.disabled:hover {
+  color: var(--text-secondary);
+}
+
+.mcp-delete-tooltip {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 6px);
+  right: 0;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-size: 11px;
+  padding: 4px 8px;
+  white-space: nowrap;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.mcp-delete-wrap:hover .mcp-delete-tooltip {
+  display: block;
+}
+
+/* "Add MCP Server" button */
+.mcp-add-btn {
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-text);
+  border: none;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.mcp-add-btn:hover {
+  opacity: 0.85;
+}
+
+/* Add MCP Server modal -- scope selector row */
+.mcp-add-scope-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.mcp-add-scope-btn {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  padding: 3px 10px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.mcp-add-scope-btn.active {
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-text);
+  border-color: transparent;
+}
+
+/* Add MCP Server modal -- card grid */
+.mcp-add-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.mcp-add-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mcp-add-card.installed {
+  opacity: 0.55;
+}
+
+.mcp-add-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.mcp-add-card-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-transform: capitalize;
+}
+
+.mcp-add-card-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  background: #2ea043;
+  color: #fff;
+  font-weight: 500;
+}
+
+.mcp-add-card-badge.needs-auth {
+  background: #d29922;
+}
+
+.mcp-add-card-desc {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  margin: 0;
+}
+
+.mcp-add-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: auto;
+  gap: 8px;
+}
+
+.mcp-add-card-url {
+  font-size: 10px;
+  color: var(--text-secondary);
+  font-family: "SF Mono", "Fira Code", monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.mcp-add-card-btn {
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-text);
+  border: none;
+  padding: 3px 12px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.mcp-add-card-btn:hover {
+  opacity: 0.85;
+}
+
+.mcp-add-card-btn.auth {
+  background: none;
+  border: 1px solid #d29922;
+  color: #d29922;
+}
+
+.mcp-add-card-btn.auth:hover {
+  background: rgba(210, 153, 34, 0.15);
+  opacity: 1;
+}
+
+.mcp-add-card-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.mcp-add-card-btn.delete {
+  background: none;
+  border: 1px solid #d73a49;
+  color: #d73a49;
+}
+
+.mcp-add-card-btn.delete:hover {
+  background: rgba(215, 58, 73, 0.15);
+  opacity: 1;
+}
+
+.mcp-add-card-btn.delete.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.mcp-add-card-btn.delete.disabled:hover {
+  background: none;
+}
+
+/* ============================================================================
+ * TOAST
+ * ============================================================================ */
+
+.toast {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background: #6e3630;
+  border: 1px solid #d73a49;
+  color: #f0f0f0;
+  font-size: 12px;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  z-index: 200;
+  max-width: 400px;
+}
+
+.toast-close {
+  background: none;
+  border: none;
+  color: #f0f0f0;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+  opacity: 0.7;
+}
+
+.toast-close:hover {
+  opacity: 1;
+}
+
 /* ============================================================================
  * MODAL
  * ============================================================================ */
@@ -790,34 +1034,41 @@ button.mcp-server-status.needs-auth:hover {
 }
 
 .msg {
-  margin-bottom: 16px;
-  max-width: 80%;
+  margin-bottom: 24px;
+  max-width: 100%;
 }
 
-.msg-user {
-  margin-left: auto;
-  background: #264f78;
-  border-radius: 8px 8px 2px 8px;
-  padding: 8px 12px;
+.msg-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.msg-role {
   font-size: 13px;
-  line-height: 1.5;
+  font-weight: 600;
   color: var(--text-primary);
 }
 
-.msg-assistant {
+.msg-time {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.msg-content {
   background: var(--bg-surface);
-  border-radius: 8px 8px 8px 2px;
-  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 0;
+  padding: 12px 16px;
   font-size: 13px;
-  line-height: 1.5;
+  line-height: 1.6;
   color: var(--text-primary);
   white-space: pre-wrap;
 }
 
-.msg-time {
-  font-size: 10px;
-  color: var(--text-secondary);
-  margin-top: 2px;
+.msg-user .msg-content {
+  background: var(--bg-hover);
 }
 
 .conversation-empty {
