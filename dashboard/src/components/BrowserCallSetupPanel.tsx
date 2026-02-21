@@ -27,6 +27,11 @@ interface BrowserCallStatusData {
   ngrokUrl: string | null;
 }
 
+interface IntegrationsState {
+  twilio: { enabled: boolean };
+  browserCall: { enabled: boolean };
+}
+
 // ============================================================================
 // CONSTANTS
 // ============================================================================
@@ -49,13 +54,19 @@ export function BrowserCallSetupPanel({ onClose }: BrowserCallSetupPanelProps) {
   const [ngrokInstalled, setNgrokInstalled] = useState<boolean | null>(null);
   const [status, setStatus] = useState<BrowserCallStatusData | null>(null);
   const [actionText, setActionText] = useState("");
+  const [enabled, setEnabled] = useState(false);
+  const [toggling, setToggling] = useState(false);
 
-  // Load current ngrok authtoken + check ngrok installation on mount
+  // Load current ngrok authtoken, integration state, and check ngrok on mount
   useEffect(() => {
     get<Record<string, string>>("/api/settings")
       .then((data) => {
         if (data.NGROK_AUTHTOKEN) setNgrokToken(data.NGROK_AUTHTOKEN);
       })
+      .catch(() => {});
+
+    get<IntegrationsState>("/api/integrations")
+      .then((data) => setEnabled(data.browserCall.enabled))
       .catch(() => {});
 
     checkNgrok();
@@ -96,30 +107,22 @@ export function BrowserCallSetupPanel({ onClose }: BrowserCallSetupPanelProps) {
     }
   }, []);
 
-  /** Save ngrok authtoken and start the browser call server + ngrok */
-  const handleSaveAndStart = useCallback(async () => {
-    setActionText("Saving...");
-    if (ngrokToken.trim()) {
-      await post("/api/settings", { NGROK_AUTHTOKEN: ngrokToken.trim() });
-    }
-
-    setActionText("Starting...");
+  /** Toggle the Browser Call integration enabled state */
+  const handleToggle = useCallback(async () => {
+    const newEnabled = !enabled;
+    setToggling(true);
     try {
-      await post("/api/browser-call/start");
+      await post("/api/integrations/browser-call", { enabled: newEnabled });
+      setEnabled(newEnabled);
       pollStatus();
-      setActionText("");
     } catch (err) {
-      const message = err instanceof Error ? err.message : (err as { message?: string })?.message || "Failed to start";
+      const message = err instanceof Error ? err.message : (err as { message?: string })?.message || "Failed";
       setActionText(message);
       setTimeout(() => setActionText(""), 4000);
+    } finally {
+      setToggling(false);
     }
-  }, [ngrokToken]);
-
-  /** Stop the browser call server */
-  const handleStop = useCallback(async () => {
-    await post("/api/browser-call/stop");
-    pollStatus();
-  }, []);
+  }, [enabled]);
 
   /** Close modal when clicking overlay background */
   const handleOverlayClick = (e: React.MouseEvent) => {
@@ -184,26 +187,32 @@ export function BrowserCallSetupPanel({ onClose }: BrowserCallSetupPanelProps) {
 
         <hr className="setup-divider" />
 
-        {/* Step 3: Start/Stop server */}
+        {/* Step 3: Enable integration */}
         <div className="setup-step">
           <div className="setup-step-title">
             <span className="setup-step-number">3</span>
-            {isRunning ? "Server running" : "Start server"}
+            {isRunning ? "Server running" : "Enable integration"}
           </div>
           <div className="setup-step-desc">
             {isRunning
               ? <>Server is running.{status?.ngrokUrl && <> ngrok URL: <code>{status.ngrokUrl}</code></>}</>
-              : "Click below to save your ngrok authtoken and launch the browser call server + ngrok."
+              : "Enable to start the browser call server and auto-start on boot."
             }
+            {actionText && <div style={{ color: "#d73a49", marginTop: 4, fontSize: 12 }}>{actionText}</div>}
           </div>
           <div className="setup-paste-row">
-            {isRunning ? (
-              <button style={{ flex: 1, background: "#6e3630" }} onClick={handleStop}>Stop Server</button>
-            ) : (
-              <button style={{ flex: 1 }} disabled={!!actionText} onClick={handleSaveAndStart}>
-                {actionText || "Save Settings & Start Server"}
-              </button>
-            )}
+            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: toggling ? "wait" : "pointer" }}>
+              <input
+                type="checkbox"
+                checked={enabled}
+                disabled={toggling}
+                onChange={handleToggle}
+                style={{ width: 16, height: 16, cursor: toggling ? "wait" : "pointer" }}
+              />
+              <span style={{ fontSize: 14, fontWeight: 500, color: "var(--text-primary)" }}>
+                {toggling ? (enabled ? "Stopping..." : "Starting...") : "Enabled"}
+              </span>
+            </label>
           </div>
         </div>
 

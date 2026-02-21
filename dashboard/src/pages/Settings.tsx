@@ -49,7 +49,7 @@ export function Settings() {
                     <SettingsPanel ngrokRunning={ngrokStatus.running} twilioRunning={twilioStatus.running} />
                 )}
                 {activeTab === "integrations" && (
-                    <McpServersPanel ngrokRunning={ngrokStatus.running} twilioRunning={twilioStatus.running} browserCallRunning={browserCallStatus.running} />
+                    <McpServersPanel twilioRunning={twilioStatus.running} browserCallRunning={browserCallStatus.running} />
                 )}
                 {activeTab === "system" && (
                     <ClaudeMdEditor />
