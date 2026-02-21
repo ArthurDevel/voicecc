@@ -15,19 +15,19 @@ import type { LayoutContext } from "../components/Layout";
 // TYPES
 // ============================================================================
 
-export interface NgrokStatus {
+export interface TunnelStatus {
   running: boolean;
   url: string | null;
 }
 
 export interface TwilioStatus {
   running: boolean;
-  ngrokUrl: string | null;
+  tunnelUrl: string | null;
 }
 
 export interface BrowserCallStatus {
   running: boolean;
-  ngrokUrl: string | null;
+  tunnelUrl: string | null;
 }
 
 export function Home() {

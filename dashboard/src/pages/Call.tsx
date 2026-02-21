@@ -129,6 +129,7 @@ export function Call() {
   /** Submit the pairing code to the server */
   const submitPairing = useCallback(async (fullPin?: string) => {
     const code = fullPin || getFullPin();
+    console.log("[Call] submitPairing called, code length:", code.length);
     if (code.length !== PIN_LENGTH) {
       setPairError("Enter all 6 digits");
       return;
@@ -136,12 +137,15 @@ export function Call() {
 
     setPairError("");
     try {
+      console.log("[Call] POST /api/webrtc/pair ...");
       const data = await post<{ token: string }>("/api/webrtc/pair", { code });
+      console.log("[Call] Pairing success, got token");
       deviceTokenRef.current = data.token;
       localStorage.setItem(DEVICE_TOKEN_KEY, data.token);
       setCallState("ready");
     } catch (err) {
       const message = (err as { message?: string })?.message || "Pairing failed";
+      console.error("[Call] Pairing failed:", message);
       setPairError(message);
       clearPin();
     }
@@ -150,25 +154,33 @@ export function Call() {
   // Check existing token or auto-pair from URL code on mount
   useEffect(() => {
     const token = deviceTokenRef.current;
+    const urlCode = new URLSearchParams(window.location.search).get("code");
+    console.log("[Call] mount: token=%s, urlCode=%s", token ? "present" : "none", urlCode ?? "none");
 
     // If a pairing code was passed as a URL parameter, auto-submit it
-    const urlCode = new URLSearchParams(window.location.search).get("code");
     if (urlCode && urlCode.length === PIN_LENGTH && !token) {
+      console.log("[Call] auto-pairing from URL code");
       submitPairing(urlCode);
       return;
     }
 
     if (!token) {
+      console.log("[Call] no token, showing PIN input");
       inputRefs.current[0]?.focus();
       return;
     }
 
     // Validate existing token
+    console.log("[Call] validating existing token...");
     fetch("/api/webrtc/validate", {
       headers: { Authorization: `Bearer ${token}` },
     })
-      .then((res) => res.json())
+      .then((res) => {
+        console.log("[Call] validate response status:", res.status);
+        return res.json();
+      })
       .then((data: { valid: boolean }) => {
+        console.log("[Call] validate result:", data);
         if (data.valid) {
           setCallState("ready");
         } else {
@@ -182,7 +194,10 @@ export function Call() {
           }
         }
       })
-      .catch(() => inputRefs.current[0]?.focus());
+      .catch((err) => {
+        console.error("[Call] validate error:", err);
+        inputRefs.current[0]?.focus();
+      });
   }, []);
 
   /** Handle PIN input changes */
@@ -364,15 +379,18 @@ export function Call() {
       };
 
       ws.onopen = () => {
+        console.log("[Call] WebSocket connected");
         setCallState("active");
       };
 
-      ws.onclose = () => {
+      ws.onclose = (ev) => {
+        console.log("[Call] WebSocket closed, code:", ev.code, "reason:", ev.reason);
         cleanup();
         setCallState("ready");
       };
 
-      ws.onerror = () => {
+      ws.onerror = (ev) => {
+        console.error("[Call] WebSocket error:", ev);
         setCallError("WebSocket connection failed");
         cleanup();
         setCallState("ready");

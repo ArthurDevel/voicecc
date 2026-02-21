@@ -12,7 +12,7 @@
  * - Reject duplicate connections for the same device token
  * - Create BrowserAudioAdapter + VoiceSession per connection
  * - Proxy non-audio HTTP requests to the dashboard server
- * - Send periodic ws.ping() to keep connections alive through ngrok
+ * - Send periodic ws.ping() to keep connections alive through tunnel
  */
 
 import "dotenv/config";
@@ -42,7 +42,7 @@ const DEFAULT_PORT = 8080;
 /** Interruption threshold for browser calls (lower than Twilio's 2000ms because browser getUserMedia includes AEC) */
 const BROWSER_INTERRUPTION_THRESHOLD_MS = 1500;
 
-/** Ping interval to keep WebSocket connections alive through ngrok (ms) */
+/** Ping interval to keep WebSocket connections alive through tunnel (ms) */
 const PING_INTERVAL_MS = 30_000;
 
 /** Default voice session config for browser calls */
@@ -99,7 +99,7 @@ const activeSessions = new Map<string, ActiveBrowserSession>();
  * Reads TWILIO_PORT (default 8080) and DASHBOARD_PORT from environment.
  * Creates an HTTP server that proxies non-audio requests to the dashboard.
  * WebSocket upgrade on /audio?token=<token> with device token validation.
- * Sends periodic ws.ping() every 30s to keep connections alive through ngrok.
+ * Sends periodic ws.ping() every 30s to keep connections alive through tunnel.
  *
  * @returns Resolves when the server is listening
  * @throws Error if DASHBOARD_PORT is not set
@@ -126,7 +126,7 @@ async function startBrowserServer(): Promise<void> {
     handleWebSocketUpgrade(req, socket, head, wss);
   });
 
-  // Periodic ping to keep connections alive through ngrok
+  // Periodic ping to keep connections alive through tunnel
   setInterval(() => {
     wss.clients.forEach((ws) => {
       if (ws.readyState === ws.OPEN) {
@@ -294,6 +294,9 @@ async function createSession(ws: WebSocket, entry: ActiveBrowserSession): Promis
  * @param dashboardPort - Port the dashboard server is listening on
  */
 function proxyToDashboard(req: IncomingMessage, res: ServerResponse, dashboardPort: number): void {
+  const clientIp = req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown";
+  console.log(`[proxy] ${req.method} ${req.url} from ${clientIp}`);
+
   const proxyReq = httpRequest(
     {
       hostname: "127.0.0.1",
@@ -303,12 +306,14 @@ function proxyToDashboard(req: IncomingMessage, res: ServerResponse, dashboardPo
       headers: req.headers,
     },
     (proxyRes) => {
+      console.log(`[proxy] ${req.url} -> ${proxyRes.statusCode}`);
       res.writeHead(proxyRes.statusCode ?? 502, proxyRes.headers);
       proxyRes.pipe(res);
     },
   );
 
-  proxyReq.on("error", () => {
+  proxyReq.on("error", (err) => {
+    console.error(`[proxy] ${req.url} proxy error:`, err.message);
     res.writeHead(502, { "Content-Type": "text/plain" });
     res.end("Dashboard unavailable");
   });

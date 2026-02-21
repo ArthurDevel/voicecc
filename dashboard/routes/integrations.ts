@@ -3,7 +3,7 @@
  *
  * Manages the enabled state of integrations (Twilio, Browser Call).
  * Enabling an integration persists the flag to .env and immediately starts
- * the service (plus ngrok as a dependency). Disabling stops it.
+ * the service (plus tunnel as a dependency). Disabling stops it.
  *
  * - GET / -- returns enabled state for each integration
  * - POST /:name -- sets enabled state and starts/stops the service
@@ -13,7 +13,7 @@ import { Hono } from "hono";
 import { readEnv, writeEnvKey } from "../../services/env.js";
 import { startTwilioServer, stopTwilioServer, isRunning as isTwilioRunning } from "../../services/twilio-manager.js";
 import { startBrowserCallServer, stopBrowserCallServer, isBrowserCallRunning } from "../../services/browser-call-manager.js";
-import { startNgrok, stopNgrok, isNgrokRunning, getNgrokUrl } from "../../services/ngrok.js";
+import { startTunnel, stopTunnel, isTunnelRunning, getTunnelUrl } from "../../services/tunnel.js";
 
 // ============================================================================
 // CONSTANTS
@@ -99,20 +99,17 @@ export function integrationsRoutes(): Hono {
 // ============================================================================
 
 /**
- * Start an integration and its ngrok dependency.
+ * Start an integration and its tunnel dependency.
  *
  * @param name - Integration name ("twilio" or "browser-call")
  */
 async function startIntegration(name: string): Promise<void> {
   const envVars = await readEnv();
-  const ngrokPort = parseInt(envVars.TWILIO_PORT || "8080", 10);
+  const tunnelPort = parseInt(envVars.TWILIO_PORT || "8080", 10);
 
-  // Start ngrok if not already running
-  if (!isNgrokRunning()) {
-    if (!envVars.NGROK_AUTHTOKEN) {
-      throw new Error("NGROK_AUTHTOKEN is not configured. Set it in the integration setup first.");
-    }
-    await startNgrok(ngrokPort);
+  // Start tunnel if not already running
+  if (!isTunnelRunning()) {
+    await startTunnel(tunnelPort);
   }
 
   if (name === "twilio") {
@@ -123,7 +120,7 @@ async function startIntegration(name: string): Promise<void> {
       throw new Error("Browser call server is already running on this port");
     }
     if (!isTwilioRunning()) {
-      await startTwilioServer(dashboardPort, getNgrokUrl() ?? undefined);
+      await startTwilioServer(dashboardPort, getTunnelUrl() ?? undefined);
     }
   } else if (name === "browser-call") {
     if (isTwilioRunning()) {
@@ -136,22 +133,22 @@ async function startIntegration(name: string): Promise<void> {
 }
 
 /**
- * Stop an integration and ngrok if no other consumer needs it.
+ * Stop an integration and tunnel if no other consumer needs it.
  *
  * @param name - Integration name ("twilio" or "browser-call")
  */
 function stopIntegration(name: string): void {
   if (name === "twilio") {
     stopTwilioServer();
-    // Only stop ngrok if browser call is also stopped
+    // Only stop tunnel if browser call is also stopped
     if (!isBrowserCallRunning()) {
-      stopNgrok();
+      stopTunnel();
     }
   } else if (name === "browser-call") {
     stopBrowserCallServer();
-    // Only stop ngrok if Twilio is also stopped
+    // Only stop tunnel if Twilio is also stopped
     if (!isTwilioRunning()) {
-      stopNgrok();
+      stopTunnel();
     }
   }
 }
