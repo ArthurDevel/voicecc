@@ -117,31 +117,6 @@ export function Call() {
   // PAIRING HANDLERS
   // --------------------------------------------------------------------------
 
-  // Check existing token on mount
-  useEffect(() => {
-    const token = deviceTokenRef.current;
-    if (!token) {
-      inputRefs.current[0]?.focus();
-      return;
-    }
-
-    // Validate existing token
-    fetch("/api/webrtc/validate", {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((res) => res.json())
-      .then((data: { valid: boolean }) => {
-        if (data.valid) {
-          setCallState("ready");
-        } else {
-          localStorage.removeItem(DEVICE_TOKEN_KEY);
-          deviceTokenRef.current = "";
-          inputRefs.current[0]?.focus();
-        }
-      })
-      .catch(() => inputRefs.current[0]?.focus());
-  }, []);
-
   /** Get the full PIN string from current state */
   const getFullPin = useCallback((): string => pin.join(""), [pin]);
 
@@ -171,6 +146,44 @@ export function Call() {
       clearPin();
     }
   }, [getFullPin]);
+
+  // Check existing token or auto-pair from URL code on mount
+  useEffect(() => {
+    const token = deviceTokenRef.current;
+
+    // If a pairing code was passed as a URL parameter, auto-submit it
+    const urlCode = new URLSearchParams(window.location.search).get("code");
+    if (urlCode && urlCode.length === PIN_LENGTH && !token) {
+      submitPairing(urlCode);
+      return;
+    }
+
+    if (!token) {
+      inputRefs.current[0]?.focus();
+      return;
+    }
+
+    // Validate existing token
+    fetch("/api/webrtc/validate", {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((res) => res.json())
+      .then((data: { valid: boolean }) => {
+        if (data.valid) {
+          setCallState("ready");
+        } else {
+          localStorage.removeItem(DEVICE_TOKEN_KEY);
+          deviceTokenRef.current = "";
+          // Fall back to URL code if available
+          if (urlCode && urlCode.length === PIN_LENGTH) {
+            submitPairing(urlCode);
+          } else {
+            inputRefs.current[0]?.focus();
+          }
+        }
+      })
+      .catch(() => inputRefs.current[0]?.focus());
+  }, []);
 
   /** Handle PIN input changes */
   const handlePinInput = (index: number, value: string) => {

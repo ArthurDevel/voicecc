@@ -34,7 +34,7 @@ export function BrowserCallModal({ ngrokUrl, onClose }: BrowserCallModalProps) {
   const [error, setError] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const callPageUrl = `${ngrokUrl}/call`;
+  const callPageUrl = code ? `${ngrokUrl}/call?code=${code}` : `${ngrokUrl}/call`;
 
   /** Generate a new pairing code */
   const generateCode = useCallback(async () => {
