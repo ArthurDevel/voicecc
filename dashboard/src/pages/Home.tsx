@@ -57,6 +57,20 @@ export function Home() {
     setActivePage("conversation");
   };
 
+  const [activeTab, setActiveTab] = useState<"general" | "integrations" | "system">("general");
+
+  const tabStyle = (tab: string) => ({
+    padding: "6px 14px",
+    background: activeTab === tab ? "var(--btn-primary-bg)" : "var(--bg-main)",
+    border: "1px solid " + (activeTab === tab ? "transparent" : "var(--border-color)"),
+    borderRadius: "0",
+    color: activeTab === tab ? "var(--btn-primary-text)" : "var(--text-primary)",
+    fontWeight: 500,
+    cursor: "pointer",
+    fontSize: "13px",
+    transition: "all 0.1s ease",
+  });
+
   return (
     <div style={{ display: "flex", height: "100vh" }}>
       <Sidebar
@@ -68,16 +82,33 @@ export function Home() {
       />
       <div className="main">
         {activePage === "settings" && (
-          <div className="page active" style={{ overflowY: "auto" }}>
-            <div className="page-header" style={{ borderBottom: "none", marginBottom: 8 }}>
-              <div>
-                <h1>Good afternoon</h1>
-                <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 4 }}>Manage your workspace settings and integrations.</p>
-              </div>
+          <div className="page active" style={{ display: "flex", flexDirection: "column", padding: 0 }}>
+            {/* Tabs Row */}
+            <div style={{ display: "flex", gap: "8px", padding: "24px 32px 16px", borderBottom: "1px solid var(--border-color)", flexShrink: 0 }}>
+              <button style={tabStyle("general")} onClick={() => setActiveTab("general")}>General</button>
+              <button style={tabStyle("integrations")} onClick={() => setActiveTab("integrations")}>Integrations & MCP</button>
+              <button style={tabStyle("system")} onClick={() => setActiveTab("system")}>System Prompt</button>
             </div>
-            <SettingsPanel ngrokRunning={ngrokStatus.running} twilioRunning={twilioStatus.running} />
-            <McpServersPanel />
-            <ClaudeMdEditor />
+
+            {/* Scrollable Content Area */}
+            <div style={{ flex: 1, overflowY: "auto", padding: "24px 32px" }}>
+              <div className="page-header" style={{ borderBottom: "none", paddingBottom: 0, marginBottom: 24 }}>
+                <div>
+                  <h1>Good afternoon</h1>
+                  <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 4 }}>Manage your workspace settings and integrations.</p>
+                </div>
+              </div>
+
+              {activeTab === "general" && (
+                <SettingsPanel ngrokRunning={ngrokStatus.running} twilioRunning={twilioStatus.running} />
+              )}
+              {activeTab === "integrations" && (
+                <McpServersPanel ngrokRunning={ngrokStatus.running} twilioRunning={twilioStatus.running} />
+              )}
+              {activeTab === "system" && (
+                <ClaudeMdEditor />
+              )}
+            </div>
           </div>
         )}
         {activePage === "conversation" && selectedConversationId && (
