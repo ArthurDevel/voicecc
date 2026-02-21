@@ -649,7 +649,7 @@ button.mcp-server-status.needs-auth:hover {
 }
 
 .modal {
-  background: #252526;
+  background: var(--bg-surface);
   border: 1px solid var(--border-color);
   border-radius: 0;
   width: 560px;
@@ -689,7 +689,7 @@ button.mcp-server-status.needs-auth:hover {
   width: 20px;
   height: 20px;
   background: var(--btn-primary-bg);
-  color: #fff;
+  color: var(--btn-primary-text);
   font-size: 11px;
   font-weight: 600;
   text-align: center;
@@ -719,11 +719,11 @@ button.mcp-server-status.needs-auth:hover {
   border-radius: 0;
   font-family: "SF Mono", "Fira Code", monospace;
   font-size: 11px;
-  color: #ce9178;
+  color: var(--accent-color);
 }
 
 .setup-step-desc a {
-  color: #3794ff;
+  color: var(--accent-color);
   text-decoration: none;
 }
 
@@ -756,7 +756,7 @@ button.mcp-server-status.needs-auth:hover {
 
 .setup-paste-row button {
   background: var(--btn-primary-bg);
-  color: #fff;
+  color: var(--btn-primary-text);
   border: none;
   padding: 5px 10px;
   border-radius: 0;
