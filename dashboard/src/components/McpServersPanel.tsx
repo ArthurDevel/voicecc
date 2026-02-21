@@ -82,13 +82,13 @@ export function McpServersPanel({ twilioRunning, browserCallRunning }: McpServer
       </div>
       <div className="integrations-panel">
         <h2 style={{ fontSize: 16, fontWeight: 600, color: "var(--text-primary)", marginBottom: 4 }}>Integrations</h2>
-        <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 20 }}>Connect external services like Twilio to enable voice calling capabilities.</p>
+        <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 20 }}>Connect external services to enable voice calling capabilities.</p>
 
         <div style={{ display: "flex", gap: 12 }}>
-          <button className="btn-integration" onClick={() => setShowTwilioModal(true)}>
+          {/* <button className="btn-integration" onClick={() => setShowTwilioModal(true)}>
             <span className={`integration-dot${twilioRunning ? " running" : ""}`} />
             Twilio
-          </button>
+          </button> */}
           <button className="btn-integration" onClick={() => setShowBrowserCallModal(true)}>
             <span className={`integration-dot${browserCallRunning ? " running" : ""}`} />
             Browser Call from Anywhere
