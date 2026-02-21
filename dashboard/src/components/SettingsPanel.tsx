@@ -3,12 +3,10 @@
  *
  * Renders:
  * - MAX_CONCURRENT_SESSIONS input with load/save
- * - Twilio and WebRTC integration buttons that open setup modals
  */
 
 import { useState, useEffect, useCallback } from "react";
 import { get, post } from "../api";
-import { TwilioPanel } from "./TwilioPanel";
 
 // ============================================================================
 // TYPES
@@ -18,8 +16,6 @@ interface SettingsPanelProps {
   ngrokRunning: boolean;
   twilioRunning: boolean;
 }
-
-type ModalMode = "twilio" | "webrtc" | null;
 
 // ============================================================================
 // COMPONENT

@@ -14,21 +14,14 @@
  * - Cache the ready chime as 24kHz PCM for playback over the call
  */
 
-import { execSync } from "child_process";
-import { readFileSync, unlinkSync } from "fs";
-
 import type { WebSocket } from "ws";
 import type { AudioAdapter } from "./audio-adapter.js";
+
+import { decodeChimeToPcm } from "./chime.js";
 
 // ============================================================================
 // CONSTANTS
 // ============================================================================
-
-/** macOS system sound used for the ready chime */
-const READY_CHIME_PATH = "/System/Library/Sounds/Glass.aiff";
-
-/** Temp file path for afconvert output during chime decoding */
-const CHIME_TEMP_PATH = "/tmp/chime-24k.raw";
 
 /** Bias constant for G.711 mu-law encoding */
 const MULAW_BIAS = 0x84;
@@ -342,26 +335,4 @@ export function pcm24kToTwilioPayload(pcmBuffer: Buffer): string {
 
   // Base64 encode
   return mulawBytes.toString("base64");
-}
-
-// ============================================================================
-// HELPER FUNCTIONS
-// ============================================================================
-
-/**
- * Decode the macOS Glass.aiff system sound to raw 24kHz int16 PCM.
- * Uses afconvert (macOS built-in) to convert to a temp file, reads it,
- * then deletes the temp file. Called once during adapter initialization.
- *
- * @returns Buffer containing raw 24kHz int16 mono PCM
- * @throws Error if afconvert fails or temp file cannot be read
- */
-function decodeChimeToPcm(): Buffer {
-  execSync(`afconvert -f caff -d LEI16@24000 -c 1 ${READY_CHIME_PATH} ${CHIME_TEMP_PATH}`);
-
-  const pcm = readFileSync(CHIME_TEMP_PATH);
-
-  unlinkSync(CHIME_TEMP_PATH);
-
-  return pcm;
 }

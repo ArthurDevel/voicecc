@@ -3,17 +3,19 @@ import { get } from "../api";
 import { SettingsPanel } from "../components/SettingsPanel";
 import { McpServersPanel } from "../components/McpServersPanel";
 import { ClaudeMdEditor } from "../components/ClaudeMdEditor";
-import type { NgrokStatus, TwilioStatus } from "../pages/Home"; // Will move this later
+import type { NgrokStatus, TwilioStatus, BrowserCallStatus } from "../pages/Home";
 
 export function Settings() {
     const [activeTab, setActiveTab] = useState<"general" | "integrations" | "system">("general");
     const [ngrokStatus, setNgrokStatus] = useState<NgrokStatus>({ running: false, url: null });
-    const [twilioStatus, setTwilioStatus] = useState<TwilioStatus>({ running: false, webrtcReady: false, ngrokUrl: null });
+    const [twilioStatus, setTwilioStatus] = useState<TwilioStatus>({ running: false, ngrokUrl: null });
+    const [browserCallStatus, setBrowserCallStatus] = useState<BrowserCallStatus>({ running: false, ngrokUrl: null });
 
     useEffect(() => {
         const poll = () => {
             get<NgrokStatus>("/api/ngrok/status").then(setNgrokStatus).catch(() => { });
             get<TwilioStatus>("/api/twilio/status").then(setTwilioStatus).catch(() => { });
+            get<BrowserCallStatus>("/api/browser-call/status").then(setBrowserCallStatus).catch(() => { });
         };
         poll();
         const interval = setInterval(poll, 5000);
@@ -47,7 +49,7 @@ export function Settings() {
                     <SettingsPanel ngrokRunning={ngrokStatus.running} twilioRunning={twilioStatus.running} />
                 )}
                 {activeTab === "integrations" && (
-                    <McpServersPanel ngrokRunning={ngrokStatus.running} twilioRunning={twilioStatus.running} />
+                    <McpServersPanel ngrokRunning={ngrokStatus.running} twilioRunning={twilioStatus.running} browserCallRunning={browserCallStatus.running} />
                 )}
                 {activeTab === "system" && (
                     <ClaudeMdEditor />
