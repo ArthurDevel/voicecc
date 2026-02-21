@@ -1,15 +1,20 @@
 {
   "name": "voicecc",
-  "version": "1.0.2",
+  "version": "1.0.7",
   "description": "Voice mode plugin for Claude Code -- hands-free interaction via local STT/TTS/VAD",
   "type": "module",
+  "bin": {
+    "voicecc": "bin/voicecc.js"
+  },
   "scripts": {
     "start": "tsx run.ts",
     "dev:dashboard": "cd dashboard && npx vite",
     "build:dashboard": "cd dashboard && npx vite build",
-    "postinstall": "node scripts/postinstall.js && npm run build:dashboard"
+    "prepublishOnly": "npm run build:dashboard",
+    "postinstall": "node scripts/postinstall.js"
   },
   "files": [
+    "bin/",
     "run.ts",
     "sidecar/",
     "services/",
@@ -39,7 +44,8 @@
     "react-router-dom": "^7.13.0",
     "sherpa-onnx-node": "^1.11.0",
     "twilio": "^5.0.0",
-    "ws": "^8.18.0"
+    "ws": "^8.18.0",
+    "tsx": "^4.19.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
@@ -47,7 +53,6 @@
     "@types/react-dom": "^19.2.3",
     "@types/ws": "^8.5.0",
     "@vitejs/plugin-react": "^5.1.4",
-    "tsx": "^4.19.0",
     "typescript": "^5.7.0",
     "vite": "^7.3.1"
   }

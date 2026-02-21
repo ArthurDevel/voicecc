@@ -58,4 +58,34 @@ export const MCP_SERVER_CATALOG: McpServerPreset[] = [
     url: "https://langfuse.com/api/mcp",
     transport: "http",
   },
+  {
+    name: "slack",
+    description: "Send messages, create canvases, and fetch Slack data.",
+    url: "https://mcp.slack.com/mcp",
+    transport: "http",
+  },
+  {
+    name: "atlassian",
+    description: "Access Jira & Confluence from Claude.",
+    url: "https://mcp.atlassian.com/v1/mcp",
+    transport: "http",
+  },
+  {
+    name: "linear",
+    description: "Manage issues, projects & team workflows in Linear.",
+    url: "https://mcp.linear.app/mcp",
+    transport: "http",
+  },
+  {
+    name: "gamma",
+    description: "Create presentations, docs, socials, and sites with AI.",
+    url: "https://mcp.gamma.app/mcp",
+    transport: "http",
+  },
+  {
+    name: "granola",
+    description: "The AI notepad for meetings.",
+    url: "https://mcp.granola.ai/mcp",
+    transport: "http",
+  },
 ];
