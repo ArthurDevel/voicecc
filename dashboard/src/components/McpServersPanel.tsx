@@ -49,12 +49,13 @@ export function McpServersPanel() {
 
   return (
     <div className="mcp-panel">
-      <h2>MCP Servers</h2>
+      <h2 style={{ fontSize: 16, fontWeight: 600, color: "var(--text-primary)", marginBottom: 4 }}>MCP Servers</h2>
+      <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 20 }}>Configure Model Context Protocol servers to provide external tools to Claude.</p>
       <div className="mcp-server-list">
         {!servers && !error && <div className="mcp-loading">Loading...</div>}
         {error && <div className="mcp-error">Failed to load MCP servers.</div>}
         {servers && servers.length === 0 && (
-          <div className="mcp-loading">No MCP servers configured.</div>
+          <div className="mcp-loading" style={{ color: "var(--text-secondary)", fontSize: 13 }}>No MCP servers configured.</div>
         )}
         {servers?.map((server) => (
           <div key={server.name} className="mcp-server-row">
@@ -66,7 +67,7 @@ export function McpServersPanel() {
               <button
                 className={`mcp-server-status ${dotClass(server.status)}`}
                 title="Opens Terminal to re-add this server and trigger login"
-                onClick={() => post(`/api/mcp-servers/${server.name}/auth`).catch(() => {})}
+                onClick={() => post(`/api/mcp-servers/${server.name}/auth`).catch(() => { })}
               >
                 Authenticate
               </button>

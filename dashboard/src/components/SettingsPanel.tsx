@@ -46,8 +46,8 @@ export function SettingsPanel({ ngrokRunning, twilioRunning }: SettingsPanelProp
     setStatusText("Saving...");
     try {
       await post("/api/settings", { MAX_CONCURRENT_SESSIONS: maxSessions });
-      setStatusText("Saved");
-      setTimeout(() => setStatusText((prev) => (prev === "Saved" ? "" : prev)), 2000);
+      setStatusText("Saved!");
+      setTimeout(() => setStatusText((prev) => (prev === "Saved!" ? "" : prev)), 2000);
     } catch {
       setStatusText("Error saving settings");
     }
@@ -57,8 +57,11 @@ export function SettingsPanel({ ngrokRunning, twilioRunning }: SettingsPanelProp
   return (
     <>
       <div className="settings-panel">
+        <h2 style={{ fontSize: 16, fontWeight: 600, color: "var(--text-primary)", marginBottom: 4 }}>General Options</h2>
+        <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 20 }}>Configure the core behavior of your voice assistant instance.</p>
+
         <div className="settings-row">
-          <label htmlFor="setting-max-sessions">MAX_CONCURRENT_SESSIONS</label>
+          <label htmlFor="setting-max-sessions" style={{ fontWeight: 500, color: "var(--text-primary)" }}>Max Concurrent Sessions</label>
           <input
             type="text"
             id="setting-max-sessions"
@@ -67,26 +70,31 @@ export function SettingsPanel({ ngrokRunning, twilioRunning }: SettingsPanelProp
             onChange={(e) => setMaxSessions(e.target.value)}
           />
         </div>
-        <div className="settings-actions">
-          <button disabled={saving} onClick={handleSave}>Save</button>
+
+        <div className="settings-actions" style={{ marginTop: 20 }}>
+          <button disabled={saving} onClick={handleSave}>Save changes</button>
           <span className="settings-status">{statusText}</span>
         </div>
       </div>
 
       <div className="integrations-panel">
-        <h2>Integrations</h2>
-        <span className="btn-integration" style={{ cursor: "default" }}>
-          <span className={`integration-dot${ngrokRunning ? " running" : ""}`} />
-          ngrok
-        </span>
-        <button className="btn-integration" style={{ marginLeft: 8 }} onClick={() => setModalMode("twilio")}>
-          <span className={`integration-dot${twilioRunning ? " running" : ""}`} />
-          Twilio
-        </button>
-        <button className="btn-integration" style={{ marginLeft: 8 }} onClick={() => setModalMode("webrtc")}>
-          <span className={`integration-dot${twilioRunning ? " running" : ""}`} />
-          WebRTC
-        </button>
+        <h2 style={{ fontSize: 16, fontWeight: 600, color: "var(--text-primary)", marginBottom: 4 }}>Integrations</h2>
+        <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 20 }}>Connect external services like Twilio and WebRTC to enable voice calling capabilities.</p>
+
+        <div style={{ display: "flex", gap: 12 }}>
+          <span className="btn-integration" style={{ cursor: "default" }}>
+            <span className={`integration-dot${ngrokRunning ? " running" : ""}`} />
+            ngrok
+          </span>
+          <button className="btn-integration" onClick={() => setModalMode("twilio")}>
+            <span className={`integration-dot${twilioRunning ? " running" : ""}`} />
+            Twilio
+          </button>
+          <button className="btn-integration" onClick={() => setModalMode("webrtc")}>
+            <span className={`integration-dot${twilioRunning ? " running" : ""}`} />
+            WebRTC
+          </button>
+        </div>
       </div>
 
       {modalMode && (
