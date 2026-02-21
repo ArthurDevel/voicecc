@@ -12,7 +12,7 @@
  */
 
 import { Hono } from "hono";
-import { execFile } from "child_process";
+import { execFile, spawn } from "child_process";
 import { homedir } from "os";
 import { join } from "path";
 
@@ -21,57 +21,62 @@ import { join } from "path";
 // ============================================================================
 
 const CLAUDE_BIN = join(homedir(), ".local", "bin", "claude");
-
-/** When not logged in the CLI exits in ~30ms. Give it 3s before assuming authenticated. */
-const PROBE_TIMEOUT_MS = 3_000;
+const PROBE_TIMEOUT_MS = 5_000;
 
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
 
 /**
- * Run `claude -p "hi" --output-format json` with a short timeout.
+ * Run `claude -p "hi" --output-format json` with stdin closed.
  *
- * - Logged out: exits 1 instantly with "Not logged in" in the result.
- * - Logged in: starts an API call (hangs until timeout). We kill it and
- *   treat that as authenticated.
+ * - Logged out: exits 1 instantly (~30ms) with "Not logged in" in the JSON result.
+ * - Logged in: completes the API call and exits 0 with a JSON response.
+ * - Safety timeout at 5s: kills the process and assumes authenticated.
  *
  * @returns true if authenticated, false otherwise
  */
 async function probeClaudeAuth(): Promise<boolean> {
   return new Promise((resolve) => {
-    const child = execFile(
-      CLAUDE_BIN,
-      ["-p", "hi", "--output-format", "json"],
-      { timeout: PROBE_TIMEOUT_MS },
-      (err, stdout) => {
-        if (!err) {
-          // Exited 0 -- logged in (unlikely to finish that fast, but valid)
-          resolve(true);
+    let resolved = false;
+    const done = (value: boolean) => {
+      if (resolved) return;
+      resolved = true;
+      resolve(value);
+    };
+
+    const child = spawn(CLAUDE_BIN, ["-p", "hi", "--output-format", "json"], {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    const timer = setTimeout(() => {
+      child.kill();
+      done(true);
+    }, PROBE_TIMEOUT_MS);
+
+    let stdout = "";
+    child.stdout.on("data", (chunk: Buffer) => { stdout += chunk.toString(); });
+
+    child.on("close", (code) => {
+      clearTimeout(timer);
+
+      if (code === 0) {
+        done(true);
+        return;
+      }
+
+      try {
+        const json = JSON.parse(stdout);
+        if (json.is_error && typeof json.result === "string" && json.result.includes("Not logged in")) {
+          done(false);
           return;
         }
+      } catch {
+        // couldn't parse JSON
+      }
 
-        // If killed by our timeout, the process was busy making an API call -> authenticated
-        if (err.killed) {
-          resolve(true);
-          return;
-        }
-
-        // Exited with error -- check if it's the "Not logged in" message
-        try {
-          const json = JSON.parse(stdout);
-          if (json.is_error && typeof json.result === "string" && json.result.includes("Not logged in")) {
-            resolve(false);
-            return;
-          }
-        } catch {
-          // couldn't parse JSON, fall through
-        }
-
-        // Any other error -- assume not authenticated
-        resolve(false);
-      },
-    );
+      done(false);
+    });
   });
 }
 
