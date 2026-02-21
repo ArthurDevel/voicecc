@@ -1,6 +1,6 @@
 {
   "name": "voicecc",
-  "version": "1.0.10",
+  "version": "1.0.11",
   "description": "Voice mode plugin for Claude Code -- hands-free interaction via local STT/TTS/VAD",
   "type": "module",
   "bin": {
@@ -11,7 +11,7 @@
     "dev:dashboard": "cd dashboard && npx vite",
     "build:dashboard": "cd dashboard && npx vite build",
     "prepublishOnly": "npm run build:dashboard",
-    "postinstall": "echo '\\n========================================\\n            VOICECC INSTALLED\\n========================================\\n\\n  Run voicecc to start the dashboard.\\n' >&2"
+    "postinstall": "node -e \"const fs=require('fs');try{fs.writeFileSync('/dev/tty','\\n========================================\\n            VOICECC INSTALLED\\n========================================\\n\\n  Run voicecc to start the dashboard.\\n\\n')}catch(e){}\""
   },
   "files": [
     "bin/",
