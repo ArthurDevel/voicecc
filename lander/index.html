@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Voice CC</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:wght@400;700&display=swap" rel="stylesheet" />
+  <style>
+    /* ============================================================================
+     * CSS VARIABLES
+     * ============================================================================ */
+
+    :root {
+      --bg-main: #ffffff;
+      --bg-surface: #ffffff;
+      --bg-hover: #f1f3f5;
+      --border-color: #eaeaea;
+      --text-primary: #111827;
+      --text-secondary: #6b7280;
+      --accent-color: #2ea043;
+      --btn-primary-bg: #111111;
+      --btn-primary-text: #ffffff;
+      --code-bg: #f7f7f8;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg-main: #0a0a0a;
+        --bg-surface: #171717;
+        --bg-hover: #262626;
+        --border-color: #333333;
+        --text-primary: #f3f4f6;
+        --text-secondary: #9ca3af;
+        --accent-color: #3fb950;
+        --btn-primary-bg: #ececec;
+        --btn-primary-text: #111111;
+        --code-bg: #111111;
+      }
+    }
+
+    /* ============================================================================
+     * RESET + BASE
+     * ============================================================================ */
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
+      background: var(--bg-main);
+      color: var(--text-primary);
+      line-height: 1.6;
+    }
+
+    /* ============================================================================
+     * LAYOUT
+     * ============================================================================ */
+
+    .container {
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 80px 24px 64px;
+    }
+
+    /* ============================================================================
+     * HEADER
+     * ============================================================================ */
+
+    h1 {
+      font-family: "IBM Plex Serif", serif;
+      font-size: 48px;
+      font-weight: 400;
+      letter-spacing: -1px;
+      margin-bottom: 16px;
+    }
+
+    .tagline {
+      font-size: 16px;
+      color: var(--text-secondary);
+      margin-bottom: 48px;
+      max-width: 480px;
+    }
+
+    /* ============================================================================
+     * SECTIONS
+     * ============================================================================ */
+
+    h2 {
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-secondary);
+      margin-bottom: 12px;
+    }
+
+    .section {
+      margin-bottom: 40px;
+    }
+
+    .panel {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      padding: 24px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    }
+
+    .step {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .step:last-child {
+      margin-bottom: 0;
+    }
+
+    .step-number {
+      width: 20px;
+      height: 20px;
+      background: var(--btn-primary-bg);
+      color: var(--btn-primary-text);
+      font-size: 11px;
+      font-weight: 600;
+      text-align: center;
+      line-height: 20px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    .step-body {
+      flex: 1;
+    }
+
+    .step-title {
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .step-desc {
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    /* ============================================================================
+     * CODE BLOCKS
+     * ============================================================================ */
+
+    .code-block {
+      position: relative;
+      margin-top: 8px;
+    }
+
+    .code-block pre {
+      margin-top: 0;
+    }
+
+    .copy-btn {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      background: var(--bg-hover);
+      border: 1px solid var(--border-color);
+      color: var(--text-secondary);
+      font-size: 11px;
+      padding: 2px 8px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    .copy-btn:hover {
+      color: var(--text-primary);
+    }
+
+    pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border-color);
+      padding: 12px 16px;
+      margin-top: 8px;
+      white-space: pre-wrap;
+      word-break: break-all;
+      font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+      font-size: 13px;
+      line-height: 1.5;
+      color: var(--text-primary);
+    }
+
+    code {
+      font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+      font-size: 12px;
+      background: var(--code-bg);
+      padding: 1px 5px;
+      color: var(--accent-color);
+    }
+
+    pre code {
+      background: none;
+      padding: 0;
+      color: inherit;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Voice CC</h1>
+    <p class="tagline">
+      A Claude Code plugin that adds a <code>/voice</code> command for hands-free voice interaction
+      with local speech-to-text, text-to-speech, and voice activity detection.
+    </p>
+
+    <div class="section">
+      <h2>Install</h2>
+      <div class="panel">
+        <div class="step">
+          <span class="step-number">1</span>
+          <div class="step-body">
+            <div class="step-title">Install system dependencies</div>
+            <div class="step-desc">Requires macOS with Apple Silicon, Node.js 18+, Python 3.10+, and Homebrew.</div>
+            <div class="code-block">
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+              <pre><code>xcode-select --install
+brew install espeak-ng</code></pre>
+            </div>
+          </div>
+        </div>
+
+        <div class="step">
+          <span class="step-number">2</span>
+          <div class="step-body">
+            <div class="step-title">Install Voice CC</div>
+            <div class="code-block">
+              <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+              <pre><code>npm install voicecc --registry http://gitea-rksscoo0o4c8o44k0s84c8s4.65.109.15.3.sslip.io/api/packages/ArthurDevel/npm/</code></pre>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    function copyCode(btn) {
+      var code = btn.parentElement.querySelector("code").textContent;
+      navigator.clipboard.writeText(code).then(function () {
+        btn.textContent = "Copied";
+        setTimeout(function () { btn.textContent = "Copy"; }, 1500);
+      });
+    }
+  </script>
+</body>
+</html>
