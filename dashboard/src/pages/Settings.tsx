@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { get } from "../api";
 import { SettingsPanel } from "../components/SettingsPanel";
 import { McpServersPanel } from "../components/McpServersPanel";
@@ -6,7 +7,11 @@ import { ClaudeMdEditor } from "../components/ClaudeMdEditor";
 import type { TunnelStatus, TwilioStatus, BrowserCallStatus } from "../pages/Home";
 
 export function Settings() {
-    const [activeTab, setActiveTab] = useState<"general" | "integrations" | "system">("general");
+    const [searchParams] = useSearchParams();
+    const initialTab = searchParams.get("tab") as "general" | "integrations" | "system" | null;
+    const [activeTab, setActiveTab] = useState<"general" | "integrations" | "system">(
+        initialTab === "integrations" || initialTab === "system" ? initialTab : "general"
+    );
     const [tunnelStatus, setTunnelStatus] = useState<TunnelStatus>({ running: false, url: null });
     const [twilioStatus, setTwilioStatus] = useState<TwilioStatus>({ running: false, tunnelUrl: null });
     const [browserCallStatus, setBrowserCallStatus] = useState<BrowserCallStatus>({ running: false, tunnelUrl: null });
