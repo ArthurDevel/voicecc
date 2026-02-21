@@ -39,10 +39,3 @@ The voice loop runs locally with zero external API calls except to Claude:
 6. **Narration**: Claude's response stripped of markdown and split into sentences
 7. **Text-to-speech**: Kokoro-82M via mlx-audio on Apple Silicon GPU (~8x realtime)
 8. **Speaker playback**: Audio output through VPIO at 24kHz with echo cancellation
-
-## Troubleshooting
-
-- **"sox not found"**: Install sox with `brew install sox`
-- **"espeak not installed"**: Install espeak-ng with `brew install espeak-ng`
-- **tts-server.py not ready**: Ensure the Python venv is set up correctly
-- **Mic permission denied**: Grant microphone permissions to your terminal or IDE
