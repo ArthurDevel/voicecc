@@ -4,9 +4,14 @@ import { get } from "../api";
 import { Sidebar } from "./Sidebar";
 import { TwilioStatus, BrowserCallStatus } from "../pages/Home";
 
+export interface LayoutContext {
+    authStatus: boolean | null;
+}
+
 export function Layout() {
     const [twilioStatus, setTwilioStatus] = useState<TwilioStatus>({ running: false, ngrokUrl: null });
     const [browserCallStatus, setBrowserCallStatus] = useState<BrowserCallStatus>({ running: false, ngrokUrl: null });
+    const [authStatus, setAuthStatus] = useState<boolean | null>(null);
 
     useEffect(() => {
         const poll = () => {
@@ -18,11 +23,17 @@ export function Layout() {
         return () => clearInterval(interval);
     }, []);
 
+    useEffect(() => {
+        get<{ authenticated: boolean }>("/api/auth")
+            .then((data) => setAuthStatus(data.authenticated))
+            .catch(() => setAuthStatus(false));
+    }, []);
+
     return (
         <div style={{ display: "flex", height: "100vh" }}>
-            <Sidebar twilioStatus={twilioStatus} browserCallStatus={browserCallStatus} />
+            <Sidebar twilioStatus={twilioStatus} browserCallStatus={browserCallStatus} authStatus={authStatus} />
             <div className="main" style={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}>
-                <Outlet />
+                <Outlet context={{ authStatus } satisfies LayoutContext} />
             </div>
         </div>
     );

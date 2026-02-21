@@ -21,6 +21,7 @@ import type { TwilioStatus, BrowserCallStatus } from "../pages/Home";
 interface SidebarProps {
   twilioStatus: TwilioStatus;
   browserCallStatus: BrowserCallStatus;
+  authStatus: boolean | null;
 }
 
 interface ConversationSummary {
@@ -34,7 +35,7 @@ interface ConversationSummary {
 // COMPONENT
 // ============================================================================
 
-export function Sidebar({ twilioStatus, browserCallStatus }: SidebarProps) {
+export function Sidebar({ twilioStatus, browserCallStatus, authStatus }: SidebarProps) {
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [voiceButtonText, setVoiceButtonText] = useState("Start Voice");
   const [voiceDisabled, setVoiceDisabled] = useState(false);
@@ -91,13 +92,19 @@ export function Sidebar({ twilioStatus, browserCallStatus }: SidebarProps) {
       {/* App Logo */}
       <div style={{
         padding: "24px 16px 8px 24px",
-        fontSize: "28px",
-        fontWeight: "400",
-        fontFamily: "'IBM Plex Serif', serif",
-        letterSpacing: "-0.5px",
-        color: "var(--text-primary)"
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
       }}>
-        VoiceCC
+        <span style={{
+          fontSize: "28px",
+          fontWeight: "400",
+          fontFamily: "'IBM Plex Serif', serif",
+          letterSpacing: "-0.5px",
+          color: "var(--text-primary)",
+        }}>
+          VoiceCC
+        </span>
       </div>
 
       {/* Top action buttons styled as primary/secondary */}
@@ -158,6 +165,19 @@ export function Sidebar({ twilioStatus, browserCallStatus }: SidebarProps) {
       </div>
 
       <div className="sidebar-footer">
+        {authStatus === false && (
+          <div style={{
+            margin: "0 12px 8px",
+            padding: "8px 10px",
+            fontSize: 12,
+            color: "#d73a49",
+            background: "var(--bg-tertiary)",
+            borderRadius: 6,
+            border: "1px solid #d73a49",
+          }}>
+            Claude not authenticated
+          </div>
+        )}
         <button className="sidebar-item" onClick={() => setIsDark(!isDark)}>
           {isDark ? (
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
