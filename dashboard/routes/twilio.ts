@@ -74,10 +74,12 @@ export function twilioRoutes(): Hono {
     }
   });
 
-  /** Stop Twilio server and ngrok */
+  /** Stop Twilio server. Only stops ngrok if browser call is also stopped. */
   app.post("/stop", (c) => {
     stopTwilioServer();
-    stopNgrok();
+    if (!isBrowserCallRunning()) {
+      stopNgrok();
+    }
     return c.json({ success: true });
   });
 
