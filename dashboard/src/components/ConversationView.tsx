@@ -58,10 +58,12 @@ export function ConversationView({ sessionId }: ConversationViewProps) {
 
   return (
     <>
-      <div className="page-header">
-        <h1>{title}</h1>
+      <div className="page-header" style={{ padding: "48px 64px 24px" }}>
+        <div>
+          <h1>{title}</h1>
+        </div>
       </div>
-      <div className="conversation-messages" ref={containerRef}>
+      <div className="conversation-messages" ref={containerRef} style={{ padding: "0 64px 48px" }}>
         {error && <div className="conversation-empty">{error}</div>}
         {!error && messages.length === 0 && !title.includes("Loading") && (
           <div className="conversation-empty">No messages in this session.</div>

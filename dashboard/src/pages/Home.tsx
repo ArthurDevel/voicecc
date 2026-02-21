@@ -91,7 +91,7 @@ export function Home() {
             </div>
 
             {/* Scrollable Content Area */}
-            <div style={{ flex: 1, overflowY: "auto", padding: "24px 32px" }}>
+            <div style={{ flex: 1, overflowY: "auto", padding: "48px 64px" }}>
               {activeTab === "general" && (
                 <SettingsPanel ngrokRunning={ngrokStatus.running} twilioRunning={twilioStatus.running} />
               )}
@@ -110,11 +110,13 @@ export function Home() {
           </div>
         )}
         {activePage === "conversation" && !selectedConversationId && (
-          <div className="page active">
-            <div className="page-header">
-              <h1>Conversation</h1>
+          <div className="page active" style={{ display: "flex", flexDirection: "column" }}>
+            <div className="page-header" style={{ padding: "48px 64px 24px" }}>
+              <div>
+                <h1>Conversation</h1>
+              </div>
             </div>
-            <div className="conversation-messages">
+            <div className="conversation-messages" style={{ padding: "0 64px 48px" }}>
               <div className="conversation-empty">Select a conversation from the sidebar.</div>
             </div>
           </div>
