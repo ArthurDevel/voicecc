@@ -50,51 +50,42 @@ export function Home() {
       </div>
 
       <div style={{ padding: "0 64px 48px" }}>
-        <h2 style={{ fontSize: 18, fontWeight: 500, marginBottom: 8 }}>Connect your Claude Code</h2>
-        <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 16 }}>
-          VoiceCC needs an authenticated Claude Code session to work. The check below verifies your local CLI is logged in.
-        </p>
+        <div className="settings-panel">
+          <h2 style={{ fontSize: 16, fontWeight: 600, color: "var(--text-primary)", marginBottom: 4 }}>
+            Connect your Claude Code
+          </h2>
+          <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 20 }}>
+            VoiceCC needs an authenticated Claude Code session to work. The check below verifies your local CLI is logged in.
+          </p>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
-          <span style={{
-            width: 8,
-            height: 8,
-            borderRadius: "50%",
-            background: authStatus === null ? "#666" : authStatus ? "var(--accent-color)" : "#d73a49",
-            flexShrink: 0,
-          }} />
-          <span style={{
-            fontSize: 13,
-            color: authStatus === null ? "#999" : authStatus ? "var(--accent-color)" : "#d73a49",
-          }}>
-            {authStatus === null
-              ? "Checking authentication..."
-              : authStatus
-                ? "Claude Code is authenticated"
-                : "Claude Code is not authenticated"}
-          </span>
-        </div>
-
-        {authStatus === false && (
-          <div style={{
-            padding: 16,
-            borderRadius: 8,
-            border: "1px solid var(--border-color)",
-            background: "var(--bg-surface)",
-          }}>
-            <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 12 }}>
-              Open Claude Code in Terminal to log in. Once authenticated, refresh this page to re-check.
-            </p>
-            <button
-              className="btn-start-voice"
-              disabled={loginDisabled}
-              onClick={handleLogin}
-              style={{ width: "auto", padding: "8px 16px" }}
-            >
-              Open Claude Code
-            </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: authStatus === false ? 16 : 0 }}>
+            <span style={{
+              width: 8,
+              height: 8,
+              borderRadius: "50%",
+              background: authStatus === null ? "#666" : authStatus ? "var(--accent-color)" : "#d73a49",
+              flexShrink: 0,
+            }} />
+            <span style={{
+              fontSize: 13,
+              color: authStatus === null ? "var(--text-secondary)" : authStatus ? "var(--accent-color)" : "#d73a49",
+            }}>
+              {authStatus === null
+                ? "Checking authentication..."
+                : authStatus
+                  ? "Claude Code is authenticated"
+                  : "Claude Code is not authenticated"}
+            </span>
           </div>
-        )}
+
+          {authStatus === false && (
+            <div className="settings-actions">
+              <button disabled={loginDisabled} onClick={handleLogin}>
+                Open Claude Code
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
