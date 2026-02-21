@@ -24,6 +24,7 @@ import { twilioRoutes, setDashboardPort } from "./routes/twilio.js";
 import { browserCallRoutes, setDashboardPort as setBrowserCallDashboardPort } from "./routes/browser-call.js";
 import { webrtcRoutes } from "./routes/webrtc.js";
 import { mcpServersRoutes } from "./routes/mcp-servers.js";
+import { authRoutes } from "./routes/auth.js";
 import { loadDeviceTokens } from "../services/device-pairing.js";
 
 // ============================================================================
@@ -55,6 +56,7 @@ function createApp(): Hono {
   app.route("/api/browser-call", browserCallRoutes());
   app.route("/api/webrtc", webrtcRoutes());
   app.route("/api/mcp-servers", mcpServersRoutes());
+  app.route("/api/auth", authRoutes());
 
   // Status endpoint (user CLAUDE.md conflict check)
   app.get("/api/status", async (c) => {
