@@ -13,7 +13,6 @@ import { get, post } from "../api";
 // ============================================================================
 
 interface SettingsPanelProps {
-  ngrokRunning: boolean;
   twilioRunning: boolean;
 }
 
@@ -21,7 +20,7 @@ interface SettingsPanelProps {
 // COMPONENT
 // ============================================================================
 
-export function SettingsPanel({ ngrokRunning, twilioRunning }: SettingsPanelProps) {
+export function SettingsPanel({ twilioRunning }: SettingsPanelProps) {
   const [maxSessions, setMaxSessions] = useState("");
   const [statusText, setStatusText] = useState("");
   const [saving, setSaving] = useState(false);

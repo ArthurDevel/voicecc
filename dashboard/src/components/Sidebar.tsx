@@ -43,7 +43,7 @@ export function Sidebar({ twilioStatus, browserCallStatus, authStatus }: Sidebar
 
   const location = useLocation();
 
-  const browserCallEnabled = browserCallStatus.running && !!browserCallStatus.ngrokUrl;
+  const browserCallEnabled = browserCallStatus.running && !!browserCallStatus.tunnelUrl;
 
   const [isDark, setIsDark] = useState(() => {
     return localStorage.getItem("theme") === "dark" ||
@@ -197,9 +197,9 @@ export function Sidebar({ twilioStatus, browserCallStatus, authStatus }: Sidebar
         </button>
       </div>
 
-      {showBrowserCallModal && browserCallStatus.ngrokUrl && (
+      {showBrowserCallModal && browserCallStatus.tunnelUrl && (
         <BrowserCallModal
-          ngrokUrl={browserCallStatus.ngrokUrl}
+          tunnelUrl={browserCallStatus.tunnelUrl}
           onClose={() => setShowBrowserCallModal(false)}
         />
       )}
