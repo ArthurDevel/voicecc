@@ -90,6 +90,18 @@ export function Sidebar({ activePage, onPageChange, selectedConversationId, onSe
 
   return (
     <div className="sidebar">
+      {/* App Logo */}
+      <div style={{
+        padding: "24px 16px 8px 24px",
+        fontSize: "28px",
+        fontWeight: "400",
+        fontFamily: "'IBM Plex Serif', serif",
+        letterSpacing: "-0.5px",
+        color: "var(--text-primary)"
+      }}>
+        VoiceCC
+      </div>
+
       {/* Top action buttons styled as primary/secondary */}
       <div style={{ padding: "16px 12px 0" }}>
         <button
