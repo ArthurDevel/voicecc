@@ -11,19 +11,16 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
+import { Link, useLocation } from "react-router-dom";
 import { get, post } from "../api";
 import { BrowserCallModal } from "./BrowserCallModal";
-import type { ActivePage, TwilioStatus } from "../pages/Home";
+import type { TwilioStatus } from "../pages/Home";
 
 // ============================================================================
 // TYPES
 // ============================================================================
 
 interface SidebarProps {
-  activePage: ActivePage;
-  onPageChange: (page: ActivePage) => void;
-  selectedConversationId: string | null;
-  onSelectConversation: (id: string) => void;
   twilioStatus: TwilioStatus;
 }
 
@@ -38,11 +35,13 @@ interface ConversationSummary {
 // COMPONENT
 // ============================================================================
 
-export function Sidebar({ activePage, onPageChange, selectedConversationId, onSelectConversation, twilioStatus }: SidebarProps) {
+export function Sidebar({ twilioStatus }: SidebarProps) {
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [voiceButtonText, setVoiceButtonText] = useState("Start Voice");
   const [voiceDisabled, setVoiceDisabled] = useState(false);
   const [showBrowserCallModal, setShowBrowserCallModal] = useState(false);
+
+  const location = useLocation();
 
   const browserCallEnabled = twilioStatus.running && twilioStatus.webrtcReady && !!twilioStatus.ngrokUrl;
 
@@ -122,21 +121,23 @@ export function Sidebar({ activePage, onPageChange, selectedConversationId, onSe
 
       <div className="sidebar-nav">
         {/* Main Navigation to match mockup structure */}
-        <button
-          className={`sidebar-item ${activePage === "conversation" && !selectedConversationId ? "active" : ""}`}
-          onClick={() => { onPageChange("conversation"); onSelectConversation(""); }}
+        <Link
+          to="/"
+          className={`sidebar-item ${location.pathname === "/" ? "active" : ""}`}
+          style={{ textDecoration: "none", display: "flex", alignItems: "center" }}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
           Home
-        </button>
+        </Link>
 
-        <button
-          className={`sidebar-item ${activePage === "settings" ? "active" : ""}`}
-          onClick={() => onPageChange("settings")}
+        <Link
+          to="/settings"
+          className={`sidebar-item ${location.pathname.startsWith("/settings") ? "active" : ""}`}
+          style={{ textDecoration: "none", display: "flex", alignItems: "center" }}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
           Settings
-        </button>
+        </Link>
 
         <div className="sidebar-section-label" style={{ marginTop: 16, flexShrink: 0 }}>History</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1, overflowY: "auto" }}>
@@ -144,14 +145,15 @@ export function Sidebar({ activePage, onPageChange, selectedConversationId, onSe
             <div style={{ padding: "8px 12px", fontSize: 13, color: "var(--text-secondary)" }}>No history yet.</div>
           )}
           {conversations.map((conv) => (
-            <button
+            <Link
               key={conv.sessionId}
-              className={`sidebar-conversation ${selectedConversationId === conv.sessionId ? "active" : ""}`}
+              to={`/c/${conv.sessionId}`}
+              className={`sidebar-conversation ${location.pathname === `/c/${conv.sessionId}` ? "active" : ""}`}
               title={conv.firstMessage}
-              onClick={() => { onPageChange("conversation"); onSelectConversation(conv.sessionId); }}
+              style={{ textDecoration: "none", display: "block" }}
             >
               {formatLabel(conv)}
-            </button>
+            </Link>
           ))}
         </div>
       </div>
