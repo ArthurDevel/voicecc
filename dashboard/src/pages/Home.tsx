@@ -25,7 +25,11 @@ export interface NgrokStatus {
 
 export interface TwilioStatus {
   running: boolean;
-  webrtcReady: boolean;
+  ngrokUrl: string | null;
+}
+
+export interface BrowserCallStatus {
+  running: boolean;
   ngrokUrl: string | null;
 }
 

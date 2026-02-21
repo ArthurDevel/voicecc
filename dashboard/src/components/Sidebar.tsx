@@ -3,18 +3,16 @@
  *
  * Renders:
  * - Start Voice button (opens Terminal)
- * - Call via Browser button (enabled when WebRTC is ready)
+ * - Call via Browser button (enabled when browser call server is running)
  * - Conversation list fetched from API
  * - Settings nav item in footer
- *
- * Includes status polling hooks for ngrok and Twilio.
  */
 
 import { useState, useEffect, useCallback } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { get, post } from "../api";
 import { BrowserCallModal } from "./BrowserCallModal";
-import type { TwilioStatus } from "../pages/Home";
+import type { TwilioStatus, BrowserCallStatus } from "../pages/Home";
 
 // ============================================================================
 // TYPES
@@ -22,6 +20,7 @@ import type { TwilioStatus } from "../pages/Home";
 
 interface SidebarProps {
   twilioStatus: TwilioStatus;
+  browserCallStatus: BrowserCallStatus;
 }
 
 interface ConversationSummary {
@@ -35,7 +34,7 @@ interface ConversationSummary {
 // COMPONENT
 // ============================================================================
 
-export function Sidebar({ twilioStatus }: SidebarProps) {
+export function Sidebar({ twilioStatus, browserCallStatus }: SidebarProps) {
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [voiceButtonText, setVoiceButtonText] = useState("Start Voice");
   const [voiceDisabled, setVoiceDisabled] = useState(false);
@@ -43,7 +42,7 @@ export function Sidebar({ twilioStatus }: SidebarProps) {
 
   const location = useLocation();
 
-  const browserCallEnabled = twilioStatus.running && twilioStatus.webrtcReady && !!twilioStatus.ngrokUrl;
+  const browserCallEnabled = browserCallStatus.running && !!browserCallStatus.ngrokUrl;
 
   const [isDark, setIsDark] = useState(() => {
     return localStorage.getItem("theme") === "dark" ||
@@ -173,9 +172,9 @@ export function Sidebar({ twilioStatus }: SidebarProps) {
         </button>
       </div>
 
-      {showBrowserCallModal && twilioStatus.ngrokUrl && (
+      {showBrowserCallModal && browserCallStatus.ngrokUrl && (
         <BrowserCallModal
-          ngrokUrl={twilioStatus.ngrokUrl}
+          ngrokUrl={browserCallStatus.ngrokUrl}
           onClose={() => setShowBrowserCallModal(false)}
         />
       )}

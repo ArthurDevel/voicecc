@@ -1,16 +1,22 @@
 /**
- * WebRTC browser calling page.
+ * Browser calling page using direct WebSocket + AudioWorklet.
  *
  * Handles the full call lifecycle:
- * - PIN input for device pairing
- * - Twilio Voice SDK initialization
+ * - PIN input for device pairing (unchanged)
+ * - AudioWorklet + WebSocket initialization for voice audio
  * - Call connect/disconnect
  *
  * States: pairing -> ready -> connecting -> active
+ *
+ * Responsibilities:
+ * - Capture mic audio via getUserMedia + AudioWorkletNode
+ * - Resample mic audio (browser rate -> 16kHz) and send over WebSocket
+ * - Receive TTS audio (int16 24kHz) over WebSocket, upsample, and play via AudioWorklet
+ * - Handle getUserMedia permission denial gracefully
  */
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { post, get } from "../api";
+import { post } from "../api";
 
 // ============================================================================
 // TYPES
@@ -25,6 +31,70 @@ type CallState = "pairing" | "ready" | "connecting" | "active";
 const PIN_LENGTH = 6;
 const DEVICE_TOKEN_KEY = "claude-voice-device-token";
 
+/** Server expects mic audio at this sample rate */
+const MIC_TARGET_RATE = 16000;
+
+/** Server sends TTS audio at this sample rate */
+const SPEAKER_SOURCE_RATE = 24000;
+
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+/**
+ * Downsample audio from a higher sample rate to a lower target rate.
+ * Uses 3-tap averaging before decimation as a simple low-pass filter.
+ *
+ * @param input - Float32 PCM samples at the source rate
+ * @param fromRate - Source sample rate (e.g. 48000)
+ * @param toRate - Target sample rate (e.g. 16000)
+ * @returns Float32Array at the target sample rate
+ */
+function downsampleToTarget(input: Float32Array, fromRate: number, toRate: number): Float32Array {
+  const ratio = fromRate / toRate;
+  const outputLen = Math.floor(input.length / ratio);
+  const output = new Float32Array(outputLen);
+
+  for (let i = 0; i < outputLen; i++) {
+    const offset = Math.floor(i * ratio);
+
+    // 3-tap average centered on the decimation point
+    const s0 = input[offset] ?? 0;
+    const s1 = input[offset + 1] ?? 0;
+    const s2 = offset > 0 ? (input[offset - 1] ?? 0) : s0;
+    output[i] = (s0 + s1 + s2) / 3;
+  }
+
+  return output;
+}
+
+/**
+ * Upsample audio from a lower sample rate to a higher target rate.
+ * Uses linear interpolation between samples.
+ *
+ * @param input - Float32 PCM samples at the source rate
+ * @param fromRate - Source sample rate (e.g. 24000)
+ * @param toRate - Target sample rate (e.g. 48000)
+ * @returns Float32Array at the target sample rate
+ */
+function upsampleFromTarget(input: Float32Array, fromRate: number, toRate: number): Float32Array {
+  const ratio = toRate / fromRate;
+  const outputLen = Math.round(input.length * ratio);
+  const output = new Float32Array(outputLen);
+
+  for (let i = 0; i < outputLen; i++) {
+    const srcPos = i / ratio;
+    const srcIndex = Math.floor(srcPos);
+    const frac = srcPos - srcIndex;
+
+    const s0 = input[srcIndex] ?? 0;
+    const s1 = input[Math.min(srcIndex + 1, input.length - 1)] ?? 0;
+    output[i] = s0 + frac * (s1 - s0);
+  }
+
+  return output;
+}
+
 // ============================================================================
 // COMPONENT
 // ============================================================================
@@ -36,8 +106,16 @@ export function Call() {
   const [pin, setPin] = useState<string[]>(Array(PIN_LENGTH).fill(""));
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const deviceTokenRef = useRef(localStorage.getItem(DEVICE_TOKEN_KEY) || "");
-  const twilioDeviceRef = useRef<unknown>(null);
-  const connectionRef = useRef<unknown>(null);
+
+  // WebSocket + Audio refs (replaces Twilio refs)
+  const wsRef = useRef<WebSocket | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const workletNodeRef = useRef<AudioWorkletNode | null>(null);
+
+  // --------------------------------------------------------------------------
+  // PAIRING HANDLERS
+  // --------------------------------------------------------------------------
 
   // Check existing token on mount
   useEffect(() => {
@@ -134,70 +212,175 @@ export function Call() {
     }
   };
 
-  /** Start a call using the Twilio Voice SDK */
+  // --------------------------------------------------------------------------
+  // CALL HANDLERS
+  // --------------------------------------------------------------------------
+
+  /** Clean up all audio resources and WebSocket */
+  const cleanup = useCallback(() => {
+    // Close WebSocket
+    if (wsRef.current) {
+      wsRef.current.onopen = null;
+      wsRef.current.onclose = null;
+      wsRef.current.onerror = null;
+      wsRef.current.onmessage = null;
+      if (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING) {
+        wsRef.current.close();
+      }
+      wsRef.current = null;
+    }
+
+    // Stop mic tracks
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+      mediaStreamRef.current = null;
+    }
+
+    // Disconnect worklet node
+    if (workletNodeRef.current) {
+      workletNodeRef.current.disconnect();
+      workletNodeRef.current = null;
+    }
+
+    // Close audio context
+    if (audioContextRef.current) {
+      audioContextRef.current.close().catch(() => {});
+      audioContextRef.current = null;
+    }
+  }, []);
+
+  /** Start a call using AudioWorklet + WebSocket */
   const startCall = useCallback(async () => {
     setCallError("");
     setCallState("connecting");
 
+    let audioContext: AudioContext | null = null;
+
     try {
-      // Fetch Twilio access token
-      const data = await get<{ token: string }>(`/api/twilio/token`);
-
-      // Dynamically import Twilio Voice SDK
-      const { Device } = await import("@twilio/voice-sdk");
-
-      const device = new Device(data.token, { logLevel: "error" } as never);
-      twilioDeviceRef.current = device;
-
-      device.on("error", (err: Error) => {
-        console.error("Device error:", err);
-        setCallError(`Device error: ${err.message}`);
-        cleanup();
+      // Get microphone access
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch {
+        setCallError("Microphone access denied. Please allow microphone access and try again.");
         setCallState("ready");
-      });
+        return;
+      }
+      mediaStreamRef.current = stream;
 
-      await device.register();
-      const connection = await device.connect();
-      connectionRef.current = connection;
+      // Create AudioContext and resume (browser autoplay policy requires user gesture)
+      audioContext = new AudioContext();
+      audioContextRef.current = audioContext;
+      await audioContext.resume();
 
-      connection.on("accept", () => {
+      const browserSampleRate = audioContext.sampleRate;
+
+      // Load AudioWorklet processor
+      await audioContext.audioWorklet.addModule("/audio-processor.js");
+
+      // Create worklet node and connect audio graph
+      const workletNode = new AudioWorkletNode(audioContext, "audio-processor");
+      workletNodeRef.current = workletNode;
+
+      const source = audioContext.createMediaStreamSource(stream);
+      source.connect(workletNode);
+      workletNode.connect(audioContext.destination);
+
+      // Open WebSocket
+      const wsProtocol = window.location.protocol === "http:" ? "ws:" : "wss:";
+      const wsUrl = `${wsProtocol}//${window.location.host}/audio?token=${deviceTokenRef.current}`;
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+
+      // Mic audio from worklet -> resample -> send over WebSocket
+      workletNode.port.onmessage = (event: MessageEvent) => {
+        if (event.data.type !== "audio" || ws.readyState !== WebSocket.OPEN) return;
+
+        const samples: Float32Array = event.data.samples;
+        const downsampled = downsampleToTarget(samples, browserSampleRate, MIC_TARGET_RATE);
+
+        // Send as raw float32 binary
+        ws.send(downsampled.buffer);
+      };
+
+      // Receive audio/control from server
+      ws.onmessage = async (event: MessageEvent) => {
+        // Binary message: int16 24kHz PCM from TTS
+        if (event.data instanceof Blob) {
+          const arrayBuffer = await event.data.arrayBuffer();
+          const int16Samples = new Int16Array(arrayBuffer);
+
+          // Convert int16 to float32 (-1.0 to 1.0)
+          const float32Samples = new Float32Array(int16Samples.length);
+          for (let i = 0; i < int16Samples.length; i++) {
+            float32Samples[i] = int16Samples[i] / 32768;
+          }
+
+          // Upsample from 24kHz to browser sample rate
+          const upsampled = upsampleFromTarget(float32Samples, SPEAKER_SOURCE_RATE, browserSampleRate);
+
+          // Send to worklet for playback
+          workletNode.port.postMessage({ type: "playback", samples: upsampled });
+          return;
+        }
+
+        if (event.data instanceof ArrayBuffer) {
+          const int16Samples = new Int16Array(event.data);
+
+          const float32Samples = new Float32Array(int16Samples.length);
+          for (let i = 0; i < int16Samples.length; i++) {
+            float32Samples[i] = int16Samples[i] / 32768;
+          }
+
+          const upsampled = upsampleFromTarget(float32Samples, SPEAKER_SOURCE_RATE, browserSampleRate);
+          workletNode.port.postMessage({ type: "playback", samples: upsampled });
+          return;
+        }
+
+        // Text message: JSON control signal
+        if (typeof event.data === "string") {
+          try {
+            const msg = JSON.parse(event.data);
+            if (msg.type === "clear") {
+              workletNode.port.postMessage({ type: "clear" });
+            }
+          } catch {
+            // Ignore non-JSON text messages
+          }
+        }
+      };
+
+      ws.onopen = () => {
         setCallState("active");
-      });
+      };
 
-      connection.on("disconnect", () => {
+      ws.onclose = () => {
         cleanup();
         setCallState("ready");
-      });
+      };
 
-      connection.on("error", (err: Error) => {
-        console.error("Call error:", err);
-        setCallError(`Call error: ${err.message}`);
+      ws.onerror = () => {
+        setCallError("WebSocket connection failed");
         cleanup();
         setCallState("ready");
-      });
+      };
     } catch (err) {
       const message = err instanceof Error ? err.message : "Connection failed";
       setCallError(`Connection failed: ${message}`);
       cleanup();
       setCallState("ready");
     }
-  }, []);
+  }, [cleanup]);
 
   /** Hang up the current call */
-  const hangUp = () => {
-    const conn = connectionRef.current as { disconnect?: () => void } | null;
-    if (conn?.disconnect) conn.disconnect();
+  const hangUp = useCallback(() => {
     cleanup();
     setCallState("ready");
-  };
+  }, [cleanup]);
 
-  /** Clean up Twilio device and connection */
-  const cleanup = () => {
-    const device = twilioDeviceRef.current as { destroy?: () => void } | null;
-    if (device?.destroy) device.destroy();
-    twilioDeviceRef.current = null;
-    connectionRef.current = null;
-  };
+  // --------------------------------------------------------------------------
+  // RENDER
+  // --------------------------------------------------------------------------
 
   return (
     <div className="call-container">
