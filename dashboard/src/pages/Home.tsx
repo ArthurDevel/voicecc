@@ -43,8 +43,8 @@ export function Home() {
 
   useEffect(() => {
     const poll = () => {
-      get<NgrokStatus>("/api/ngrok/status").then(setNgrokStatus).catch(() => {});
-      get<TwilioStatus>("/api/twilio/status").then(setTwilioStatus).catch(() => {});
+      get<NgrokStatus>("/api/ngrok/status").then(setNgrokStatus).catch(() => { });
+      get<TwilioStatus>("/api/twilio/status").then(setTwilioStatus).catch(() => { });
     };
     poll();
     const interval = setInterval(poll, 5000);
@@ -68,9 +68,12 @@ export function Home() {
       />
       <div className="main">
         {activePage === "settings" && (
-          <div className="page active">
-            <div className="page-header">
-              <h1>Settings</h1>
+          <div className="page active" style={{ overflowY: "auto" }}>
+            <div className="page-header" style={{ borderBottom: "none", marginBottom: 8 }}>
+              <div>
+                <h1>Good afternoon</h1>
+                <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 4 }}>Manage your workspace settings and integrations.</p>
+              </div>
             </div>
             <SettingsPanel ngrokRunning={ngrokStatus.running} twilioRunning={twilioStatus.running} />
             <McpServersPanel />
