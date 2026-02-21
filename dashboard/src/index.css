@@ -4,6 +4,7 @@
  * Ported from the inline CSS in index.html and call.html.
  * VS Code dark theme with monospace fonts.
  * ============================================================================ */
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:ital,wght@0,100..700;1,100..700&display=swap');
 
 :root {
   --bg-main: #ffffff;
