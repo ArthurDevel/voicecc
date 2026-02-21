@@ -2,7 +2,9 @@
  * MCP servers list API route.
  *
  * Runs `claude mcp list` and parses the output into structured entries:
- * - GET / -- list all configured MCP servers with connection status
+ * - GET /        -- list all configured MCP servers with connection status
+ * - POST /add    -- add a new MCP server by running `claude mcp add` directly
+ * - POST /:name/auth -- open Terminal to guide user through MCP server auth
  */
 
 import { Hono } from "hono";
@@ -20,6 +22,7 @@ interface McpServerEntry {
   url: string;
   type: "http" | "stdio";
   status: "connected" | "failed" | "needs_auth";
+  scope: "project" | "user" | "local";
 }
 
 // ============================================================================
@@ -34,7 +37,7 @@ interface McpServerEntry {
 export function mcpServersRoutes(): Hono {
   const app = new Hono();
 
-  /** List MCP servers from Claude CLI */
+  /** List MCP servers from Claude CLI, including scope from `mcp get` */
   app.get("/", async (c) => {
     const claudePath = join(homedir(), ".local", "bin", "claude");
     const output = await new Promise<string>((resolve) => {
@@ -50,7 +53,47 @@ export function mcpServersRoutes(): Hono {
     });
 
     const servers = parseMcpListOutput(output);
+
+    // Fetch scope for each server in parallel via `claude mcp get <name>`
+    await Promise.all(
+      servers.map((server) =>
+        new Promise<void>((resolve) => {
+          execFile(claudePath, ["mcp", "get", server.name], { timeout: 10000 }, (err, stdout) => {
+            if (!err && stdout) {
+              server.scope = parseScopeFromGet(stdout);
+            }
+            resolve();
+          });
+        })
+      )
+    );
+
     return c.json({ servers });
+  });
+
+  /** Add a new MCP server by running `claude mcp add` directly */
+  app.post("/add", async (c) => {
+    const { name, url, transport, scope } = await c.req.json<{
+      name: string;
+      url: string;
+      transport: string;
+      scope: string;
+    }>();
+
+    const claudePath = join(homedir(), ".local", "bin", "claude");
+    const args = ["mcp", "add", "--transport", transport, "--scope", scope, name, url];
+
+    return new Promise((resolve) => {
+      execFile(claudePath, args, { timeout: 15000 }, (err, stdout, stderr) => {
+        if (err) {
+          console.error("[mcp-servers] add error:", err.message);
+          console.error("[mcp-servers] stderr:", stderr);
+          resolve(c.json({ error: stderr || err.message }, 500));
+          return;
+        }
+        resolve(c.json({ success: true, output: stdout }));
+      });
+    });
   });
 
   /** Open Claude Code in Terminal to guide user through MCP server auth */
@@ -73,6 +116,24 @@ end tell`;
           return;
         }
         resolve(c.json({ success: true }));
+      });
+    });
+  });
+
+  /** Remove an MCP server by running `claude mcp remove` */
+  app.delete("/:name", async (c) => {
+    const { name } = c.req.param();
+    const claudePath = join(homedir(), ".local", "bin", "claude");
+    const args = ["mcp", "remove", name];
+
+    return new Promise((resolve) => {
+      execFile(claudePath, args, { timeout: 15000 }, (err, stdout, stderr) => {
+        if (err) {
+          console.error("[mcp-servers] remove error:", err.message);
+          resolve(c.json({ error: stderr || err.message }, 500));
+          return;
+        }
+        resolve(c.json({ success: true, output: stdout }));
       });
     });
   });
@@ -114,8 +175,24 @@ function parseMcpListOutput(output: string): McpServerEntry[] {
       status = "needs_auth";
     }
 
-    servers.push({ name, url: urlOrCommand, type, status });
+    servers.push({ name, url: urlOrCommand, type, status, scope: "local" });
   }
 
   return servers;
+}
+
+/**
+ * Parse the scope from `claude mcp get <name>` output.
+ * Looks for "Scope: ..." line and maps to our scope type.
+ *
+ * @param output - Raw CLI output from `claude mcp get`
+ * @returns Parsed scope
+ */
+function parseScopeFromGet(output: string): McpServerEntry["scope"] {
+  const match = output.match(/Scope:\s*(.+)/i);
+  if (!match) return "local";
+  const scopeText = match[1].toLowerCase();
+  if (scopeText.includes("user")) return "user";
+  if (scopeText.includes("project")) return "project";
+  return "local";
 }
