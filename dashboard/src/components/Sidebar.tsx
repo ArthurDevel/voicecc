@@ -2,8 +2,8 @@
  * Dashboard sidebar with navigation, voice button, and conversation list.
  *
  * Renders:
- * - Start Voice button (opens Terminal)
- * - Call via Browser button (enabled when browser call server is running)
+ * - New Terminal Session button (opens Terminal)
+ * - New Browser Session button (enabled when browser call server is running)
  * - Conversation list fetched from API
  * - Settings nav item in footer
  */
@@ -37,7 +37,7 @@ interface ConversationSummary {
 
 export function Sidebar({ twilioStatus, browserCallStatus, authStatus }: SidebarProps) {
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
-  const [voiceButtonText, setVoiceButtonText] = useState("Start Voice");
+  const [voiceButtonText, setVoiceButtonText] = useState("New Terminal Session");
   const [voiceDisabled, setVoiceDisabled] = useState(false);
   const [showBrowserCallModal, setShowBrowserCallModal] = useState(false);
 
@@ -73,7 +73,7 @@ export function Sidebar({ twilioStatus, browserCallStatus, authStatus }: Sidebar
     setVoiceButtonText("Opening Terminal...");
     try {
       await post("/api/voice/start");
-      setVoiceButtonText("Start Voice");
+      setVoiceButtonText("New Terminal Session");
     } catch {
       setVoiceButtonText("Error -- retry");
     }
@@ -116,13 +116,18 @@ export function Sidebar({ twilioStatus, browserCallStatus, authStatus }: Sidebar
         >
           {voiceButtonText}
         </button>
-        <button
-          className="btn-browser-call"
-          disabled={!browserCallEnabled}
-          onClick={() => setShowBrowserCallModal(true)}
-        >
-          Call via Browser
-        </button>
+        <span style={{ position: "relative" }} className="browser-call-wrap">
+          <button
+            className="btn-browser-call"
+            disabled={!browserCallEnabled}
+            onClick={() => setShowBrowserCallModal(true)}
+          >
+            New Browser Session
+          </button>
+          {!browserCallEnabled && (
+            <span className="browser-call-tooltip">Enable in Settings!</span>
+          )}
+        </span>
       </div>
 
       <div className="sidebar-nav">
