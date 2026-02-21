@@ -58,7 +58,7 @@ export async function startTunnel(port: number): Promise<string> {
     const text = chunk.toString();
     tunnelStderr += text;
     for (const line of text.split("\n")) {
-      if (line.trim()) {
+      if (line.trim() && (line.includes("WRN") || line.includes("ERR"))) {
         console.log(`[tunnel] ${line}`);
       }
     }
