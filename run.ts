@@ -3,14 +3,14 @@
  *
  * Responsibilities:
  * - Start the dashboard HTTP server (editor UI, conversation viewer, voice launcher)
- * - Auto-start ngrok if NGROK_AUTHTOKEN is configured in .env
- * - Auto-start Twilio server if TWILIO_AUTH_TOKEN is configured in .env
+ * - Auto-start enabled integrations (Twilio, Browser Call) with ngrok as dependency
  */
 
 import { startDashboard } from "./dashboard/server.js";
 import { readEnv } from "./services/env.js";
-import { startNgrok } from "./services/ngrok.js";
+import { startNgrok, isNgrokRunning } from "./services/ngrok.js";
 import { startTwilioServer } from "./services/twilio-manager.js";
+import { startBrowserCallServer } from "./services/browser-call-manager.js";
 
 // ============================================================================
 // MAIN ENTRYPOINT
@@ -29,26 +29,31 @@ async function main(): Promise<void> {
   console.log("");
 
   const envVars = await readEnv();
+  const ngrokPort = parseInt(envVars.TWILIO_PORT || "8080", 10);
 
-  // Auto-start ngrok if authtoken is configured
-  let ngrokUrl: string | undefined;
-  if (envVars.NGROK_AUTHTOKEN) {
-    const ngrokPort = parseInt(envVars.TWILIO_PORT || "8080", 10);
-    console.log("ngrok authtoken detected, starting ngrok tunnel...");
+  // Auto-start Twilio if enabled
+  if (envVars.TWILIO_ENABLED === "true") {
+    console.log("Twilio integration enabled, starting...");
     try {
-      ngrokUrl = await startNgrok(ngrokPort);
+      if (!isNgrokRunning() && envVars.NGROK_AUTHTOKEN) {
+        await startNgrok(ngrokPort);
+      }
+      await startTwilioServer(port, undefined);
     } catch (err) {
-      console.error(`ngrok auto-start failed: ${err}`);
+      console.error(`Twilio auto-start failed: ${err}`);
     }
   }
 
-  // Auto-start Twilio server if auth token is configured
-  if (envVars.TWILIO_AUTH_TOKEN) {
-    console.log("Twilio auth token detected, starting Twilio server...");
+  // Auto-start Browser Call if enabled
+  if (envVars.BROWSER_CALL_ENABLED === "true") {
+    console.log("Browser Call integration enabled, starting...");
     try {
-      await startTwilioServer(port, ngrokUrl);
+      if (!isNgrokRunning() && envVars.NGROK_AUTHTOKEN) {
+        await startNgrok(ngrokPort);
+      }
+      await startBrowserCallServer(port);
     } catch (err) {
-      console.error(`Twilio server auto-start failed: ${err}`);
+      console.error(`Browser Call auto-start failed: ${err}`);
     }
   }
 }
