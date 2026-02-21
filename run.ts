@@ -18,7 +18,15 @@ import { startTwilioServer } from "./services/twilio-manager.js";
 
 async function main(): Promise<void> {
   const port = await startDashboard();
-  console.log("Dashboard ready. Use the 'Start Voice' button to begin a voice session.");
+
+  console.log("");
+  console.log("========================================");
+  console.log("             VOICECC RUNNING            ");
+  console.log("========================================");
+  console.log("");
+  console.log(`  Dashboard:  http://localhost:${port}`);
+  console.log("  Press Ctrl+C to stop.");
+  console.log("");
 
   const envVars = await readEnv();
 

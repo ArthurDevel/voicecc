@@ -45,7 +45,13 @@ function main() {
   installPythonPackages();
   downloadSpacyModel();
 
-  console.log("\nPostinstall complete.");
+  console.log("");
+  console.log("========================================");
+  console.log("            VOICECC INSTALLED           ");
+  console.log("========================================");
+  console.log("");
+  console.log("  Run 'voicecc' in terminal to start the server!");
+  console.log("");
 }
 
 // ============================================================================
