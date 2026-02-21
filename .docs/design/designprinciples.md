@@ -59,6 +59,17 @@ The app supports dynamic theme toggling class names (`.dark` and `.light`) attac
 - `--btn-primary-bg`: `#111827`
 - `--btn-primary-text`: `#ffffff`
 
+### Panel Pattern (Settings & Status Panels)
+All dashboard panels follow the `.settings-panel` CSS pattern:
+- **Container**: `padding: 24px`, `border: 1px solid var(--border-color)`, `background: var(--bg-surface)`, `border-radius: 0`, `box-shadow: 0 1px 3px rgba(0,0,0,0.05)`, `margin-bottom: 24px`
+- **Panel heading (h2)**: `fontSize: 16`, `fontWeight: 600`, `color: var(--text-primary)`, `marginBottom: 4`
+- **Panel description (p)**: `fontSize: 13`, `color: var(--text-secondary)`, `marginBottom: 20`
+- **Row layout**: `.settings-row` with `display: flex`, `alignItems: center`, `gap: 10px`
+- **Action buttons**: `.settings-actions` container, buttons use `var(--btn-primary-bg)` / `var(--btn-primary-text)`, `padding: 8px 16px`, `fontSize: 13`, `fontWeight: 500`
+- **Status indicators**: 8px dot with `borderRadius: 50%`, using `var(--accent-color)` for success and `#d73a49` for error
+
+This pattern is reused on the Home page (auth status panel) and all Settings sub-pages.
+
 ### State Management & Interactions
 - Button **hover states** gently inverse or raise background tones. Example: An active tab button applies `var(--btn-primary-bg)`.
 - **Transitions** are kept extremely swift (e.g. `transition: all 0.1s ease` or `0.15s`) to feel responsive and instantaneous. 
