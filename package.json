@@ -29,7 +29,6 @@
     "@anthropic-ai/claude-code": "^1.0.0",
     "@anthropic-ai/sdk": "^0.39.0",
     "@hono/node-server": "^1.19.9",
-    "@twilio/voice-sdk": "^2.18.0",
     "avr-vad": "^1.0.0",
     "dotenv": "^16.4.0",
     "hono": "^4.12.0",
