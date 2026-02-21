@@ -3,12 +3,12 @@
  *
  * Responsibilities:
  * - Start the dashboard HTTP server (editor UI, conversation viewer, voice launcher)
- * - Auto-start enabled integrations (Twilio, Browser Call) with ngrok as dependency
+ * - Auto-start enabled integrations (Twilio, Browser Call) with tunnel as dependency
  */
 
 import { startDashboard } from "./dashboard/server.js";
 import { readEnv } from "./services/env.js";
-import { startNgrok, isNgrokRunning } from "./services/ngrok.js";
+import { startTunnel, isTunnelRunning } from "./services/tunnel.js";
 import { startTwilioServer } from "./services/twilio-manager.js";
 import { startBrowserCallServer } from "./services/browser-call-manager.js";
 
@@ -29,14 +29,14 @@ async function main(): Promise<void> {
   console.log("");
 
   const envVars = await readEnv();
-  const ngrokPort = parseInt(envVars.TWILIO_PORT || "8080", 10);
+  const tunnelPort = parseInt(envVars.TWILIO_PORT || "8080", 10);
 
   // Auto-start Twilio if enabled
   if (envVars.TWILIO_ENABLED === "true") {
     console.log("Twilio integration enabled, starting...");
     try {
-      if (!isNgrokRunning() && envVars.NGROK_AUTHTOKEN) {
-        await startNgrok(ngrokPort);
+      if (!isTunnelRunning()) {
+        await startTunnel(tunnelPort);
       }
       await startTwilioServer(port, undefined);
     } catch (err) {
@@ -48,8 +48,8 @@ async function main(): Promise<void> {
   if (envVars.BROWSER_CALL_ENABLED === "true") {
     console.log("Browser Call integration enabled, starting...");
     try {
-      if (!isNgrokRunning() && envVars.NGROK_AUTHTOKEN) {
-        await startNgrok(ngrokPort);
+      if (!isTunnelRunning()) {
+        await startTunnel(tunnelPort);
       }
       await startBrowserCallServer(port);
     } catch (err) {
