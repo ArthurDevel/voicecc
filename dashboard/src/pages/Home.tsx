@@ -30,15 +30,28 @@ export interface BrowserCallStatus {
   tunnelUrl: string | null;
 }
 
+interface McpServerEntry {
+  name: string;
+  url: string;
+  type: "http" | "stdio";
+  status: "connected" | "failed" | "needs_auth";
+  scope: "project" | "user" | "local";
+}
+
 export function Home() {
   const { authStatus } = useOutletContext<LayoutContext>();
   const [loginDisabled, setLoginDisabled] = useState(false);
   const [browserCallRunning, setBrowserCallRunning] = useState<boolean | null>(null);
+  const [mcpServers, setMcpServers] = useState<McpServerEntry[] | null>(null);
 
   useEffect(() => {
     get<BrowserCallStatus>("/api/browser-call/status")
       .then((data) => setBrowserCallRunning(data.running))
       .catch(() => setBrowserCallRunning(false));
+
+    get<{ servers: McpServerEntry[] }>("/api/mcp-servers")
+      .then((data) => setMcpServers(data.servers))
+      .catch(() => setMcpServers([]));
   }, []);
 
   const handleLogin = useCallback(async () => {
@@ -55,8 +68,8 @@ export function Home() {
     <div className="page active" style={{ display: "flex", flexDirection: "column" }}>
       <div className="page-header" style={{ padding: "48px 64px 24px" }}>
         <div>
-          <h1>Conversation</h1>
-          <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 4 }}>Select a conversation from the sidebar.</p>
+          <h1>Getting started</h1>
+          <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 4 }}>Set up your environment to get started.</p>
         </div>
       </div>
 
@@ -132,6 +145,56 @@ export function Home() {
                 <button>Set up in Settings</button>
               </Link>
             </div>
+          )}
+        </div>
+
+        <div className="settings-panel">
+          <h2 style={{ fontSize: 16, fontWeight: 600, color: "var(--text-primary)", marginBottom: 4 }}>
+            MCP Integrations
+          </h2>
+          <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 20 }}>
+            Connect external tools and services via MCP servers.
+          </p>
+
+          {mcpServers === null && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#666", flexShrink: 0 }} />
+              <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>Checking...</span>
+            </div>
+          )}
+
+          {mcpServers !== null && mcpServers.length === 0 && (
+            <div className="settings-actions">
+              <Link to="/settings?tab=integrations" style={{ textDecoration: "none" }}>
+                <button>Set up in Settings</button>
+              </Link>
+            </div>
+          )}
+
+          {mcpServers !== null && mcpServers.length > 0 && (
+            <>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {mcpServers.map((server) => (
+                  <div key={server.name} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: "50%",
+                      background: server.status === "connected" ? "var(--accent-color)"
+                        : server.status === "needs_auth" ? "#d29922"
+                        : "#d73a49",
+                      flexShrink: 0,
+                    }} />
+                    <span style={{ fontSize: 13, color: "var(--text-primary)" }}>{server.name}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="settings-actions">
+                <Link to="/settings?tab=integrations" style={{ textDecoration: "none" }}>
+                  <button>Add more in Settings</button>
+                </Link>
+              </div>
+            </>
           )}
         </div>
       </div>
