@@ -1034,34 +1034,41 @@ button.mcp-server-status.needs-auth:hover {
 }
 
 .msg {
-  margin-bottom: 16px;
-  max-width: 80%;
+  margin-bottom: 24px;
+  max-width: 100%;
 }
 
-.msg-user {
-  margin-left: auto;
-  background: #264f78;
-  border-radius: 8px 8px 2px 8px;
-  padding: 8px 12px;
+.msg-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.msg-role {
   font-size: 13px;
-  line-height: 1.5;
+  font-weight: 600;
   color: var(--text-primary);
 }
 
-.msg-assistant {
+.msg-time {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.msg-content {
   background: var(--bg-surface);
-  border-radius: 8px 8px 8px 2px;
-  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 0;
+  padding: 12px 16px;
   font-size: 13px;
-  line-height: 1.5;
+  line-height: 1.6;
   color: var(--text-primary);
   white-space: pre-wrap;
 }
 
-.msg-time {
-  font-size: 10px;
-  color: var(--text-secondary);
-  margin-top: 2px;
+.msg-user .msg-content {
+  background: var(--bg-hover);
 }
 
 .conversation-empty {
