@@ -1,9 +1,11 @@
 /**
  * Claude Code authentication probe route.
  *
- * Runs `claude mcp list` to check whether the user is authenticated.
- * This command is free (no API call), creates no conversation history,
- * and fails with a non-zero exit code when not logged in.
+ * Runs `claude -p "hi" --output-format json` to check whether the user
+ * is authenticated. When logged out this returns instantly (~30ms) with
+ * exit code 1 and `is_error: true`. When logged in it starts an API call,
+ * so we use a short timeout and kill the process -- if it's still running
+ * after the deadline, the user is authenticated.
  *
  * - GET /    -- probe and return { authenticated: boolean }
  * - POST /login -- open Terminal.app with `claude` for interactive login
@@ -20,20 +22,56 @@ import { join } from "path";
 
 const CLAUDE_BIN = join(homedir(), ".local", "bin", "claude");
 
+/** When not logged in the CLI exits in ~30ms. Give it 3s before assuming authenticated. */
+const PROBE_TIMEOUT_MS = 3_000;
+
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
 
 /**
- * Run `claude mcp list` and check if it succeeds.
+ * Run `claude -p "hi" --output-format json` with a short timeout.
  *
- * @returns true if claude exits 0 (authenticated), false otherwise
+ * - Logged out: exits 1 instantly with "Not logged in" in the result.
+ * - Logged in: starts an API call (hangs until timeout). We kill it and
+ *   treat that as authenticated.
+ *
+ * @returns true if authenticated, false otherwise
  */
 async function probeClaudeAuth(): Promise<boolean> {
   return new Promise((resolve) => {
-    execFile(CLAUDE_BIN, ["mcp", "list"], { timeout: 15_000 }, (err) => {
-      resolve(!err);
-    });
+    const child = execFile(
+      CLAUDE_BIN,
+      ["-p", "hi", "--output-format", "json"],
+      { timeout: PROBE_TIMEOUT_MS },
+      (err, stdout) => {
+        if (!err) {
+          // Exited 0 -- logged in (unlikely to finish that fast, but valid)
+          resolve(true);
+          return;
+        }
+
+        // If killed by our timeout, the process was busy making an API call -> authenticated
+        if (err.killed) {
+          resolve(true);
+          return;
+        }
+
+        // Exited with error -- check if it's the "Not logged in" message
+        try {
+          const json = JSON.parse(stdout);
+          if (json.is_error && typeof json.result === "string" && json.result.includes("Not logged in")) {
+            resolve(false);
+            return;
+          }
+        } catch {
+          // couldn't parse JSON, fall through
+        }
+
+        // Any other error -- assume not authenticated
+        resolve(false);
+      },
+    );
   });
 }
 
