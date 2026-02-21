@@ -27,7 +27,6 @@ interface McpServerEntry {
 }
 
 interface McpServersPanelProps {
-  ngrokRunning: boolean;
   twilioRunning: boolean;
   browserCallRunning: boolean;
 }
@@ -36,7 +35,7 @@ interface McpServersPanelProps {
 // COMPONENT
 // ============================================================================
 
-export function McpServersPanel({ ngrokRunning, twilioRunning, browserCallRunning }: McpServersPanelProps) {
+export function McpServersPanel({ twilioRunning, browserCallRunning }: McpServersPanelProps) {
   const [servers, setServers] = useState<McpServerEntry[] | null>(null);
   const [error, setError] = useState(false);
   const [showTwilioModal, setShowTwilioModal] = useState(false);
@@ -86,10 +85,6 @@ export function McpServersPanel({ ngrokRunning, twilioRunning, browserCallRunnin
         <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 20 }}>Connect external services like Twilio to enable voice calling capabilities.</p>
 
         <div style={{ display: "flex", gap: 12 }}>
-          <span className="btn-integration" style={{ cursor: "default" }}>
-            <span className={`integration-dot${ngrokRunning ? " running" : ""}`} />
-            ngrok
-          </span>
           <button className="btn-integration" onClick={() => setShowTwilioModal(true)}>
             <span className={`integration-dot${twilioRunning ? " running" : ""}`} />
             Twilio
