@@ -1,6 +1,6 @@
 {
   "name": "voicecc",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "Voice mode plugin for Claude Code -- hands-free interaction via local STT/TTS/VAD",
   "type": "module",
   "scripts": {
