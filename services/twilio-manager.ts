@@ -2,7 +2,7 @@
  * Twilio voice server process management.
  *
  * Manages the lifecycle of the twilio-server child process:
- * - Start the server with dashboard port and optional ngrok URL
+ * - Start the server with dashboard port and optional tunnel URL
  * - Stop the server
  * - Report running status
  */
@@ -36,14 +36,14 @@ let twilioRunning = false;
 
 /**
  * Start the Twilio voice server.
- * Reads .env for TWILIO_AUTH_TOKEN. If ngrokUrl and TwiML app SID exist,
+ * Reads .env for TWILIO_AUTH_TOKEN. If tunnelUrl and TwiML app SID exist,
  * updates the TwiML app voice URL via Twilio SDK.
  * Spawns twilio-server.ts as a child process with DASHBOARD_PORT env var.
  *
  * @param dashboardPort - The dashboard server port (for proxying)
- * @param ngrokUrl - Optional ngrok public URL for webhook configuration
+ * @param tunnelUrl - Optional tunnel public URL for webhook configuration
  */
-export async function startTwilioServer(dashboardPort: number, ngrokUrl?: string): Promise<void> {
+export async function startTwilioServer(dashboardPort: number, tunnelUrl?: string): Promise<void> {
   if (twilioRunning) {
     throw new Error("Twilio server is already running");
   }
@@ -57,14 +57,14 @@ export async function startTwilioServer(dashboardPort: number, ngrokUrl?: string
   // Update TwiML App voice URL if configured
   const twimlAppSid = envVars.TWILIO_TWIML_APP_SID;
   const accountSid = envVars.TWILIO_ACCOUNT_SID;
-  if (ngrokUrl && twimlAppSid && accountSid && envVars.TWILIO_AUTH_TOKEN) {
+  if (tunnelUrl && twimlAppSid && accountSid && envVars.TWILIO_AUTH_TOKEN) {
     try {
       const client = twilioSdk(accountSid, envVars.TWILIO_AUTH_TOKEN);
       await client.applications(twimlAppSid).update({
-        voiceUrl: `${ngrokUrl}/twilio/incoming-call`,
+        voiceUrl: `${tunnelUrl}/twilio/incoming-call`,
         voiceMethod: "POST",
       });
-      console.log(`Updated TwiML App voice URL to ${ngrokUrl}/twilio/incoming-call`);
+      console.log(`Updated TwiML App voice URL to ${tunnelUrl}/twilio/incoming-call`);
     } catch (err) {
       console.error(`Failed to update TwiML App voice URL: ${err}`);
     }
