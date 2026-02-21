@@ -2,16 +2,16 @@
  * Twilio PSTN server management API routes.
  *
  * Manages the Twilio voice server lifecycle for PSTN phone calls:
- * - GET /status -- server running state and ngrok URL
- * - POST /start -- start ngrok + twilio server
- * - POST /stop -- stop twilio server + ngrok
+ * - GET /status -- server running state and tunnel URL
+ * - POST /start -- start tunnel + twilio server
+ * - POST /stop -- stop twilio server + tunnel
  * - GET /phone-numbers -- fetch phone numbers from Twilio API
  */
 
 import { Hono } from "hono";
 import { readEnv } from "../../services/env.js";
 import { startTwilioServer, stopTwilioServer, getStatus } from "../../services/twilio-manager.js";
-import { startNgrok, stopNgrok, getNgrokUrl, isNgrokRunning } from "../../services/ngrok.js";
+import { startTunnel, stopTunnel, getTunnelUrl, isTunnelRunning } from "../../services/tunnel.js";
 import { isBrowserCallRunning } from "../../services/browser-call-manager.js";
 
 // ============================================================================
@@ -46,10 +46,10 @@ export function twilioRoutes(): Hono {
   /** Get Twilio server status */
   app.get("/status", async (c) => {
     const status = await getStatus();
-    return c.json({ running: status.running, ngrokUrl: getNgrokUrl() });
+    return c.json({ running: status.running, tunnelUrl: getTunnelUrl() });
   });
 
-  /** Start ngrok + Twilio server */
+  /** Start tunnel + Twilio server */
   app.post("/start", async (c) => {
     try {
       // Port conflict check: browser-server uses the same port
@@ -60,12 +60,12 @@ export function twilioRoutes(): Hono {
       const envVars = await readEnv();
       const port = parseInt(envVars.TWILIO_PORT || "8080", 10);
 
-      if (!isNgrokRunning()) {
-        await startNgrok(port);
+      if (!isTunnelRunning()) {
+        await startTunnel(port);
       }
       const status = await getStatus();
       if (!status.running) {
-        await startTwilioServer(dashboardPort, getNgrokUrl() ?? undefined);
+        await startTwilioServer(dashboardPort, getTunnelUrl() ?? undefined);
       }
       return c.json({ success: true });
     } catch (err) {
@@ -74,11 +74,11 @@ export function twilioRoutes(): Hono {
     }
   });
 
-  /** Stop Twilio server. Only stops ngrok if browser call is also stopped. */
+  /** Stop Twilio server. Only stops tunnel if browser call is also stopped. */
   app.post("/stop", (c) => {
     stopTwilioServer();
     if (!isBrowserCallRunning()) {
-      stopNgrok();
+      stopTunnel();
     }
     return c.json({ success: true });
   });

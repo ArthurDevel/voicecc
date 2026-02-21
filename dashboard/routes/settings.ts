@@ -14,7 +14,7 @@ import { readEnv, writeEnvFile } from "../../services/env.js";
 // ============================================================================
 
 /** Keys that should be masked when reading settings */
-const MASKED_KEYS = ["TWILIO_AUTH_TOKEN", "NGROK_AUTHTOKEN", "TWILIO_API_KEY_SECRET"];
+const MASKED_KEYS = ["TWILIO_AUTH_TOKEN", "TWILIO_API_KEY_SECRET"];
 
 // ============================================================================
 // ROUTES

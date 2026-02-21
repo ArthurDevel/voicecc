@@ -124,6 +124,22 @@ export function validateAndConsumeCode(code: string, userAgent: string): Pairing
  * @param token - The device token to validate
  * @returns True if the token is valid
  */
+/**
+ * Check if a pairing code is still active (not yet consumed or expired).
+ *
+ * @param code - The 6-digit pairing code
+ * @returns True if the code is still waiting to be used
+ */
+export function isPairingCodeActive(code: string): boolean {
+  const entry = pairingCodes.get(code);
+  if (!entry) return false;
+  if (Date.now() > entry.expiresAt) {
+    pairingCodes.delete(code);
+    return false;
+  }
+  return true;
+}
+
 export function isValidDeviceToken(token: string): boolean {
   return deviceTokens.has(token);
 }

@@ -3,17 +3,17 @@ import { get } from "../api";
 import { SettingsPanel } from "../components/SettingsPanel";
 import { McpServersPanel } from "../components/McpServersPanel";
 import { ClaudeMdEditor } from "../components/ClaudeMdEditor";
-import type { NgrokStatus, TwilioStatus, BrowserCallStatus } from "../pages/Home";
+import type { TunnelStatus, TwilioStatus, BrowserCallStatus } from "../pages/Home";
 
 export function Settings() {
     const [activeTab, setActiveTab] = useState<"general" | "integrations" | "system">("general");
-    const [ngrokStatus, setNgrokStatus] = useState<NgrokStatus>({ running: false, url: null });
-    const [twilioStatus, setTwilioStatus] = useState<TwilioStatus>({ running: false, ngrokUrl: null });
-    const [browserCallStatus, setBrowserCallStatus] = useState<BrowserCallStatus>({ running: false, ngrokUrl: null });
+    const [tunnelStatus, setTunnelStatus] = useState<TunnelStatus>({ running: false, url: null });
+    const [twilioStatus, setTwilioStatus] = useState<TwilioStatus>({ running: false, tunnelUrl: null });
+    const [browserCallStatus, setBrowserCallStatus] = useState<BrowserCallStatus>({ running: false, tunnelUrl: null });
 
     useEffect(() => {
         const poll = () => {
-            get<NgrokStatus>("/api/ngrok/status").then(setNgrokStatus).catch(() => { });
+            get<TunnelStatus>("/api/tunnel/status").then(setTunnelStatus).catch(() => { });
             get<TwilioStatus>("/api/twilio/status").then(setTwilioStatus).catch(() => { });
             get<BrowserCallStatus>("/api/browser-call/status").then(setBrowserCallStatus).catch(() => { });
         };
@@ -46,7 +46,7 @@ export function Settings() {
             {/* Scrollable Content Area */}
             <div style={{ flex: 1, overflowY: "auto", padding: "48px 64px" }}>
                 {activeTab === "general" && (
-                    <SettingsPanel ngrokRunning={ngrokStatus.running} twilioRunning={twilioStatus.running} />
+                    <SettingsPanel twilioRunning={twilioStatus.running} />
                 )}
                 {activeTab === "integrations" && (
                     <McpServersPanel twilioRunning={twilioStatus.running} browserCallRunning={browserCallStatus.running} />
