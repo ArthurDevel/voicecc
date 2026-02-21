@@ -9,8 +9,8 @@ export interface LayoutContext {
 }
 
 export function Layout() {
-    const [twilioStatus, setTwilioStatus] = useState<TwilioStatus>({ running: false, ngrokUrl: null });
-    const [browserCallStatus, setBrowserCallStatus] = useState<BrowserCallStatus>({ running: false, ngrokUrl: null });
+    const [twilioStatus, setTwilioStatus] = useState<TwilioStatus>({ running: false, tunnelUrl: null });
+    const [browserCallStatus, setBrowserCallStatus] = useState<BrowserCallStatus>({ running: false, tunnelUrl: null });
     const [authStatus, setAuthStatus] = useState<boolean | null>(null);
 
     useEffect(() => {
