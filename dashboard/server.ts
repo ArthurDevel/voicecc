@@ -19,7 +19,7 @@ import { claudeMdRoutes } from "./routes/claude-md.js";
 import { conversationRoutes } from "./routes/conversations.js";
 import { settingsRoutes } from "./routes/settings.js";
 import { voiceRoutes } from "./routes/voice.js";
-import { ngrokRoutes } from "./routes/ngrok.js";
+import { tunnelRoutes } from "./routes/tunnel.js";
 import { twilioRoutes, setDashboardPort } from "./routes/twilio.js";
 import { browserCallRoutes, setDashboardPort as setBrowserCallDashboardPort } from "./routes/browser-call.js";
 import { webrtcRoutes } from "./routes/webrtc.js";
@@ -52,7 +52,7 @@ function createApp(): Hono {
   app.route("/api/conversations", conversationRoutes());
   app.route("/api/settings", settingsRoutes());
   app.route("/api/voice", voiceRoutes());
-  app.route("/api/ngrok", ngrokRoutes());
+  app.route("/api/tunnel", tunnelRoutes());
   app.route("/api/twilio", twilioRoutes());
   app.route("/api/browser-call", browserCallRoutes());
   app.route("/api/webrtc", webrtcRoutes());
