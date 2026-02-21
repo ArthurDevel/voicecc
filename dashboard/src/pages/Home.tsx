@@ -6,9 +6,9 @@
  * - Content area with either settings panels or conversation viewer
  */
 
-import { useState, useCallback } from "react";
-import { useOutletContext } from "react-router-dom";
-import { post } from "../api";
+import { useState, useCallback, useEffect } from "react";
+import { useOutletContext, Link } from "react-router-dom";
+import { get, post } from "../api";
 import type { LayoutContext } from "../components/Layout";
 
 // ============================================================================
@@ -33,6 +33,13 @@ export interface BrowserCallStatus {
 export function Home() {
   const { authStatus } = useOutletContext<LayoutContext>();
   const [loginDisabled, setLoginDisabled] = useState(false);
+  const [browserCallRunning, setBrowserCallRunning] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    get<BrowserCallStatus>("/api/browser-call/status")
+      .then((data) => setBrowserCallRunning(data.running))
+      .catch(() => setBrowserCallRunning(false));
+  }, []);
 
   const handleLogin = useCallback(async () => {
     setLoginDisabled(true);
@@ -87,6 +94,43 @@ export function Home() {
               <button disabled={loginDisabled} onClick={handleLogin}>
                 Open Claude Code
               </button>
+            </div>
+          )}
+        </div>
+
+        <div className="settings-panel">
+          <h2 style={{ fontSize: 16, fontWeight: 600, color: "var(--text-primary)", marginBottom: 4 }}>
+            Enable calling from anywhere
+          </h2>
+          <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 20 }}>
+            Call your voice assistant from any device using a browser.
+          </p>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{
+              width: 8,
+              height: 8,
+              borderRadius: "50%",
+              background: browserCallRunning === null ? "#666" : browserCallRunning ? "var(--accent-color)" : "#d73a49",
+              flexShrink: 0,
+            }} />
+            <span style={{
+              fontSize: 13,
+              color: browserCallRunning === null ? "var(--text-secondary)" : browserCallRunning ? "var(--accent-color)" : "#d73a49",
+            }}>
+              {browserCallRunning === null
+                ? "Checking status..."
+                : browserCallRunning
+                  ? "Browser calling is active"
+                  : "Browser calling is not enabled"}
+            </span>
+          </div>
+
+          {browserCallRunning === false && (
+            <div className="settings-actions">
+              <Link to="/settings?tab=integrations" style={{ textDecoration: "none" }}>
+                <button>Set up in Settings</button>
+              </Link>
             </div>
           )}
         </div>
