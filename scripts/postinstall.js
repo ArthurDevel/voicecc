@@ -39,18 +39,40 @@ const PYTHON_PACKAGES = [
 
 function main() {
   installClaudeMd();
+  buildDashboard();
   compileMicVpio();
   checkSystemDeps();
   setupPythonVenv();
   installPythonPackages();
   downloadSpacyModel();
 
-  console.log("\nPostinstall complete.");
+  console.log("");
+  console.log("========================================");
+  console.log("            VOICECC INSTALLED           ");
+  console.log("========================================");
+  console.log("");
+  console.log("  Run 'voicecc' in terminal to start the server!");
+  console.log("");
 }
 
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
+
+/**
+ * Build the dashboard frontend via Vite.
+ */
+function buildDashboard() {
+  console.log("Building dashboard...");
+  try {
+    run("cd dashboard && npx vite build");
+  } catch (err) {
+    console.error("\n[voicecc] ERROR: Failed to build dashboard.");
+    console.error("  Try manually: cd dashboard && npx vite build\n");
+    process.exit(1);
+  }
+  console.log("Dashboard built successfully");
+}
 
 /**
  * Copy the project CLAUDE.md from init/ to the project root.
