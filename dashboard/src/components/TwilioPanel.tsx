@@ -1,10 +1,14 @@
 /**
- * Twilio/WebRTC setup modal wizard.
+ * Twilio PSTN voice setup modal wizard.
  *
  * Step-by-step modal for configuring Twilio credentials, ngrok,
- * and browser calling (WebRTC). Supports two modes:
- * - "twilio": Full Twilio voice setup (credentials, ngrok, server, webhook, phone number)
- * - "webrtc": Browser calling setup (credentials, ngrok, server, WebRTC enable)
+ * and phone number for PSTN calling. Steps:
+ * 1. Create a Twilio account (credentials)
+ * 2. Get a phone number
+ * 3. Install ngrok
+ * 4. Start server
+ * 5. Configure webhook
+ * 6. Your phone number
  */
 
 import { useState, useEffect, useCallback } from "react";
@@ -15,14 +19,12 @@ import { get, post } from "../api";
 // ============================================================================
 
 interface TwilioPanelProps {
-  mode: "twilio" | "webrtc";
   onClose: () => void;
 }
 
 interface TwilioStatusData {
   running: boolean;
   ngrokUrl: string | null;
-  webrtcReady: boolean;
 }
 
 interface PhoneNumber {
@@ -34,7 +36,7 @@ interface PhoneNumber {
 // COMPONENT
 // ============================================================================
 
-export function TwilioPanel({ mode, onClose }: TwilioPanelProps) {
+export function TwilioPanel({ onClose }: TwilioPanelProps) {
   const [accountSid, setAccountSid] = useState("");
   const [authToken, setAuthToken] = useState("");
   const [ngrokToken, setNgrokToken] = useState("");
@@ -59,14 +61,14 @@ export function TwilioPanel({ mode, onClose }: TwilioPanelProps) {
     return () => clearInterval(interval);
   }, []);
 
-  // Fetch phone numbers when status shows credentials are set
+  // Fetch phone numbers when credentials are set
   useEffect(() => {
-    if (mode === "twilio" && accountSid && authToken) {
+    if (accountSid && authToken) {
       get<{ numbers: PhoneNumber[] }>("/api/twilio/phone-numbers")
         .then((data) => setPhoneNumbers(data.numbers || []))
         .catch(() => {});
     }
-  }, [mode, accountSid, authToken]);
+  }, [accountSid, authToken]);
 
   /** Poll Twilio status */
   const pollStatus = () => {
@@ -81,7 +83,13 @@ export function TwilioPanel({ mode, onClose }: TwilioPanelProps) {
       .catch(() => setNgrokInstalled(false));
   };
 
-  /** Save a single setting to .env */
+  /**
+   * Save a single setting to .env.
+   *
+   * @param key - The .env key to save
+   * @param value - The value to save
+   * @returns True if save succeeded
+   */
   const saveSetting = useCallback(async (key: string, value: string): Promise<boolean> => {
     try {
       await post("/api/settings", { [key]: value });
@@ -120,20 +128,6 @@ export function TwilioPanel({ mode, onClose }: TwilioPanelProps) {
     pollStatus();
   }, []);
 
-  /** Set up WebRTC (create API key + TwiML app) */
-  const handleSetupWebrtc = useCallback(async () => {
-    setActionText("Setting up...");
-    try {
-      await post("/api/twilio/setup-webrtc");
-      pollStatus();
-      setActionText("");
-    } catch (err) {
-      const message = err instanceof Error ? err.message : (err as { message?: string })?.message || "Setup failed";
-      setActionText(message);
-      setTimeout(() => setActionText(""), 3000);
-    }
-  }, []);
-
   /** Close modal when clicking overlay background */
   const handleOverlayClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget) onClose();
@@ -146,13 +140,13 @@ export function TwilioPanel({ mode, onClose }: TwilioPanelProps) {
     <div className="modal-overlay visible" onClick={handleOverlayClick}>
       <div className="modal">
         <button className="modal-close" onClick={onClose}>&times;</button>
-        <h2>{mode === "twilio" ? "Twilio Voice Setup" : "Browser Calling (WebRTC)"}</h2>
+        <h2>Twilio Voice Setup</h2>
 
         {/* Step 1: Credentials */}
         <div className="setup-step">
           <div className="setup-step-title">
             <span className="setup-step-number">1</span>
-            {mode === "twilio" ? "Create a Twilio account" : "Twilio credentials"}
+            Create a Twilio account
           </div>
           <div className="setup-step-desc">
             Sign up at <a href="https://www.twilio.com/try-twilio" target="_blank" rel="noreferrer">twilio.com/try-twilio</a>.
@@ -178,23 +172,22 @@ export function TwilioPanel({ mode, onClose }: TwilioPanelProps) {
           </div>
         </div>
 
-        {mode === "twilio" && (
-          <div className="setup-step">
-            <div className="setup-step-title"><span className="setup-step-number">2</span>Get a phone number</div>
-            <div className="setup-step-desc">
-              In the Twilio console, go to <strong>Phone Numbers</strong> &rarr; <strong>Buy a Number</strong>.
-              Pick any number with voice capability.
-            </div>
+        {/* Step 2: Phone number */}
+        <div className="setup-step">
+          <div className="setup-step-title"><span className="setup-step-number">2</span>Get a phone number</div>
+          <div className="setup-step-desc">
+            In the Twilio console, go to <strong>Phone Numbers</strong> &rarr; <strong>Buy a Number</strong>.
+            Pick any number with voice capability.
           </div>
-        )}
+        </div>
 
         <hr className="setup-divider" />
 
-        {/* ngrok step */}
+        {/* Step 3: ngrok */}
         <div className="setup-step">
           <div className="setup-step-title">
-            <span className="setup-step-number">{mode === "twilio" ? "3" : "2"}</span>
-            {mode === "twilio" ? "Install ngrok" : "ngrok"}
+            <span className="setup-step-number">3</span>
+            Install ngrok
           </div>
           <div className="setup-step-desc">
             ngrok tunnels your local server so Twilio can reach it.
@@ -222,10 +215,10 @@ export function TwilioPanel({ mode, onClose }: TwilioPanelProps) {
 
         <hr className="setup-divider" />
 
-        {/* Start/Stop step */}
+        {/* Step 4: Start/Stop server */}
         <div className="setup-step">
           <div className="setup-step-title">
-            <span className="setup-step-number">{mode === "twilio" ? "4" : "3"}</span>
+            <span className="setup-step-number">4</span>
             {isRunning ? "Server running" : "Start server"}
           </div>
           <div className="setup-step-desc">
@@ -245,79 +238,45 @@ export function TwilioPanel({ mode, onClose }: TwilioPanelProps) {
           </div>
         </div>
 
-        {/* Twilio-specific: webhook URL + phone number */}
-        {mode === "twilio" && (
-          <>
-            <div className="setup-step">
-              <div className="setup-step-title"><span className="setup-step-number">5</span>Configure the Twilio webhook</div>
-              <div className="setup-step-desc">
-                {webhookUrl ? (
-                  <>
-                    In the Twilio console, go to your phone number's configuration.<br />
-                    Under <strong>Voice & Fax</strong> &rarr; <strong>A Call Comes In</strong>, set:<br />
-                    <code style={{ userSelect: "all", cursor: "text" }}>{webhookUrl}</code><br />
-                    Method: <strong>HTTP POST</strong>
-                  </>
-                ) : (
-                  "Start the server first, then the webhook URL will appear here."
-                )}
-              </div>
-            </div>
+        {/* Step 5: Webhook URL */}
+        <div className="setup-step">
+          <div className="setup-step-title"><span className="setup-step-number">5</span>Configure the Twilio webhook</div>
+          <div className="setup-step-desc">
+            {webhookUrl ? (
+              <>
+                In the Twilio console, go to your phone number's configuration.<br />
+                Under <strong>Voice & Fax</strong> &rarr; <strong>A Call Comes In</strong>, set:<br />
+                <code style={{ userSelect: "all", cursor: "text" }}>{webhookUrl}</code><br />
+                Method: <strong>HTTP POST</strong>
+              </>
+            ) : (
+              "Start the server first, then the webhook URL will appear here."
+            )}
+          </div>
+        </div>
 
-            <hr className="setup-divider" />
+        <hr className="setup-divider" />
 
-            <div className="setup-step">
-              <div className="setup-step-title"><span className="setup-step-number">6</span>Your phone number</div>
-              <div className="setup-step-desc">
-                {phoneNumbers.length > 0 ? (
-                  <>
-                    Call this number to talk to Claude:<br />
-                    {phoneNumbers.map((n) => (
-                      <strong key={n.phoneNumber} style={{ color: "#d4d4d4", fontSize: 16, fontFamily: "SF Mono, Fira Code, monospace", display: "inline-block", marginTop: 4 }}>
-                        {n.phoneNumber}
-                      </strong>
-                    ))}
-                  </>
-                ) : accountSid && authToken ? (
-                  "Fetching phone number..."
-                ) : (
-                  "Set your Account SID and Auth Token to fetch your phone number."
-                )}
-              </div>
-            </div>
-          </>
-        )}
-
-        {/* WebRTC-specific: enable browser calling */}
-        {mode === "webrtc" && (
-          <>
-            <hr className="setup-divider" />
-            <div className="setup-step">
-              <div className="setup-step-title"><span className="setup-step-number">4</span>Enable browser calling</div>
-              <div className="setup-step-desc">
-                {status?.webrtcReady
-                  ? 'Browser calling is configured. Use the "Call via Browser" button in the sidebar.'
-                  : !isRunning
-                    ? "Start the server first (step 3), then set up browser calling."
-                    : "Auto-creates a Twilio API Key and TwiML Application. No phone number required."
-                }
-              </div>
-              <div className="setup-paste-row">
-                {status?.webrtcReady ? (
-                  <span style={{ fontSize: 12, color: "#2ea043" }}>Ready</span>
-                ) : (
-                  <button
-                    style={{ flex: 1, background: "#2ea043" }}
-                    disabled={!isRunning || !!actionText}
-                    onClick={handleSetupWebrtc}
-                  >
-                    {actionText || "Set Up Browser Calling"}
-                  </button>
-                )}
-              </div>
-            </div>
-          </>
-        )}
+        {/* Step 6: Phone number display */}
+        <div className="setup-step">
+          <div className="setup-step-title"><span className="setup-step-number">6</span>Your phone number</div>
+          <div className="setup-step-desc">
+            {phoneNumbers.length > 0 ? (
+              <>
+                Call this number to talk to Claude:<br />
+                {phoneNumbers.map((n) => (
+                  <strong key={n.phoneNumber} style={{ color: "#d4d4d4", fontSize: 16, fontFamily: "SF Mono, Fira Code, monospace", display: "inline-block", marginTop: 4 }}>
+                    {n.phoneNumber}
+                  </strong>
+                ))}
+              </>
+            ) : accountSid && authToken ? (
+              "Fetching phone number..."
+            ) : (
+              "Set your Account SID and Auth Token to fetch your phone number."
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

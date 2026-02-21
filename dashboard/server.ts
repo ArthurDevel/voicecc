@@ -21,6 +21,7 @@ import { settingsRoutes } from "./routes/settings.js";
 import { voiceRoutes } from "./routes/voice.js";
 import { ngrokRoutes } from "./routes/ngrok.js";
 import { twilioRoutes, setDashboardPort } from "./routes/twilio.js";
+import { browserCallRoutes, setDashboardPort as setBrowserCallDashboardPort } from "./routes/browser-call.js";
 import { webrtcRoutes } from "./routes/webrtc.js";
 import { mcpServersRoutes } from "./routes/mcp-servers.js";
 import { authRoutes } from "./routes/auth.js";
@@ -52,6 +53,7 @@ function createApp(): Hono {
   app.route("/api/voice", voiceRoutes());
   app.route("/api/ngrok", ngrokRoutes());
   app.route("/api/twilio", twilioRoutes());
+  app.route("/api/browser-call", browserCallRoutes());
   app.route("/api/webrtc", webrtcRoutes());
   app.route("/api/mcp-servers", mcpServersRoutes());
   app.route("/api/auth", authRoutes());
@@ -108,6 +110,7 @@ export async function startDashboard(): Promise<number> {
       });
 
       setDashboardPort(port);
+      setBrowserCallDashboardPort(port);
       console.log(`Dashboard running at http://localhost:${port}`);
       return port;
     } catch (err: unknown) {

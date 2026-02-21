@@ -72,5 +72,19 @@ This pattern is reused on the Home page (auth status panel) and all Settings sub
 
 ### State Management & Interactions
 - Button **hover states** gently inverse or raise background tones. Example: An active tab button applies `var(--btn-primary-bg)`.
-- **Transitions** are kept extremely swift (e.g. `transition: all 0.1s ease` or `0.15s`) to feel responsive and instantaneous. 
+- **Transitions** are kept extremely swift (e.g. `transition: all 0.1s ease` or `0.15s`) to feel responsive and instantaneous.
 - Form elements, like inputs, should emphasize interaction securely, utilizing `var(--btn-primary-bg)` to outline the `border-color` upon focus.
+
+### Toast Notifications
+For transient error/success messages, use the `<Toast>` component (`dashboard/src/components/Toast.tsx`). It renders a fixed-position notification in the bottom-right corner that auto-dismisses after 4 seconds.
+
+**Usage:**
+```tsx
+const [toast, setToast] = useState<string | null>(null);
+// Show an error:
+setToast("Something went wrong");
+// Render:
+<Toast message={toast} onDismiss={() => setToast(null)} />
+```
+
+**Styling:** Red background (`#6e3630`) with `#d73a49` border for errors. `z-index: 200` to sit above modals. CSS class: `.toast`.

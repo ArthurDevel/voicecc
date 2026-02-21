@@ -69,12 +69,13 @@ export function ConversationView({ sessionId }: ConversationViewProps) {
           <div className="conversation-empty">No messages in this session.</div>
         )}
         {messages.map((msg, i) => (
-          <div key={i} className="msg">
-            <div className={msg.role === "user" ? "msg-user" : "msg-assistant"}>
-              {msg.content}
+          <div key={i} className={`msg msg-${msg.role}`}>
+            <div className="msg-header">
+              <span className="msg-role">{msg.role === "user" ? "User" : "VoiceCC"}</span>
+              <span className="msg-time">{new Date(msg.timestamp).toLocaleTimeString()}</span>
             </div>
-            <div className="msg-time">
-              {new Date(msg.timestamp).toLocaleTimeString()}
+            <div className="msg-content">
+              {msg.content}
             </div>
           </div>
         ))}
