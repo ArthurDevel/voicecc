@@ -378,7 +378,7 @@ body {
   border: 1px solid var(--border-color);
   border-radius: 0;
   padding: 24px;
-  margin: 0 32px 32px;
+  margin-bottom: 24px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
@@ -462,7 +462,7 @@ body {
   border: 1px solid var(--border-color);
   border-radius: 0;
   padding: 24px;
-  margin: 0 32px 32px;
+  margin-bottom: 24px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
@@ -515,7 +515,7 @@ body {
   border: 1px solid var(--border-color);
   border-radius: 0;
   padding: 24px;
-  margin: 0 32px 32px;
+  margin-bottom: 24px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 

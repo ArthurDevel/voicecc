@@ -55,8 +55,8 @@ export function McpServersPanel({ ngrokRunning, twilioRunning }: McpServersPanel
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 32, paddingBottom: 32 }}>
-      <div className="page-header" style={{ borderBottom: "none", padding: 0 }}>
+    <div style={{ display: "flex", flexDirection: "column" }}>
+      <div className="page-header" style={{ borderBottom: "none", padding: 0, marginBottom: 24 }}>
         <div>
           <h1>Integrations & MCP</h1>
           <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 4 }}>Connect external services and configure MCP servers.</p>
