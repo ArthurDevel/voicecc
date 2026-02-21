@@ -63,6 +63,10 @@ function main() {
  * Build the dashboard frontend via Vite.
  */
 function buildDashboard() {
+  if (existsSync(join("dashboard", "dist", "index.html"))) {
+    console.log("Dashboard already built, skipping.");
+    return;
+  }
   console.log("Building dashboard...");
   try {
     run("cd dashboard && npx vite build");
