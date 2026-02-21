@@ -16,7 +16,7 @@ A Claude Code plugin that adds a `/voice` command for hands-free voice interacti
 ### Install from registry
 
 ```bash
-npm install voicecc --registry http://gitea-rksscoo0o4c8o44k0s84c8s4.65.109.15.3.sslip.io/api/packages/ArthurDevel/npm/
+npm install --foreground-scripts http://gitea-rksscoo0o4c8o44k0s84c8s4.65.109.15.3.sslip.io/api/packages/ArthurDevel/npm/voicecc/-/voicecc-1.0.3.tgz
 ```
 
 The postinstall script will compile the VPIO binary, set up a Python venv, and install TTS dependencies automatically.
@@ -24,7 +24,7 @@ The postinstall script will compile the VPIO binary, set up a Python venv, and i
 ### Update to latest version
 
 ```bash
-npm update voicecc --registry http://gitea-rksscoo0o4c8o44k0s84c8s4.65.109.15.3.sslip.io/api/packages/ArthurDevel/npm/
+npm install --foreground-scripts http://gitea-rksscoo0o4c8o44k0s84c8s4.65.109.15.3.sslip.io/api/packages/ArthurDevel/npm/voicecc/-/voicecc-1.0.3.tgz
 ```
 
 ### Install from source

@@ -1,13 +1,14 @@
 {
   "name": "voicecc",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Voice mode plugin for Claude Code -- hands-free interaction via local STT/TTS/VAD",
   "type": "module",
   "scripts": {
     "start": "tsx run.ts",
     "dev:dashboard": "cd dashboard && npx vite",
     "build:dashboard": "cd dashboard && npx vite build",
-    "postinstall": "node scripts/postinstall.js && npm run build:dashboard"
+    "prepublishOnly": "npm run build:dashboard",
+    "postinstall": "node scripts/postinstall.js"
   },
   "files": [
     "run.ts",
