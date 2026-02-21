@@ -13,19 +13,13 @@ A Claude Code plugin that adds a `/voice` command for hands-free voice interacti
 - sox and espeak-ng (`brew install sox espeak-ng`)
 - An Anthropic API key (already present if using Claude Code)
 
-### Install from registry
+### Install from npm
 
 ```bash
-npm install -g --foreground-scripts http://gitea-rksscoo0o4c8o44k0s84c8s4.65.109.15.3.sslip.io/api/packages/ArthurDevel/npm/voicecc/-/voicecc-1.0.7.tgz
+npm install -g voicecc
 ```
 
 The postinstall script will compile the VPIO binary, set up a Python venv, and install TTS dependencies automatically. Then run `voicecc` to start the dashboard.
-
-### Update to latest version
-
-```bash
-npm install -g --foreground-scripts http://gitea-rksscoo0o4c8o44k0s84c8s4.65.109.15.3.sslip.io/api/packages/ArthurDevel/npm/voicecc/-/voicecc-1.0.7.tgz
-```
 
 ### Install from source
 
