@@ -8,6 +8,7 @@
 import { useState, useEffect } from "react";
 import { get, post } from "../api";
 import { TwilioPanel } from "./TwilioPanel";
+import { BrowserCallSetupPanel } from "./BrowserCallSetupPanel";
 
 // ============================================================================
 // TYPES
@@ -23,16 +24,18 @@ interface McpServerEntry {
 interface McpServersPanelProps {
   ngrokRunning: boolean;
   twilioRunning: boolean;
+  browserCallRunning: boolean;
 }
 
 // ============================================================================
 // COMPONENT
 // ============================================================================
 
-export function McpServersPanel({ ngrokRunning, twilioRunning }: McpServersPanelProps) {
+export function McpServersPanel({ ngrokRunning, twilioRunning, browserCallRunning }: McpServersPanelProps) {
   const [servers, setServers] = useState<McpServerEntry[] | null>(null);
   const [error, setError] = useState(false);
-  const [modalMode, setModalMode] = useState<"twilio" | "webrtc" | null>(null);
+  const [showTwilioModal, setShowTwilioModal] = useState(false);
+  const [showBrowserCallModal, setShowBrowserCallModal] = useState(false);
 
   useEffect(() => {
     get<{ servers: McpServerEntry[] }>("/api/mcp-servers")
@@ -64,20 +67,20 @@ export function McpServersPanel({ ngrokRunning, twilioRunning }: McpServersPanel
       </div>
       <div className="integrations-panel">
         <h2 style={{ fontSize: 16, fontWeight: 600, color: "var(--text-primary)", marginBottom: 4 }}>Integrations</h2>
-        <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 20 }}>Connect external services like Twilio and WebRTC to enable voice calling capabilities.</p>
+        <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 20 }}>Connect external services like Twilio to enable voice calling capabilities.</p>
 
         <div style={{ display: "flex", gap: 12 }}>
           <span className="btn-integration" style={{ cursor: "default" }}>
             <span className={`integration-dot${ngrokRunning ? " running" : ""}`} />
             ngrok
           </span>
-          <button className="btn-integration" onClick={() => setModalMode("twilio")}>
+          <button className="btn-integration" onClick={() => setShowTwilioModal(true)}>
             <span className={`integration-dot${twilioRunning ? " running" : ""}`} />
             Twilio
           </button>
-          <button className="btn-integration" onClick={() => setModalMode("webrtc")}>
-            <span className={`integration-dot${twilioRunning ? " running" : ""}`} />
-            WebRTC
+          <button className="btn-integration" onClick={() => setShowBrowserCallModal(true)}>
+            <span className={`integration-dot${browserCallRunning ? " running" : ""}`} />
+            Browser Call from Anywhere
           </button>
         </div>
       </div>
@@ -115,8 +118,12 @@ export function McpServersPanel({ ngrokRunning, twilioRunning }: McpServersPanel
         </div>
       </div>
 
-      {modalMode && (
-        <TwilioPanel mode={modalMode} onClose={() => setModalMode(null)} />
+      {showTwilioModal && (
+        <TwilioPanel onClose={() => setShowTwilioModal(false)} />
+      )}
+
+      {showBrowserCallModal && (
+        <BrowserCallSetupPanel onClose={() => setShowBrowserCallModal(false)} />
       )}
     </div>
   );

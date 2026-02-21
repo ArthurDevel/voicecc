@@ -4,7 +4,7 @@
  * Manages the lifecycle of the twilio-server child process:
  * - Start the server with dashboard port and optional ngrok URL
  * - Stop the server
- * - Report running status and WebRTC readiness
+ * - Report running status
  */
 
 import { spawn, ChildProcess } from "child_process";
@@ -18,7 +18,6 @@ import twilioSdk from "twilio";
 /** Twilio server status for the dashboard UI */
 export interface TwilioStatus {
   running: boolean;
-  webrtcReady: boolean;
 }
 
 // ============================================================================
@@ -55,7 +54,7 @@ export async function startTwilioServer(dashboardPort: number, ngrokUrl?: string
     throw new Error("TWILIO_AUTH_TOKEN is not set in .env");
   }
 
-  // Update TwiML App voice URL if WebRTC is configured
+  // Update TwiML App voice URL if configured
   const twimlAppSid = envVars.TWILIO_TWIML_APP_SID;
   const accountSid = envVars.TWILIO_ACCOUNT_SID;
   if (ngrokUrl && twimlAppSid && accountSid && envVars.TWILIO_AUTH_TOKEN) {
@@ -109,19 +108,12 @@ export function stopTwilioServer(): void {
 }
 
 /**
- * Get the combined status of the Twilio server.
- * Derives webrtcReady by checking .env for required WebRTC keys.
+ * Get the status of the Twilio server.
  *
- * @returns Status with running state and WebRTC readiness
+ * @returns Status with running state
  */
 export async function getStatus(): Promise<TwilioStatus> {
-  const envVars = await readEnv();
-  const webrtcReady = !!(
-    envVars.TWILIO_API_KEY_SID &&
-    envVars.TWILIO_API_KEY_SECRET &&
-    envVars.TWILIO_TWIML_APP_SID
-  );
-  return { running: twilioRunning, webrtcReady };
+  return { running: twilioRunning };
 }
 
 /**
