@@ -1,7 +1,7 @@
 /**
  * Shared fetch helpers for all API calls.
  *
- * Provides typed get/post wrappers that throw ApiError on non-2xx responses.
+ * Provides typed get/post/del wrappers that throw ApiError on non-2xx responses.
  */
 
 // ============================================================================
@@ -46,6 +46,21 @@ export async function post<T = unknown>(path: string, body?: unknown): Promise<T
     headers: body !== undefined ? { "Content-Type": "application/json" } : {},
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: "Request failed" }));
+    throw { status: res.status, message: data.error || "Request failed" } as ApiError;
+  }
+  return res.json();
+}
+
+/**
+ * Send a DELETE request to the API.
+ *
+ * @param path - API path (e.g. "/api/mcp-servers/notion")
+ * @returns Parsed JSON response
+ */
+export async function del<T = unknown>(path: string): Promise<T> {
+  const res = await fetch(path, { method: "DELETE" });
   if (!res.ok) {
     const data = await res.json().catch(() => ({ error: "Request failed" }));
     throw { status: res.status, message: data.error || "Request failed" } as ApiError;
