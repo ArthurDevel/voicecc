@@ -1,11 +1,11 @@
 /**
  * Twilio PSTN voice setup modal wizard.
  *
- * Step-by-step modal for configuring Twilio credentials, ngrok,
+ * Step-by-step modal for configuring Twilio credentials, cloudflared,
  * and phone number for PSTN calling. Steps:
  * 1. Create a Twilio account (credentials)
  * 2. Get a phone number
- * 3. Install ngrok
+ * 3. Install cloudflared
  * 4. Start server
  * 5. Configure webhook
  * 6. Your phone number
@@ -24,12 +24,17 @@ interface TwilioPanelProps {
 
 interface TwilioStatusData {
   running: boolean;
-  ngrokUrl: string | null;
+  tunnelUrl: string | null;
 }
 
 interface PhoneNumber {
   phoneNumber: string;
   friendlyName: string;
+}
+
+interface IntegrationsState {
+  twilio: { enabled: boolean };
+  browserCall: { enabled: boolean };
 }
 
 // ============================================================================
@@ -39,23 +44,27 @@ interface PhoneNumber {
 export function TwilioPanel({ onClose }: TwilioPanelProps) {
   const [accountSid, setAccountSid] = useState("");
   const [authToken, setAuthToken] = useState("");
-  const [ngrokToken, setNgrokToken] = useState("");
-  const [ngrokInstalled, setNgrokInstalled] = useState<boolean | null>(null);
+  const [cloudflaredInstalled, setCloudflaredInstalled] = useState<boolean | null>(null);
   const [status, setStatus] = useState<TwilioStatusData | null>(null);
   const [phoneNumbers, setPhoneNumbers] = useState<PhoneNumber[]>([]);
   const [actionText, setActionText] = useState("");
+  const [enabled, setEnabled] = useState(false);
+  const [toggling, setToggling] = useState(false);
 
-  // Load current settings and check ngrok on mount
+  // Load current settings, integration state, and check cloudflared on mount
   useEffect(() => {
     get<Record<string, string>>("/api/settings")
       .then((data) => {
         if (data.TWILIO_ACCOUNT_SID) setAccountSid(data.TWILIO_ACCOUNT_SID);
         if (data.TWILIO_AUTH_TOKEN) setAuthToken(data.TWILIO_AUTH_TOKEN);
-        if (data.NGROK_AUTHTOKEN) setNgrokToken(data.NGROK_AUTHTOKEN);
       })
       .catch(() => {});
 
-    checkNgrok();
+    get<IntegrationsState>("/api/integrations")
+      .then((data) => setEnabled(data.twilio.enabled))
+      .catch(() => {});
+
+    checkCloudflared();
     pollStatus();
     const interval = setInterval(pollStatus, 5000);
     return () => clearInterval(interval);
@@ -75,12 +84,12 @@ export function TwilioPanel({ onClose }: TwilioPanelProps) {
     get<TwilioStatusData>("/api/twilio/status").then(setStatus).catch(() => {});
   };
 
-  /** Check if ngrok is installed */
-  const checkNgrok = () => {
-    setNgrokInstalled(null);
-    get<{ installed: boolean }>("/api/ngrok/check")
-      .then((data) => setNgrokInstalled(data.installed))
-      .catch(() => setNgrokInstalled(false));
+  /** Check if cloudflared is installed */
+  const checkCloudflared = () => {
+    setCloudflaredInstalled(null);
+    get<{ installed: boolean }>("/api/tunnel/check")
+      .then((data) => setCloudflaredInstalled(data.installed))
+      .catch(() => setCloudflaredInstalled(false));
   };
 
   /**
@@ -99,34 +108,22 @@ export function TwilioPanel({ onClose }: TwilioPanelProps) {
     }
   }, []);
 
-  /** Save credentials and start the Twilio server + ngrok */
-  const handleSaveAndStart = useCallback(async () => {
-    setActionText("Saving...");
-    const payload: Record<string, string> = {};
-    if (accountSid.trim()) payload.TWILIO_ACCOUNT_SID = accountSid.trim();
-    if (authToken.trim()) payload.TWILIO_AUTH_TOKEN = authToken.trim();
-    if (ngrokToken.trim()) payload.NGROK_AUTHTOKEN = ngrokToken.trim();
-    if (Object.keys(payload).length > 0) {
-      await post("/api/settings", payload);
-    }
-
-    setActionText("Starting...");
+  /** Toggle the Twilio integration enabled state */
+  const handleToggle = useCallback(async () => {
+    const newEnabled = !enabled;
+    setToggling(true);
     try {
-      await post("/api/twilio/start");
+      await post("/api/integrations/twilio", { enabled: newEnabled });
+      setEnabled(newEnabled);
       pollStatus();
-      setActionText("");
     } catch (err) {
-      const message = err instanceof Error ? err.message : (err as { message?: string })?.message || "Failed to start";
+      const message = err instanceof Error ? err.message : (err as { message?: string })?.message || "Failed";
       setActionText(message);
       setTimeout(() => setActionText(""), 4000);
+    } finally {
+      setToggling(false);
     }
-  }, [accountSid, authToken, ngrokToken]);
-
-  /** Stop the server */
-  const handleStop = useCallback(async () => {
-    await post("/api/twilio/stop");
-    pollStatus();
-  }, []);
+  }, [enabled]);
 
   /** Close modal when clicking overlay background */
   const handleOverlayClick = (e: React.MouseEvent) => {
@@ -134,7 +131,7 @@ export function TwilioPanel({ onClose }: TwilioPanelProps) {
   };
 
   const isRunning = status?.running ?? false;
-  const webhookUrl = status?.ngrokUrl ? `${status.ngrokUrl}/twilio/incoming-call` : null;
+  const webhookUrl = status?.tunnelUrl ? `${status.tunnelUrl}/twilio/incoming-call` : null;
 
   return (
     <div className="modal-overlay visible" onClick={handleOverlayClick}>
@@ -183,58 +180,54 @@ export function TwilioPanel({ onClose }: TwilioPanelProps) {
 
         <hr className="setup-divider" />
 
-        {/* Step 3: ngrok */}
+        {/* Step 3: cloudflared */}
         <div className="setup-step">
           <div className="setup-step-title">
             <span className="setup-step-number">3</span>
-            Install ngrok
+            Install cloudflared
           </div>
           <div className="setup-step-desc">
-            ngrok tunnels your local server so Twilio can reach it.
-            Install from <a href="https://ngrok.com/download" target="_blank" rel="noreferrer">ngrok.com/download</a>
-            {" "}or via: <code>brew install ngrok</code>
+            cloudflared tunnels your local server so Twilio can reach it.
+            No account needed. Install via: <code>brew install cloudflared</code>
           </div>
           <div className="setup-paste-row">
-            <span style={{ fontSize: 12, color: ngrokInstalled === true ? "#2ea043" : ngrokInstalled === false ? "#d73a49" : "#999" }}>
-              {ngrokInstalled === null ? "Checking..." : ngrokInstalled ? "ngrok is installed" : "ngrok not found"}
+            <span style={{ fontSize: 12, color: cloudflaredInstalled === true ? "#2ea043" : cloudflaredInstalled === false ? "#d73a49" : "#999" }}>
+              {cloudflaredInstalled === null ? "Checking..." : cloudflaredInstalled ? "cloudflared is installed" : "cloudflared not found"}
             </span>
-            <button style={{ background: "#333", border: "1px solid #404040", color: "#999" }} onClick={checkNgrok}>
+            <button style={{ background: "#333", border: "1px solid #404040", color: "#999" }} onClick={checkCloudflared}>
               Re-check
             </button>
-          </div>
-          <div className="setup-paste-row">
-            <input
-              type="text"
-              placeholder="ngrok authtoken (from dashboard.ngrok.com)"
-              value={ngrokToken}
-              onChange={(e) => setNgrokToken(e.target.value)}
-            />
-            <ApplyButton onClick={() => saveSetting("NGROK_AUTHTOKEN", ngrokToken.trim())} />
           </div>
         </div>
 
         <hr className="setup-divider" />
 
-        {/* Step 4: Start/Stop server */}
+        {/* Step 4: Enable integration */}
         <div className="setup-step">
           <div className="setup-step-title">
             <span className="setup-step-number">4</span>
-            {isRunning ? "Server running" : "Start server"}
+            {isRunning ? "Server running" : "Enable integration"}
           </div>
           <div className="setup-step-desc">
             {isRunning
-              ? <>Server is running.{status?.ngrokUrl && <> ngrok URL: <code>{status.ngrokUrl}</code></>}</>
-              : "Click below to save your settings and launch the Twilio server + ngrok."
+              ? <>Server is running.{status?.tunnelUrl && <> Tunnel URL: <code>{status.tunnelUrl}</code></>}</>
+              : "Enable to start the Twilio server and auto-start on boot."
             }
+            {actionText && <div style={{ color: "#d73a49", marginTop: 4, fontSize: 12 }}>{actionText}</div>}
           </div>
           <div className="setup-paste-row">
-            {isRunning ? (
-              <button style={{ flex: 1, background: "#6e3630" }} onClick={handleStop}>Stop Server</button>
-            ) : (
-              <button style={{ flex: 1 }} disabled={!!actionText} onClick={handleSaveAndStart}>
-                {actionText || "Save Settings & Start Twilio Server"}
-              </button>
-            )}
+            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: toggling ? "wait" : "pointer" }}>
+              <input
+                type="checkbox"
+                checked={enabled}
+                disabled={toggling}
+                onChange={handleToggle}
+                style={{ width: 16, height: 16, cursor: toggling ? "wait" : "pointer" }}
+              />
+              <span style={{ fontSize: 14, fontWeight: 500, color: "var(--text-primary)" }}>
+                {toggling ? (enabled ? "Stopping..." : "Starting...") : "Enabled"}
+              </span>
+            </label>
           </div>
         </div>
 
