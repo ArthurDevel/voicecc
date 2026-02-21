@@ -45,7 +45,7 @@ export function ClaudeMdEditor() {
           );
         }
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   /** Save the editor content to disk */
@@ -100,18 +100,35 @@ export function ClaudeMdEditor() {
   };
 
   return (
-    <>
-      <div className="page-header" style={{ borderTop: "1px solid #404040" }}>
-        <h1>CLAUDE.md</h1>
+    <div className="settings-panel" style={{ flex: 1, display: "flex", flexDirection: "column", marginBottom: 32 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+        <div>
+          <h2 style={{ fontSize: 16, fontWeight: 600, color: "var(--text-primary)", marginBottom: 4 }}>Global Instructions</h2>
+          <p style={{ fontSize: 13, color: "var(--text-secondary)" }}>Edit the CLAUDE.md file to provide custom instructions.</p>
+        </div>
         <div className="toolbar">
-          <span id="status">{statusText}</span>
-          <button disabled={!isDirty} onClick={save}>
+          <span id="status" style={{ fontSize: 12, color: "var(--text-secondary)", marginRight: 8 }}>{statusText}</span>
+          <button
+            disabled={!isDirty}
+            onClick={save}
+            style={{
+              background: "var(--btn-primary-bg)",
+              color: "var(--btn-primary-text)",
+              border: "none",
+              padding: "6px 14px",
+              borderRadius: "6px",
+              fontSize: "13px",
+              fontWeight: 500,
+              cursor: isDirty ? "pointer" : "not-allowed",
+              opacity: isDirty ? 1 : 0.5
+            }}
+          >
             Save
           </button>
         </div>
       </div>
       {warning && (
-        <div className="warning visible">{warning}</div>
+        <div className="warning visible" style={{ borderRadius: 0, marginBottom: 16, border: "1px solid #665500", background: "#fff8c5" }}>{warning}</div>
       )}
       <textarea
         ref={editorRef}
@@ -121,7 +138,16 @@ export function ClaudeMdEditor() {
         value={content}
         onChange={handleChange}
         onKeyDown={handleKeyDown}
+        style={{
+          flex: 1,
+          minHeight: "300px",
+          border: "1px solid var(--border-color)",
+          borderRadius: "8px",
+          background: "var(--bg-main)",
+          padding: "16px",
+          color: "var(--text-primary)"
+        }}
       />
-    </>
+    </div>
   );
 }
