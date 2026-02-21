@@ -54,25 +54,33 @@ export function SettingsPanel({ ngrokRunning, twilioRunning }: SettingsPanelProp
   }, [maxSessions]);
 
   return (
-    <div className="settings-panel">
-      <h2 style={{ fontSize: 16, fontWeight: 600, color: "var(--text-primary)", marginBottom: 4 }}>General Options</h2>
-      <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 20 }}>Configure the core behavior of your voice assistant instance.</p>
-
-      <div className="settings-row">
-        <label htmlFor="setting-max-sessions" style={{ fontWeight: 500, color: "var(--text-primary)" }}>Max Concurrent Sessions</label>
-        <input
-          type="text"
-          id="setting-max-sessions"
-          placeholder="2"
-          value={maxSessions}
-          onChange={(e) => setMaxSessions(e.target.value)}
-        />
+    <>
+      <div className="page-header" style={{ borderBottom: "none", padding: 0, marginBottom: 24 }}>
+        <div>
+          <h1>General Settings</h1>
+          <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 4 }}>Manage your workspace settings and core behavior.</p>
+        </div>
       </div>
+      <div className="settings-panel">
+        <h2 style={{ fontSize: 16, fontWeight: 600, color: "var(--text-primary)", marginBottom: 4 }}>General Options</h2>
+        <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 20 }}>Configure the core behavior of your voice assistant instance.</p>
 
-      <div className="settings-actions" style={{ marginTop: 20 }}>
-        <button disabled={saving} onClick={handleSave}>Save changes</button>
-        <span className="settings-status">{statusText}</span>
+        <div className="settings-row">
+          <label htmlFor="setting-max-sessions" style={{ fontWeight: 500, color: "var(--text-primary)" }}>Max Concurrent Sessions</label>
+          <input
+            type="text"
+            id="setting-max-sessions"
+            placeholder="2"
+            value={maxSessions}
+            onChange={(e) => setMaxSessions(e.target.value)}
+          />
+        </div>
+
+        <div className="settings-actions" style={{ marginTop: 20 }}>
+          <button disabled={saving} onClick={handleSave}>Save changes</button>
+          <span className="settings-status">{statusText}</span>
+        </div>
       </div>
-    </div>
+    </>
   );
 }

@@ -92,13 +92,6 @@ export function Home() {
 
             {/* Scrollable Content Area */}
             <div style={{ flex: 1, overflowY: "auto", padding: "24px 32px" }}>
-              <div className="page-header" style={{ borderBottom: "none", paddingBottom: 0, marginBottom: 24 }}>
-                <div>
-                  <h1>Good afternoon</h1>
-                  <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 4 }}>Manage your workspace settings and integrations.</p>
-                </div>
-              </div>
-
               {activeTab === "general" && (
                 <SettingsPanel ngrokRunning={ngrokStatus.running} twilioRunning={twilioStatus.running} />
               )}

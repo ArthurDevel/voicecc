@@ -56,6 +56,12 @@ export function McpServersPanel({ ngrokRunning, twilioRunning }: McpServersPanel
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 32, paddingBottom: 32 }}>
+      <div className="page-header" style={{ borderBottom: "none", padding: 0 }}>
+        <div>
+          <h1>Integrations & MCP</h1>
+          <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 4 }}>Connect external services and configure MCP servers.</p>
+        </div>
+      </div>
       <div className="integrations-panel">
         <h2 style={{ fontSize: 16, fontWeight: 600, color: "var(--text-primary)", marginBottom: 4 }}>Integrations</h2>
         <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 20 }}>Connect external services like Twilio and WebRTC to enable voice calling capabilities.</p>
