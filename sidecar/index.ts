@@ -19,6 +19,8 @@ import { join } from "path";
 import { createLocalAudioAdapter } from "./local-audio.js";
 import { createVoiceSession } from "./voice-session.js";
 
+import type { TtsProviderConfig, SttProviderConfig, TtsProviderType, SttProviderType } from "./types.js";
+
 // ============================================================================
 // CONSTANTS
 // ============================================================================
@@ -29,13 +31,33 @@ const MIC_SAMPLE_RATE = 16000;
 /** TTS output sample rate in Hz -- must match tts-server.py output format */
 const TTS_SAMPLE_RATE = 24000;
 
+/** Read provider selection and ElevenLabs config from environment */
+const TTS_PROVIDER = (process.env.TTS_PROVIDER ?? "local") as TtsProviderType;
+const STT_PROVIDER = (process.env.STT_PROVIDER ?? "local") as SttProviderType;
+const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY ?? "";
+const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID ?? "JBFqnCBsd6RMkjVDRZzb";
+const ELEVENLABS_MODEL_ID = process.env.ELEVENLABS_MODEL_ID ?? "eleven_turbo_v2_5";
+const ELEVENLABS_STT_MODEL_ID = process.env.ELEVENLABS_STT_MODEL_ID ?? "scribe_v1";
+
+/** TTS provider configuration built from env vars */
+const ttsProvider: TtsProviderConfig = {
+  provider: TTS_PROVIDER,
+  local: { model: "prince-canuma/Kokoro-82M", voice: "af_heart" },
+  elevenlabs: { apiKey: ELEVENLABS_API_KEY, voiceId: ELEVENLABS_VOICE_ID, modelId: ELEVENLABS_MODEL_ID },
+};
+
+/** STT provider configuration built from env vars */
+const sttProvider: SttProviderConfig = {
+  provider: STT_PROVIDER,
+  local: { modelPath: join(homedir(), ".claude-voice-models", "whisper-small") },
+  elevenlabs: { apiKey: ELEVENLABS_API_KEY, modelId: ELEVENLABS_STT_MODEL_ID },
+};
+
 /** Default configuration for the voice session */
 const DEFAULT_CONFIG = {
   stopPhrase: "stop listening",
-  sttModelPath: join(homedir(), ".claude-voice-models", "whisper-small"),
-  ttsModel: "prince-canuma/Kokoro-82M",
-  ttsVoice: "af_heart",
-  modelCacheDir: join(homedir(), ".claude-voice-models"),
+  ttsProvider,
+  sttProvider,
   interruptionThresholdMs: 1500,
   endpointing: {
     silenceThresholdMs: 700,

@@ -32,6 +32,7 @@ import type { IncomingMessage, ServerResponse } from "http";
 import type { Duplex } from "stream";
 import type { WebSocket } from "ws";
 import type { VoiceSession } from "./voice-session.js";
+import type { TtsProviderConfig, SttProviderConfig, TtsProviderType, SttProviderType } from "./types.js";
 
 // ============================================================================
 // CONSTANTS
@@ -43,13 +44,33 @@ const DEFAULT_PORT = 8080;
 /** Interruption threshold for phone calls (higher than local mic due to no VPIO echo cancellation) */
 const PHONE_INTERRUPTION_THRESHOLD_MS = 2000;
 
+/** Read provider selection and ElevenLabs config from environment */
+const TTS_PROVIDER = (process.env.TTS_PROVIDER ?? "local") as TtsProviderType;
+const STT_PROVIDER = (process.env.STT_PROVIDER ?? "local") as SttProviderType;
+const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY ?? "";
+const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID ?? "JBFqnCBsd6RMkjVDRZzb";
+const ELEVENLABS_MODEL_ID = process.env.ELEVENLABS_MODEL_ID ?? "eleven_turbo_v2_5";
+const ELEVENLABS_STT_MODEL_ID = process.env.ELEVENLABS_STT_MODEL_ID ?? "scribe_v1";
+
+/** TTS provider configuration built from env vars */
+const ttsProvider: TtsProviderConfig = {
+  provider: TTS_PROVIDER,
+  local: { model: "prince-canuma/Kokoro-82M", voice: "af_heart" },
+  elevenlabs: { apiKey: ELEVENLABS_API_KEY, voiceId: ELEVENLABS_VOICE_ID, modelId: ELEVENLABS_MODEL_ID },
+};
+
+/** STT provider configuration built from env vars */
+const sttProvider: SttProviderConfig = {
+  provider: STT_PROVIDER,
+  local: { modelPath: join(homedir(), ".claude-voice-models", "whisper-small") },
+  elevenlabs: { apiKey: ELEVENLABS_API_KEY, modelId: ELEVENLABS_STT_MODEL_ID },
+};
+
 /** Default voice session config for phone calls (same as index.ts DEFAULT_CONFIG but with phone-tuned threshold) */
 const DEFAULT_CONFIG = {
   stopPhrase: "stop listening",
-  sttModelPath: join(homedir(), ".claude-voice-models", "whisper-small"),
-  ttsModel: "prince-canuma/Kokoro-82M",
-  ttsVoice: "af_heart",
-  modelCacheDir: join(homedir(), ".claude-voice-models"),
+  ttsProvider,
+  sttProvider,
   interruptionThresholdMs: PHONE_INTERRUPTION_THRESHOLD_MS,
   endpointing: {
     silenceThresholdMs: 700,
