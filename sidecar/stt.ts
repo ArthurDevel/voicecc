@@ -1,5 +1,5 @@
 /**
- * Local speech-to-text via sherpa-onnx with Whisper ONNX model (offline/batch).
+ * Local Whisper STT provider via sherpa-onnx with Whisper ONNX model (offline/batch).
  *
  * Whisper models in sherpa-onnx are offline-only (not streaming). Audio is
  * accumulated during speech (SPEECH_START to SPEECH_END), then batch-transcribed
@@ -19,8 +19,8 @@ import type { TranscriptionResult } from "./types.js";
 // INTERFACES
 // ============================================================================
 
-/** Internal interface for the STT processor returned by createStt. */
-interface SttProcessor {
+/** Internal interface for the STT processor returned by createLocalStt. */
+export interface SttProcessor {
   /**
    * Appends audio samples to the internal buffer.
    * Call continuously during speech (between SPEECH_START and SPEECH_END).
@@ -76,7 +76,7 @@ const REQUIRED_SUFFIXES = ["-encoder.int8.onnx", "-decoder.int8.onnx", "-tokens.
  * @returns Promise resolving to an SttProcessor instance
  * @throws Error if any required model files are missing
  */
-async function createStt(modelPath: string): Promise<SttProcessor> {
+async function createLocalStt(modelPath: string): Promise<SttProcessor> {
   validateModelFiles(modelPath);
 
   // Dynamic import to avoid ONNX runtime conflict with kokoro-js.
@@ -195,5 +195,4 @@ function concatenateChunks(chunks: Float32Array[]): Float32Array {
   return result;
 }
 
-export { createStt };
-export type { SttProcessor };
+export { createLocalStt };
