@@ -1,5 +1,5 @@
 /**
- * Local text-to-speech via mlx-audio (Chatterbox Turbo) with VPIO playback.
+ * Local Kokoro TTS provider via mlx-audio with VPIO playback.
  *
  * Spawns a persistent Python subprocess (tts-server.py) that loads the TTS model
  * once on the Apple Silicon GPU via MLX, then generates audio on demand. Text is
@@ -104,7 +104,7 @@ const MIN_SENTENCE_LENGTH = 20;
  * @returns A TtsPlayer instance ready for playback
  * @throws Error if subprocess fails to start or model fails to load
  */
-export async function createTts(config: TtsConfig): Promise<TtsPlayer> {
+export async function createLocalTts(config: TtsConfig): Promise<TtsPlayer> {
   const cmd = config.serverCommand ?? [PYTHON_BIN, TTS_SERVER_SCRIPT, config.model, config.voice];
 
   const proc = spawn(cmd[0], cmd.slice(1), {
@@ -429,7 +429,7 @@ function readExactly(stream: NodeJS.ReadableStream, size: number): Promise<Buffe
  * @param stream - The VPIO speaker writable stream
  * @param pcmBuffer - Raw PCM bytes to write
  */
-function writePcm(stream: Writable, pcmBuffer: Buffer): Promise<void> {
+export function writePcm(stream: Writable, pcmBuffer: Buffer): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     const ok = stream.write(pcmBuffer, (err: Error | null | undefined) => {
       if (err) reject(err);
@@ -449,7 +449,7 @@ function writePcm(stream: Writable, pcmBuffer: Buffer): Promise<void> {
  * @param texts - Async iterable of TextChunk from the narrator
  * @yields Complete sentences ready for TTS
  */
-async function* bufferSentences(texts: AsyncIterable<TextChunk>): AsyncGenerator<string> {
+export async function* bufferSentences(texts: AsyncIterable<TextChunk>): AsyncGenerator<string> {
   let buffer = "";
 
   for await (const raw of texts) {

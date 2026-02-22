@@ -208,3 +208,52 @@ export interface VoiceLoopState {
   /** Active Claude session ID, or null if no session is active */
   sessionId: string | null;
 }
+
+// ============================================================================
+// PROVIDER TYPES
+// ============================================================================
+
+/** Available TTS provider backends */
+export type TtsProviderType = "local" | "elevenlabs";
+
+/** Available STT provider backends */
+export type SttProviderType = "local" | "elevenlabs";
+
+/**
+ * Readiness status for a provider.
+ * Returned by getTtsProviderStatus / getSttProviderStatus.
+ */
+export interface ProviderStatus {
+  /** Whether the provider is ready to use */
+  ready: boolean;
+  /** Reason the provider is not ready (only present when ready is false) */
+  reason?: "not_installed" | "missing_api_key" | "unsupported_platform";
+  /** Human-readable detail about why the provider is not ready */
+  detail?: string;
+}
+
+/**
+ * Configuration that selects a TTS provider and holds per-provider settings.
+ * Built from environment variables in each entry point.
+ */
+export interface TtsProviderConfig {
+  /** Which TTS provider to use */
+  provider: TtsProviderType;
+  /** Settings for the local Kokoro TTS provider */
+  local: { model: string; voice: string };
+  /** Settings for the ElevenLabs TTS provider */
+  elevenlabs: { apiKey: string; voiceId: string; modelId: string };
+}
+
+/**
+ * Configuration that selects an STT provider and holds per-provider settings.
+ * Built from environment variables in each entry point.
+ */
+export interface SttProviderConfig {
+  /** Which STT provider to use */
+  provider: SttProviderType;
+  /** Settings for the local Whisper STT provider */
+  local: { modelPath: string };
+  /** Settings for the ElevenLabs STT provider */
+  elevenlabs: { apiKey: string; modelId: string };
+}
