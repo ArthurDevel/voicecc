@@ -17,7 +17,7 @@ import { PassThrough } from "stream";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 
-import { createTts } from "./tts.js";
+import { createLocalTts } from "./tts.js";
 import { createClaudeSession } from "./claude-session.js";
 import type { TtsConfig, TextChunk, ClaudeSessionConfig, ClaudeStreamEvent } from "./types.js";
 
@@ -39,7 +39,7 @@ const TAGGED_MOCK_SERVER = join(__dirname, "mock-tts-server-tagged.mjs");
  * @returns Player, captured speaker output stream, and callback counters
  */
 async function createTaggedPlayer(): Promise<{
-  player: ReturnType<typeof createTts> extends Promise<infer T> ? T : never;
+  player: ReturnType<typeof createLocalTts> extends Promise<infer T> ? T : never;
   speakerOutput: PassThrough;
   counts: { interrupt: number; resume: number };
 }> {
@@ -55,7 +55,7 @@ async function createTaggedPlayer(): Promise<{
     serverCommand: ["node", TAGGED_MOCK_SERVER],
   };
 
-  const player = await createTts(config);
+  const player = await createLocalTts(config);
   return { player, speakerOutput, counts };
 }
 
@@ -245,7 +245,7 @@ test("BUG: after interrupt, next speakStream should start playing within bounded
     serverCommand: ["node", TAGGED_MOCK_SERVER, "30", "100"],
   };
 
-  const player = await createTts(config);
+  const player = await createLocalTts(config);
 
   try {
     const firstStream = player.speakStream(singleSentence("First sentence."));
@@ -313,7 +313,7 @@ test("BUG: speakStream resolves before audio finishes when chunks arrive with ga
     serverCommand: ["node", TAGGED_MOCK_SERVER, "15", "1"],
   };
 
-  const player = await createTts(config);
+  const player = await createLocalTts(config);
 
   try {
     let lastWriteTime = 0;

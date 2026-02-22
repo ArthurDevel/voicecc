@@ -1,9 +1,9 @@
 /**
- * Setup script for voicecc.
+ * Postinstall setup script for voicecc.
  *
- * Compiles the mic-vpio Swift binary (macOS VPIO echo cancellation),
- * checks for required system dependencies (espeak-ng), then sets up
- * the Python virtual environment and installs TTS dependencies.
+ * Lightweight first-run setup that installs the CLAUDE.md file
+ * and builds the dashboard. Local TTS/STT model installation is
+ * handled on demand via setup-local-tts.js and setup-local-stt.js.
  *
  * Called from bin/voicecc.js on first run (or when setup is incomplete).
  */
@@ -13,35 +13,17 @@ import { copyFileSync, existsSync } from "fs";
 import { join } from "path";
 
 // ============================================================================
-// CONSTANTS
-// ============================================================================
-
-const VENV_DIR = join("sidecar", ".venv");
-const PIP = join(VENV_DIR, "bin", "pip");
-const PYTHON = join(VENV_DIR, "bin", "python3");
-const MIC_VPIO = join("sidecar", "mic-vpio");
-
-const PYTHON_PACKAGES = [
-  "mlx-audio",
-  "misaki",
-  "num2words",
-  "spacy",
-  "phonemizer",
-];
-
-// ============================================================================
 // PUBLIC API
 // ============================================================================
 
 /**
  * Returns true if any setup step is incomplete.
+ * Only checks whether the dashboard has been built.
+ *
+ * @returns {boolean} True if setup is needed
  */
 export function needsSetup() {
-  return (
-    !existsSync(MIC_VPIO) ||
-    !existsSync(PYTHON) ||
-    !existsSync(join("dashboard", "dist", "index.html"))
-  );
+  return !existsSync(join("dashboard", "dist", "index.html"));
 }
 
 /**
@@ -50,15 +32,10 @@ export function needsSetup() {
 export function runSetup() {
   installClaudeMd();
   buildDashboard();
-  compileMicVpio();
-  checkSystemDeps();
-  setupPythonVenv();
-  installPythonPackages();
-  downloadSpacyModel();
 
   console.log("");
   console.log("========================================");
-  console.log("          VOICECC SETUP COMPLETE        ");
+  console.log("           SETUP COMPLETE               ");
   console.log("========================================");
   console.log("");
 }
@@ -67,6 +44,9 @@ export function runSetup() {
 // HELPER FUNCTIONS
 // ============================================================================
 
+/**
+ * Build the dashboard Vite app if not already built.
+ */
 function buildDashboard() {
   if (existsSync(join("dashboard", "dist", "index.html"))) {
     console.log("Dashboard already built, skipping.");
@@ -83,6 +63,9 @@ function buildDashboard() {
   console.log("Dashboard built successfully");
 }
 
+/**
+ * Copy the CLAUDE.md template from init/ to the project root.
+ */
 function installClaudeMd() {
   const src = join("init", "CLAUDE.md");
   const dest = "CLAUDE.md";
@@ -95,108 +78,11 @@ function installClaudeMd() {
   console.log("Installed CLAUDE.md to project root.");
 }
 
-function compileMicVpio() {
-  if (existsSync(MIC_VPIO)) {
-    console.log("mic-vpio already compiled, skipping.");
-    return;
-  }
-
-  const source = join("sidecar", "mic-vpio.swift");
-
-  if (process.platform !== "darwin") {
-    console.error("\n[voicecc] ERROR: macOS is required.");
-    console.error("  voicecc uses macOS VPIO for echo cancellation and mlx-audio for TTS.");
-    console.error("  It cannot run on Linux or Windows.\n");
-    process.exit(1);
-  }
-
-  if (!commandExists("swiftc")) {
-    console.error("\n[voicecc] ERROR: Swift compiler (swiftc) not found.");
-    console.error("  Install Xcode Command Line Tools: xcode-select --install\n");
-    process.exit(1);
-  }
-
-  console.log("Compiling mic-vpio (VPIO echo cancellation)...");
-  try {
-    run(`swiftc -O -o ${MIC_VPIO} ${source} -framework AudioToolbox -framework CoreAudio`);
-  } catch (err) {
-    console.error("\n[voicecc] ERROR: Failed to compile mic-vpio.swift.");
-    console.error("  Make sure Xcode Command Line Tools are installed: xcode-select --install\n");
-    process.exit(1);
-  }
-  console.log("mic-vpio compiled successfully");
-}
-
-function checkSystemDeps() {
-  const missing = [];
-
-  if (!commandExists("espeak-ng")) missing.push("espeak-ng");
-
-  if (missing.length > 0) {
-    console.error(`\n[voicecc] ERROR: Missing system dependencies: ${missing.join(", ")}`);
-    console.error(`  Install with: brew install ${missing.join(" ")}`);
-    console.error(`  Then re-run: voicecc\n`);
-    process.exit(1);
-  }
-
-  console.log("System dependencies OK (espeak-ng)");
-}
-
-function setupPythonVenv() {
-  if (existsSync(PIP)) {
-    console.log(`Python venv already exists at ${VENV_DIR}`);
-    return;
-  }
-
-  if (!commandExists("python3")) {
-    console.error("\n[voicecc] ERROR: python3 not found.");
-    console.error("  Install Python 3 via: brew install python3\n");
-    process.exit(1);
-  }
-
-  console.log(`Creating Python venv at ${VENV_DIR}...`);
-  try {
-    run(`python3 -m venv ${VENV_DIR}`);
-  } catch (err) {
-    console.error("\n[voicecc] ERROR: Failed to create Python virtual environment.");
-    console.error("  Make sure python3 is installed: brew install python3\n");
-    process.exit(1);
-  }
-}
-
-function installPythonPackages() {
-  console.log("Installing Python TTS packages...");
-  try {
-    run(`${PIP} install ${PYTHON_PACKAGES.join(" ")}`);
-  } catch (err) {
-    console.error("\n[voicecc] ERROR: Failed to install Python TTS packages.");
-    console.error("  This may be due to missing build tools or incompatible Python version.");
-    console.error("  Required packages: " + PYTHON_PACKAGES.join(", "));
-    console.error("  Try deleting sidecar/.venv and re-running: voicecc\n");
-    process.exit(1);
-  }
-}
-
-function downloadSpacyModel() {
-  console.log("Downloading spaCy English model...");
-  try {
-    run(`${PYTHON} -m spacy download en_core_web_sm`);
-  } catch (err) {
-    console.error("\n[voicecc] ERROR: Failed to download spaCy English model.");
-    console.error("  Try manually: sidecar/.venv/bin/python3 -m spacy download en_core_web_sm\n");
-    process.exit(1);
-  }
-}
-
-function commandExists(cmd) {
-  try {
-    execSync(`which ${cmd}`, { stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
+/**
+ * Run a shell command synchronously with inherited stdio.
+ *
+ * @param {string} cmd - Shell command to execute
+ */
 function run(cmd) {
   execSync(cmd, { stdio: "inherit" });
 }

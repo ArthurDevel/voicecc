@@ -26,6 +26,7 @@ import { webrtcRoutes } from "./routes/webrtc.js";
 import { mcpServersRoutes } from "./routes/mcp-servers.js";
 import { authRoutes } from "./routes/auth.js";
 import { integrationsRoutes, setDashboardPort as setIntegrationsDashboardPort } from "./routes/integrations.js";
+import { providersRoutes } from "./routes/providers.js";
 import { loadDeviceTokens } from "../services/device-pairing.js";
 
 // ============================================================================
@@ -59,6 +60,7 @@ function createApp(): Hono {
   app.route("/api/mcp-servers", mcpServersRoutes());
   app.route("/api/auth", authRoutes());
   app.route("/api/integrations", integrationsRoutes());
+  app.route("/api/providers", providersRoutes());
 
   // Status endpoint (user CLAUDE.md conflict check)
   app.get("/api/status", async (c) => {

@@ -20,11 +20,11 @@ import { readFileSync } from "fs";
 import { Writable } from "stream";
 
 import { createVad } from "./vad.js";
-import { createStt } from "./stt.js";
 import { createEndpointer } from "./endpointing.js";
 import { createClaudeSession } from "./claude-session.js";
 import { createNarrator } from "./narration.js";
-import { createTts } from "./tts.js";
+import { createTtsForProvider } from "./tts-provider.js";
+import { createSttForProvider } from "./stt-provider.js";
 import { acquireSessionLock } from "./session-lock.js";
 
 import { dirname, join } from "path";
@@ -38,7 +38,7 @@ import type { Endpointer } from "./endpointing.js";
 import type { ClaudeSession } from "./claude-session.js";
 import type { Narrator } from "./narration.js";
 import type { TtsPlayer } from "./tts.js";
-import type { VadEvent, VoiceLoopState, VoiceLoopStatus, TextChunk, EndpointingConfig, NarrationConfig, ClaudeSessionConfig } from "./types.js";
+import type { VadEvent, VoiceLoopState, VoiceLoopStatus, TextChunk, EndpointingConfig, NarrationConfig, ClaudeSessionConfig, TtsProviderConfig, SttProviderConfig } from "./types.js";
 
 // ============================================================================
 // CONSTANTS
@@ -67,14 +67,10 @@ const STARTUP_PCM: Buffer | null = (() => {
  * and with onSessionEnd and interruptionThresholdMs added.
  */
 export interface VoiceSessionConfig {
-  /** Path to the sherpa-onnx Whisper ONNX model directory */
-  sttModelPath: string;
-  /** mlx-audio model ID for TTS (e.g. "prince-canuma/Kokoro-82M") */
-  ttsModel: string;
-  /** TTS voice ID (e.g. "af_heart" for Kokoro) */
-  ttsVoice: string;
-  /** Directory for cached model files */
-  modelCacheDir: string;
+  /** TTS provider configuration (which provider + per-provider settings) */
+  ttsProvider: TtsProviderConfig;
+  /** STT provider configuration (which provider + per-provider settings) */
+  sttProvider: SttProviderConfig;
   /** Phrase that stops the voice session when spoken */
   stopPhrase: string;
   /** Minimum sustained speech duration (ms) before interrupting TTS playback */
@@ -476,9 +472,8 @@ export async function createVoiceSession(
   console.log("Initializing Claude session + TTS in parallel...");
   const [claudeResult, ttsResult] = await Promise.all([
     createClaudeSession(config.claudeSession),
-    createTts({
-      model: config.ttsModel,
-      voice: config.ttsVoice,
+    createTtsForProvider({
+      providerConfig: config.ttsProvider,
       speakerInput: speakerWritable,
       interruptPlayback: () => adapter.interrupt(),
       resumePlayback: () => adapter.resume(),
@@ -493,7 +488,7 @@ export async function createVoiceSession(
   vadProcessor = await createVad(handleVadEvent);
 
   console.log("Initializing STT...");
-  sttProcessor = await createStt(config.sttModelPath);
+  sttProcessor = await createSttForProvider({ providerConfig: config.sttProvider });
 
   console.log("Initializing endpointer...");
   endpointer = createEndpointer(config.endpointing);

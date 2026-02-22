@@ -2,15 +2,16 @@ import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { get } from "../api";
 import { SettingsPanel } from "../components/SettingsPanel";
+import { VoiceProvidersPanel } from "../components/VoiceProvidersPanel";
 import { McpServersPanel } from "../components/McpServersPanel";
 import { ClaudeMdEditor } from "../components/ClaudeMdEditor";
 import type { TunnelStatus, TwilioStatus, BrowserCallStatus } from "../pages/Home";
 
 export function Settings() {
     const [searchParams] = useSearchParams();
-    const initialTab = searchParams.get("tab") as "general" | "integrations" | "system" | null;
-    const [activeTab, setActiveTab] = useState<"general" | "integrations" | "system">(
-        initialTab === "integrations" || initialTab === "system" ? initialTab : "general"
+    const initialTab = searchParams.get("tab") as "general" | "voice" | "integrations" | "system" | null;
+    const [activeTab, setActiveTab] = useState<"general" | "voice" | "integrations" | "system">(
+        initialTab === "voice" || initialTab === "integrations" || initialTab === "system" ? initialTab : "general"
     );
     const [tunnelStatus, setTunnelStatus] = useState<TunnelStatus>({ running: false, url: null });
     const [twilioStatus, setTwilioStatus] = useState<TwilioStatus>({ running: false, tunnelUrl: null });
@@ -44,6 +45,7 @@ export function Settings() {
             {/* Tabs Row */}
             <div style={{ display: "flex", gap: "8px", padding: "24px 32px 16px", borderBottom: "1px solid var(--border-color)", flexShrink: 0 }}>
                 <button style={tabStyle("general")} onClick={() => setActiveTab("general")}>General</button>
+                <button style={tabStyle("voice")} onClick={() => setActiveTab("voice")}>Voice</button>
                 <button style={tabStyle("integrations")} onClick={() => setActiveTab("integrations")}>Integrations & MCP</button>
                 <button style={tabStyle("system")} onClick={() => setActiveTab("system")}>System Prompt</button>
             </div>
@@ -52,6 +54,9 @@ export function Settings() {
             <div style={{ flex: 1, overflowY: "auto", padding: "48px 64px" }}>
                 {activeTab === "general" && (
                     <SettingsPanel twilioRunning={twilioStatus.running} />
+                )}
+                {activeTab === "voice" && (
+                    <VoiceProvidersPanel />
                 )}
                 {activeTab === "integrations" && (
                     <McpServersPanel twilioRunning={twilioStatus.running} browserCallRunning={browserCallStatus.running} />
