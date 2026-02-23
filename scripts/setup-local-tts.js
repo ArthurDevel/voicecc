@@ -189,7 +189,7 @@ function downloadSpacyModel() {
  */
 function commandExists(cmd) {
   try {
-    execSync(`which ${cmd}`, { stdio: "ignore" });
+    execSync(`command -v ${cmd}`, { stdio: "ignore" });
     return true;
   } catch {
     return false;
