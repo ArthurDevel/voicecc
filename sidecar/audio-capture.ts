@@ -1,24 +1,30 @@
 /**
- * Audio I/O via macOS Voice Processing IO (VPIO) with echo cancellation.
+ * Platform dispatcher for audio I/O with echo cancellation.
  *
- * Spawns a native mic-vpio binary that uses macOS's built-in acoustic echo
- * cancellation. The binary handles both mic capture and speaker playback
- * through a single VPIO AudioUnit, so the AEC has a reference signal of
- * what's being played to subtract from the mic input.
+ * Detects the current platform via process.platform and delegates all audio
+ * operations to the appropriate platform-specific module (darwin or linux).
  *
  * Responsibilities:
- * - Start/stop the mic-vpio binary for echo-cancelled audio I/O
- * - Provide a readable stream of echo-cancelled 16-bit signed PCM mic data
- * - Provide a writable stream for TTS audio playback
- * - Support playback interruption (clears audio buffer via SIGUSR1)
- * - Convert raw PCM buffers to Float32Array for downstream VAD/STT consumption
+ * - Route audio I/O calls to the correct platform implementation
+ * - Export the AudioIO type and bufferToFloat32 utility for downstream consumers
+ * - Track which platform is active to dispatch stop/interrupt/resume correctly
  */
 
-import { spawn, type ChildProcess } from "child_process";
-import { join, dirname } from "path";
-import { fileURLToPath } from "url";
-
 import type { Readable, Writable } from "stream";
+
+import {
+  startCaptureDarwin,
+  stopCaptureDarwin,
+  interruptPlaybackDarwin,
+  resumePlaybackDarwin,
+} from "./audio-capture-darwin.js";
+
+import {
+  startCaptureLinux,
+  stopCaptureLinux,
+  interruptPlaybackLinux,
+  resumePlaybackLinux,
+} from "./audio-capture-linux.js";
 
 // ============================================================================
 // CONSTANTS
@@ -29,13 +35,6 @@ const PCM_16BIT_MAX = 32768.0;
 
 /** Number of bytes per 16-bit sample */
 const BYTES_PER_SAMPLE = 2;
-
-/** Path to the compiled mic-vpio binary */
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const MIC_VPIO_BIN = join(__dirname, "mic-vpio");
-
-/** Timeout for the VPIO binary to initialize (ms) */
-const READY_TIMEOUT_MS = 10_000;
 
 // ============================================================================
 // INTERFACES
@@ -53,147 +52,105 @@ interface AudioIO {
 // STATE
 // ============================================================================
 
-/** The active mic-vpio child process */
-let vpioProcess: ChildProcess | null = null;
+/** Tracks which platform module is currently active */
+let activePlatform: "darwin" | "linux" | null = null;
 
 // ============================================================================
 // MAIN HANDLERS
 // ============================================================================
 
 /**
- * Start the VPIO audio I/O process with echo cancellation.
+ * Start audio I/O with echo cancellation on the current platform.
  *
- * Spawns the mic-vpio binary which sets up a macOS VoiceProcessingIO AudioUnit.
- * Waits for the binary to report READY before returning.
+ * Detects the platform via process.platform and delegates to the appropriate
+ * platform-specific implementation.
  *
  * @param micRate - Mic output sample rate in Hz (e.g. 16000 for VAD/STT)
  * @param speakerRate - Speaker input sample rate in Hz (e.g. 24000 for TTS)
  * @returns AudioIO with mic and speaker streams
- * @throws Error if already capturing, binary not found, or initialization fails
+ * @throws Error if platform is unsupported or capture is already active
  */
 async function startCapture(micRate: number, speakerRate: number): Promise<AudioIO> {
-  if (vpioProcess) {
+  if (activePlatform) {
     throw new Error("Capture already in progress. Call stopCapture() first.");
   }
 
-  vpioProcess = spawn(MIC_VPIO_BIN, [String(micRate), String(speakerRate)]);
-
-  if (!vpioProcess.stdout || !vpioProcess.stdin) {
-    throw new Error("Failed to get mic-vpio stdio streams");
+  switch (process.platform) {
+    case "darwin": {
+      const io = await startCaptureDarwin(micRate, speakerRate);
+      activePlatform = "darwin";
+      return io;
+    }
+    case "linux": {
+      const io = await startCaptureLinux(micRate, speakerRate);
+      activePlatform = "linux";
+      return io;
+    }
+    default:
+      throw new Error(`Unsupported platform: ${process.platform}`);
   }
-
-  // Wait for the binary to report READY on stderr
-  await waitForReady(vpioProcess);
-
-  return {
-    micStream: vpioProcess.stdout,
-    speakerInput: vpioProcess.stdin,
-  };
 }
 
 /**
- * Interrupt current speaker playback by clearing the VPIO ring buffer.
- * Sends SIGUSR1 to the mic-vpio process which clears pending audio
- * and starts discarding any stale PCM data remaining in the OS pipe buffer.
+ * Stop audio I/O and free resources on the active platform.
+ */
+function stopCapture(): void {
+  if (!activePlatform) return;
+
+  switch (activePlatform) {
+    case "darwin":
+      stopCaptureDarwin();
+      break;
+    case "linux":
+      stopCaptureLinux();
+      break;
+  }
+
+  activePlatform = null;
+}
+
+/**
+ * Interrupt current speaker playback on the active platform.
+ * Clears any buffered audio so playback stops immediately.
  */
 function interruptPlayback(): void {
-  if (vpioProcess) {
-    vpioProcess.kill("SIGUSR1");
+  switch (activePlatform) {
+    case "darwin":
+      interruptPlaybackDarwin();
+      break;
+    case "linux":
+      interruptPlaybackLinux();
+      break;
   }
 }
 
 /**
- * Resume speaker playback after an interrupt.
- * Sends SIGUSR2 to the mic-vpio process which stops discarding stdin data,
- * allowing new PCM audio to flow through to the ring buffer and speakers.
+ * Resume speaker playback after an interrupt on the active platform.
  * Must be called before writing new audio after an interrupt.
  */
 function resumePlayback(): void {
-  if (vpioProcess) {
-    vpioProcess.kill("SIGUSR2");
+  switch (activePlatform) {
+    case "darwin":
+      resumePlaybackDarwin();
+      break;
+    case "linux":
+      resumePlaybackLinux();
+      break;
   }
-}
-
-/**
- * Stop the VPIO audio I/O process and free resources.
- */
-function stopCapture(): void {
-  if (!vpioProcess) return;
-  vpioProcess.kill();
-  vpioProcess = null;
 }
 
 /**
  * Returns whether audio I/O is currently active.
  *
- * @returns true if the VPIO process is running
+ * @returns true if a platform capture session is running
  */
 function isCapturing(): boolean {
-  return vpioProcess !== null;
+  return activePlatform !== null;
 }
 
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
-
-/**
- * Wait for the mic-vpio binary to print READY on stderr.
- *
- * @param proc - The mic-vpio child process
- * @throws Error if the process exits or times out before READY
- */
-function waitForReady(proc: ChildProcess): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
-    let stderrBuffer = "";
-
-    const timeout = setTimeout(() => {
-      reject(new Error(`mic-vpio did not become ready within ${READY_TIMEOUT_MS}ms`));
-    }, READY_TIMEOUT_MS);
-
-    const onData = (data: Buffer) => {
-      const text = data.toString();
-      stderrBuffer += text;
-
-      // Log non-READY stderr output (errors, diagnostics)
-      for (const line of text.split("\n")) {
-        const trimmed = line.trim();
-        if (trimmed && trimmed !== "READY") {
-          console.log(`[mic-vpio] ${trimmed}`);
-        }
-      }
-
-      if (stderrBuffer.includes("READY")) {
-        clearTimeout(timeout);
-        proc.stderr!.off("data", onData);
-
-        // Continue logging stderr after READY
-        proc.stderr!.on("data", (d: Buffer) => {
-          for (const line of d.toString().split("\n")) {
-            const trimmed = line.trim();
-            if (trimmed) console.log(`[mic-vpio] ${trimmed}`);
-          }
-        });
-
-        resolve();
-      }
-    };
-
-    proc.stderr!.on("data", onData);
-
-    proc.on("error", (err) => {
-      clearTimeout(timeout);
-      reject(new Error(
-        `mic-vpio failed to start: ${err.message}. ` +
-        `Compile with: swiftc -O -o sidecar/mic-vpio sidecar/mic-vpio.swift -framework AudioToolbox -framework CoreAudio`
-      ));
-    });
-
-    proc.on("exit", (code) => {
-      clearTimeout(timeout);
-      reject(new Error(`mic-vpio exited with code ${code} before READY`));
-    });
-  });
-}
 
 /**
  * Converts a raw 16-bit signed PCM buffer to a Float32Array normalized to -1.0..1.0.

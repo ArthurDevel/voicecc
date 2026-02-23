@@ -28,7 +28,8 @@
     "tsconfig.json"
   ],
   "os": [
-    "darwin"
+    "darwin",
+    "linux"
   ],
   "dependencies": {
     "@anthropic-ai/claude-code": "^1.0.0",
