@@ -1,19 +1,21 @@
 /**
- * Local audio adapter wrapping the VPIO-based audio-capture module.
+ * Local audio adapter wrapping the platform-aware audio-capture module.
  *
- * Implements the AudioAdapter interface for the laptop mic path using macOS
- * Voice Processing IO (VPIO) with echo cancellation. Delegates all low-level
- * audio I/O to audio-capture.ts (singleton module).
+ * Implements the AudioAdapter interface for the local mic path. Delegates all
+ * low-level audio I/O to audio-capture.ts, which dispatches to the correct
+ * platform implementation (macOS VPIO or Linux parec/pacat).
  *
  * Responsibilities:
- * - Start the VPIO binary via startCapture()
- * - Wire VPIO stdout through bufferToFloat32 to the onAudio callback
- * - Write PCM audio to VPIO stdin with backpressure handling
- * - Send SIGUSR1/SIGUSR2 signals for interrupt/resume
- * - Play the macOS system chime via afplay
+ * - Start audio capture via startCapture() (platform-dispatched)
+ * - Wire mic output through bufferToFloat32 to the onAudio callback
+ * - Write PCM audio to the speaker stream with backpressure handling
+ * - Interrupt/resume playback
+ * - Play a platform-appropriate ready chime (afplay on macOS, paplay on Linux)
  */
 
 import { spawn } from "child_process";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
 
 import { startCapture, stopCapture, interruptPlayback, resumePlayback, bufferToFloat32 } from "./audio-capture.js";
 
@@ -25,7 +27,11 @@ import type { AudioAdapter } from "./audio-adapter.js";
 // ============================================================================
 
 /** macOS system sound played when the agent finishes speaking and starts listening */
-const READY_CHIME_PATH = "/System/Library/Sounds/Glass.aiff";
+const MACOS_CHIME_PATH = "/System/Library/Sounds/Glass.aiff";
+
+/** Linux chime WAV bundled with the package */
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const LINUX_CHIME_PATH = join(__dirname, "assets", "chime.wav");
 
 // ============================================================================
 // MAIN ENTRYPOINT
@@ -102,10 +108,16 @@ export async function createLocalAudioAdapter(micRate: number, speakerRate: numb
   }
 
   /**
-   * Play the macOS system ready chime. Fire-and-forget.
+   * Play the ready chime. Fire-and-forget.
+   * On macOS: uses afplay with the system Glass sound.
+   * On Linux: uses paplay with a bundled WAV file.
    */
   function playChime(): void {
-    spawn("afplay", ["--volume", "6", READY_CHIME_PATH]).on("error", () => {});
+    if (process.platform === "linux") {
+      spawn("paplay", [LINUX_CHIME_PATH]).on("error", () => {});
+    } else {
+      spawn("afplay", ["--volume", "6", MACOS_CHIME_PATH]).on("error", () => {});
+    }
   }
 
   /**
