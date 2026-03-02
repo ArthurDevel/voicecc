@@ -143,7 +143,6 @@ export function getAvailableSttProviders(): SttProviderInfo[] {
       type: "local",
       name: "Local Whisper",
       description: "On-device STT via sherpa-onnx Whisper ONNX model (offline batch mode)",
-      requiresPlatform: "darwin",
     },
     {
       type: "elevenlabs",
