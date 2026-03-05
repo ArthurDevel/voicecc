@@ -213,6 +213,8 @@ function handleIncomingCall(
     const signature = req.headers["x-twilio-signature"] as string;
     if (!signature || !twilio.validateRequest(authToken, signature, validationUrl, params)) {
       console.log("Rejected incoming call: invalid Twilio signature");
+      console.log("  validationUrl:", validationUrl);
+      console.log("  signature:", signature);
       res.writeHead(403, { "Content-Type": "text/plain" });
       res.end("Forbidden");
       return;
