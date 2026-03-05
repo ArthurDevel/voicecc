@@ -317,8 +317,8 @@ export function twilioPayloadToFloat32(base64Payload: string): Float32Array {
  * @returns Base64-encoded mulaw audio at 8kHz for Twilio
  */
 export function pcm24kToTwilioPayload(pcmBuffer: Buffer): string {
-  // Read int16 samples from the PCM buffer
-  const sampleCount = pcmBuffer.length / 2;
+  // Read int16 samples from the PCM buffer (floor to handle odd-length buffers)
+  const sampleCount = Math.floor(pcmBuffer.length / 2);
   const pcm24k = new Int16Array(sampleCount);
   for (let i = 0; i < sampleCount; i++) {
     pcm24k[i] = pcmBuffer.readInt16LE(i * 2);
