@@ -54,7 +54,12 @@ export function conversationRoutes(): Hono {
 
   /** List all conversation sessions with summaries */
   app.get("/", async (c) => {
-    const files = await readdir(SESSIONS_DIR);
+    let files: string[];
+    try {
+      files = await readdir(SESSIONS_DIR);
+    } catch {
+      return c.json([]);
+    }
     const jsonlFiles = files.filter((f) => f.endsWith(".jsonl"));
 
     const summaries: ConversationSummary[] = [];
