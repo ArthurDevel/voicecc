@@ -50,6 +50,8 @@ export function TwilioPanel({ onClose }: TwilioPanelProps) {
   const [actionText, setActionText] = useState("");
   const [enabled, setEnabled] = useState(false);
   const [toggling, setToggling] = useState(false);
+  const [testNumber, setTestNumber] = useState("");
+  const [testCallStatus, setTestCallStatus] = useState("");
 
   // Load current settings, integration state, and check cloudflared on mount
   useEffect(() => {
@@ -268,6 +270,41 @@ export function TwilioPanel({ onClose }: TwilioPanelProps) {
             ) : (
               "Set your Account SID and Auth Token to fetch your phone number."
             )}
+          </div>
+        </div>
+
+        <hr className="setup-divider" />
+
+        {/* Test Call */}
+        <div className="setup-step">
+          <div className="setup-step-title"><span className="setup-step-number">7</span>Test your setup</div>
+          <div className="setup-step-desc">
+            Enter your phone number and we'll call you with a test message.
+            {testCallStatus && <div style={{ color: testCallStatus.startsWith("Error") ? "#d73a49" : "#2ea043", marginTop: 4, fontSize: 12 }}>{testCallStatus}</div>}
+          </div>
+          <div className="setup-paste-row">
+            <input
+              type="tel"
+              placeholder="+1234567890"
+              value={testNumber}
+              onChange={(e) => setTestNumber(e.target.value)}
+            />
+            <button
+              disabled={!testNumber.trim() || !accountSid || !authToken || testCallStatus === "Calling..."}
+              onClick={async () => {
+                setTestCallStatus("Calling...");
+                try {
+                  await post("/api/twilio/test-call", { to: testNumber.trim() });
+                  setTestCallStatus("Call initiated! Check your phone.");
+                } catch (err) {
+                  const message = err instanceof Error ? err.message : (err as { message?: string })?.message || "Failed";
+                  setTestCallStatus(`Error: ${message}`);
+                }
+                setTimeout(() => setTestCallStatus(""), 6000);
+              }}
+            >
+              Test Call
+            </button>
           </div>
         </div>
       </div>
