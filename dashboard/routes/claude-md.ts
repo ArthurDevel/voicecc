@@ -30,7 +30,12 @@ export function claudeMdRoutes(): Hono {
 
   /** Read the CLAUDE.md file */
   app.get("/", async (c) => {
-    const content = await readFile(CLAUDE_MD_PATH, "utf-8");
+    let content: string;
+    try {
+      content = await readFile(CLAUDE_MD_PATH, "utf-8");
+    } catch {
+      return c.json({ content: "" });
+    }
     return c.json({ content });
   });
 

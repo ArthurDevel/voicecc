@@ -54,19 +54,40 @@ export async function startTwilioServer(dashboardPort: number, tunnelUrl?: strin
     throw new Error("TWILIO_AUTH_TOKEN is not set in .env");
   }
 
-  // Update TwiML App voice URL if configured
-  const twimlAppSid = envVars.TWILIO_TWIML_APP_SID;
   const accountSid = envVars.TWILIO_ACCOUNT_SID;
-  if (tunnelUrl && twimlAppSid && accountSid && envVars.TWILIO_AUTH_TOKEN) {
+  const webhookUrl = tunnelUrl ? `${tunnelUrl}/twilio/incoming-call` : null;
+
+  if (tunnelUrl && accountSid && envVars.TWILIO_AUTH_TOKEN) {
+    const client = twilioSdk(accountSid, envVars.TWILIO_AUTH_TOKEN);
+
+    // Update TwiML App voice URL if configured
+    const twimlAppSid = envVars.TWILIO_TWIML_APP_SID;
+    if (twimlAppSid) {
+      try {
+        await client.applications(twimlAppSid).update({
+          voiceUrl: webhookUrl!,
+          voiceMethod: "POST",
+        });
+        console.log(`Updated TwiML App voice URL to ${webhookUrl}`);
+      } catch (err) {
+        console.error(`Failed to update TwiML App voice URL: ${err}`);
+      }
+    }
+
+    // Update all phone numbers on the account to point to the new webhook URL
     try {
-      const client = twilioSdk(accountSid, envVars.TWILIO_AUTH_TOKEN);
-      await client.applications(twimlAppSid).update({
-        voiceUrl: `${tunnelUrl}/twilio/incoming-call`,
-        voiceMethod: "POST",
-      });
-      console.log(`Updated TwiML App voice URL to ${tunnelUrl}/twilio/incoming-call`);
+      const numbers = await client.incomingPhoneNumbers.list();
+      for (const num of numbers) {
+        await client.incomingPhoneNumbers(num.sid).update({
+          voiceUrl: webhookUrl!,
+          voiceMethod: "POST",
+        });
+      }
+      if (numbers.length > 0) {
+        console.log(`Updated ${numbers.length} phone number(s) webhook to ${webhookUrl}`);
+      }
     } catch (err) {
-      console.error(`Failed to update TwiML App voice URL: ${err}`);
+      console.error(`Failed to update phone number webhooks: ${err}`);
     }
   }
 

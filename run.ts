@@ -8,7 +8,7 @@
 
 import { startDashboard } from "./dashboard/server.js";
 import { readEnv } from "./services/env.js";
-import { startTunnel, isTunnelRunning } from "./services/tunnel.js";
+import { startTunnel, isTunnelRunning, getTunnelUrl } from "./services/tunnel.js";
 import { startTwilioServer } from "./services/twilio-manager.js";
 import { startBrowserCallServer } from "./services/browser-call-manager.js";
 
@@ -38,7 +38,7 @@ async function main(): Promise<void> {
       if (!isTunnelRunning()) {
         await startTunnel(tunnelPort);
       }
-      await startTwilioServer(port, undefined);
+      await startTwilioServer(port, getTunnelUrl() ?? undefined);
     } catch (err) {
       console.error(`Twilio auto-start failed: ${err}`);
     }

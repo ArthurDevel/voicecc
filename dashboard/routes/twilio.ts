@@ -9,6 +9,7 @@
  */
 
 import { Hono } from "hono";
+import twilioSdk from "twilio";
 import { readEnv } from "../../services/env.js";
 import { startTwilioServer, stopTwilioServer, getStatus } from "../../services/twilio-manager.js";
 import { startTunnel, stopTunnel, getTunnelUrl, isTunnelRunning } from "../../services/tunnel.js";
@@ -114,6 +115,44 @@ export function twilioRoutes(): Hono {
     );
 
     return c.json({ numbers });
+  });
+
+  /** Place a test call to verify Twilio setup */
+  app.post("/test-call", async (c) => {
+    const body = await c.req.json<{ to: string }>();
+    const to = body.to?.trim();
+    if (!to) {
+      return c.json({ error: "Phone number is required" }, 400);
+    }
+
+    const envVars = await readEnv();
+    const accountSid = envVars.TWILIO_ACCOUNT_SID;
+    const authToken = envVars.TWILIO_AUTH_TOKEN;
+
+    if (!accountSid || !authToken) {
+      return c.json({ error: "Twilio credentials not configured" }, 400);
+    }
+
+    try {
+      const client = twilioSdk(accountSid, authToken);
+
+      // Get the first Twilio phone number to use as caller ID
+      const numbers = await client.incomingPhoneNumbers.list({ limit: 1 });
+      if (numbers.length === 0) {
+        return c.json({ error: "No Twilio phone numbers found on this account" }, 400);
+      }
+
+      const call = await client.calls.create({
+        to,
+        from: numbers[0].phoneNumber,
+        twiml: '<Response><Say>This is a test call from your voice assistant. If you can hear this, your Twilio setup is working correctly. Goodbye!</Say></Response>',
+      });
+
+      return c.json({ success: true, callSid: call.sid });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to place call";
+      return c.json({ error: message }, 500);
+    }
   });
 
   return app;
