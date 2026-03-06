@@ -14,9 +14,10 @@
  */
 
 import { randomUUID } from "crypto";
-import { query as claudeQuery, type SDKMessage } from "@anthropic-ai/claude-code";
+import { query as claudeQuery, type SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import twilio from "twilio";
-import { listAgents, getAgent, type Agent } from "./agent-store.js";
+import { join } from "path";
+import { listAgents, getAgent, AGENTS_DIR, type Agent } from "./agent-store.js";
 import { readEnv } from "./env.js";
 import { getTunnelUrl, isTunnelRunning } from "./tunnel.js";
 import { isRunning as isTwilioRunning } from "./twilio-manager.js";
@@ -30,9 +31,6 @@ const CHECK_INTERVAL_MS = 60_000;
 
 /** Maximum time for a single heartbeat Claude session in milliseconds */
 const SESSION_TIMEOUT_MS = 120_000;
-
-/** Path to the Claude Code CLI binary (falls back to "claude" on PATH) */
-const CLAUDE_BIN = process.env.CLAUDE_BIN || "claude";
 
 /** User-facing prompt sent to the heartbeat Claude session */
 const HEARTBEAT_PROMPT =
@@ -259,10 +257,15 @@ async function runHeartbeatSession(agent: Agent): Promise<HeartbeatResult> {
     const q = claudeQuery({
       prompt: HEARTBEAT_PROMPT,
       options: {
-        pathToClaudeCodeExecutable: CLAUDE_BIN,
-        appendSystemPrompt: systemPrompt,
+        systemPrompt,
         permissionMode: "bypassPermissions",
+        allowDangerouslySkipPermissions: true,
         abortController,
+        cwd: join(AGENTS_DIR, agent.id),
+        stderr: (data: string) => {
+          const msg = data.trim();
+          if (msg) console.error(`[heartbeat-stderr] ${msg}`);
+        },
       },
     });
 
