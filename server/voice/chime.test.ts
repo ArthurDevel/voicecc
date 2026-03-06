@@ -5,7 +5,7 @@
  * If the buffer contains file-format headers, they get played as loud
  * garbage ("bop") before the actual chime.
  *
- * Run: npx tsx --test sidecar/chime.test.ts
+ * Run: npx tsx --test server/voice/chime.test.ts
  */
 
 import { test } from "node:test";

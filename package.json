@@ -7,7 +7,7 @@
     "voicecc": "bin/voicecc.js"
   },
   "scripts": {
-    "start": "tsx run.ts",
+    "start": "tsx server/index.ts",
     "dev:dashboard": "cd dashboard && npx vite",
     "build:dashboard": "cd dashboard && npx vite build",
     "prepublishOnly": "npm run build:dashboard",
@@ -15,9 +15,7 @@
   },
   "files": [
     "bin/",
-    "run.ts",
-    "sidecar/",
-    "services/",
+    "server/",
     "dashboard/dist/",
     "dashboard/server.ts",
     "dashboard/routes/",

@@ -8,7 +8,7 @@
  * as Int16Array -- if a chunk has an odd byte count, a sample is split and
  * all subsequent audio is corrupted (hiss/static).
  *
- * Run: npx tsx --test sidecar/tts-elevenlabs-hiss.test.ts
+ * Run: npx tsx --test server/voice/tts-elevenlabs-hiss.test.ts
  */
 
 import { test } from "node:test";

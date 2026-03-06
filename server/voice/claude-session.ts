@@ -97,7 +97,7 @@ interface ClaudeSession {
 // ============================================================================
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const DEFAULT_SYSTEM_PROMPT = readFileSync(join(__dirname, "..", "init", "defaults", "system.md"), "utf-8").trim();
+const DEFAULT_SYSTEM_PROMPT = readFileSync(join(__dirname, "..", "..", "init", "defaults", "system.md"), "utf-8").trim();
 
 // ============================================================================
 // MAIN HANDLERS

@@ -1,7 +1,7 @@
 /**
- * Voice sidecar launch route.
+ * Voice server launch route.
  *
- * Opens Terminal.app and starts the voice sidecar process:
+ * Opens Terminal.app and starts the voice server process:
  * - POST /start -- opens Terminal via osascript
  */
 
@@ -12,7 +12,7 @@ import { execFile } from "child_process";
 // CONSTANTS
 // ============================================================================
 
-const VOICE_CMD = `cd ${process.cwd()} && npx tsx sidecar/index.ts`;
+const VOICE_CMD = `cd ${process.cwd()} && npx tsx server/voice/index.ts`;
 
 // ============================================================================
 // ROUTES
@@ -26,7 +26,7 @@ const VOICE_CMD = `cd ${process.cwd()} && npx tsx sidecar/index.ts`;
 export function voiceRoutes(): Hono {
   const app = new Hono();
 
-  /** Open Terminal.app and start the voice sidecar */
+  /** Open Terminal.app and start the voice server */
   app.post("/start", async (c) => {
     const script = `tell application "Terminal"
   activate

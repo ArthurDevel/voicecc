@@ -4,7 +4,7 @@
  * CLI entry point for the voicecc command.
  *
  * Checks if first-run setup is needed (compile mic-vpio, Python venv, etc.)
- * and runs it with visible output. Then spawns `tsx run.ts` for the dashboard.
+ * and runs it with visible output. Then spawns `tsx server/index.ts` for the dashboard.
  */
 
 import { spawn } from "node:child_process";
@@ -25,7 +25,7 @@ if (needsSetup()) {
 }
 
 // Start the dashboard
-const child = spawn(TSX_BIN, ["run.ts"], {
+const child = spawn(TSX_BIN, ["server/index.ts"], {
   cwd: PKG_ROOT,
   stdio: "inherit",
 });

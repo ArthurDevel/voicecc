@@ -43,7 +43,7 @@ import type { TtsProviderConfig, SttProviderConfig, TtsProviderType, SttProvider
 // ============================================================================
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const DEFAULT_SYSTEM_PROMPT = readFileSync(join(__dirname, "..", "init", "defaults", "system.md"), "utf-8").trim();
+const DEFAULT_SYSTEM_PROMPT = readFileSync(join(__dirname, "..", "..", "init", "defaults", "system.md"), "utf-8").trim();
 
 /** Default port for the Twilio HTTP/WebSocket server */
 const DEFAULT_PORT = 8080;
