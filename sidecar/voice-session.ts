@@ -83,6 +83,10 @@ export interface VoiceSessionConfig {
   claudeSession: ClaudeSessionConfig;
   /** Called when the stop phrase is detected. Local path: process.exit(). Twilio: ws.close(). */
   onSessionEnd: () => void;
+  /** Pre-existing Claude session to reuse (e.g. from heartbeat). Skips createClaudeSession if set. */
+  existingClaudeSession?: ClaudeSession;
+  /** Initial prompt to send to Claude before listening (agent speaks first). Skips startup PCM if set. */
+  initialPrompt?: string;
 }
 
 /**
@@ -450,9 +454,8 @@ export async function createVoiceSession(
 
   // ---- Initialization ----
 
-  // Fire-and-forget the startup greeting so it plays while modules initialize.
-  // Short delay lets the audio device settle before playback.
-  if (STARTUP_PCM) {
+  // Play startup greeting only for fresh sessions (no existing Claude session)
+  if (!config.existingClaudeSession && !config.initialPrompt && STARTUP_PCM) {
     setTimeout(() => {
       adapter.writeSpeaker(STARTUP_PCM).catch((err) => {
         console.error(`Failed to play startup audio: ${err}`);
@@ -467,20 +470,33 @@ export async function createVoiceSession(
     },
   });
 
-  // Claude session and TTS are the slowest to initialize (process spawns + model
-  // loading). Run them in parallel since they are independent.
-  console.log("Initializing Claude session + TTS in parallel...");
-  const [claudeResult, ttsResult] = await Promise.all([
-    createClaudeSession(config.claudeSession),
-    createTtsForProvider({
+  // If an existing Claude session is provided (heartbeat handoff), reuse it.
+  // Otherwise create a new one. TTS always needs fresh initialization.
+  if (config.existingClaudeSession) {
+    console.log("Reusing existing Claude session, initializing TTS...");
+    claudeSession = config.existingClaudeSession;
+    ttsPlayer = await createTtsForProvider({
       providerConfig: config.ttsProvider,
       speakerInput: speakerWritable,
       interruptPlayback: () => adapter.interrupt(),
       resumePlayback: () => adapter.resume(),
-    }),
-  ]);
-  claudeSession = claudeResult;
-  ttsPlayer = ttsResult;
+    });
+  } else {
+    // Claude session and TTS are the slowest to initialize (process spawns + model
+    // loading). Run them in parallel since they are independent.
+    console.log("Initializing Claude session + TTS in parallel...");
+    const [claudeResult, ttsResult] = await Promise.all([
+      createClaudeSession(config.claudeSession),
+      createTtsForProvider({
+        providerConfig: config.ttsProvider,
+        speakerInput: speakerWritable,
+        interruptPlayback: () => adapter.interrupt(),
+        resumePlayback: () => adapter.resume(),
+      }),
+    ]);
+    claudeSession = claudeResult;
+    ttsPlayer = ttsResult;
+  }
 
   // VAD and STT both load ONNX runtimes -- keep them sequential to avoid
   // native library conflicts within the same Node process.
@@ -502,10 +518,6 @@ export async function createVoiceSession(
   });
 
   console.log("Voice mode active");
-  adapter.playChime();
-
-  // Transition to LISTENING
-  state = handleStateTransition(state, "init_complete");
 
   // Subscribe to audio from the adapter
   adapter.onAudio((samples: Float32Array) => {
@@ -513,6 +525,17 @@ export async function createVoiceSession(
       console.error(`Error processing audio chunk: ${err}`);
     });
   });
+
+  // If there's an initial prompt (heartbeat-initiated call), send it to Claude
+  // so the agent speaks first. Otherwise play chime and start listening.
+  if (config.initialPrompt) {
+    console.log("Sending initial prompt to Claude (agent speaks first)...");
+    await processClaudeResponse(config.initialPrompt);
+    // processClaudeResponse transitions through SPEAKING -> LISTENING via response_complete
+  } else {
+    adapter.playChime();
+    state = handleStateTransition(state, "init_complete");
+  }
 
   return { stop };
 }
