@@ -297,23 +297,44 @@ export async function createElevenlabsTts(config: ElevenlabsTtsConfig): Promise<
 // ============================================================================
 
 /**
- * Read chunks from a fetch Response body as an async iterable.
- * The response body is a ReadableStream of Uint8Array chunks.
+ * Read chunks from a fetch Response body as an async iterable, ensuring each
+ * yielded chunk is aligned to 16-bit sample boundaries (even byte count).
+ *
+ * HTTP streaming splits the byte stream at arbitrary TCP packet boundaries.
+ * A chunk with an odd byte count splits a 16-bit PCM sample in half. Downstream
+ * consumers (browser WebSocket -> Int16Array) interpret each chunk independently,
+ * so a misaligned chunk corrupts all its samples (heard as hiss/static).
  *
  * @param response - The fetch Response to read from
- * @yields Uint8Array chunks of raw PCM audio data
+ * @yields Buffer chunks of sample-aligned raw PCM audio data
  */
-async function* readResponseChunks(response: Response): AsyncGenerator<Uint8Array> {
+async function* readResponseChunks(response: Response): AsyncGenerator<Buffer> {
   const body = response.body;
   if (!body) throw new Error("ElevenLabs TTS response has no body");
 
   const reader = body.getReader();
+  let leftover: Buffer | null = null;
+
   try {
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-      if (value) yield value;
+      if (!value) continue;
+
+      let chunk = leftover ? Buffer.concat([leftover, value]) : Buffer.from(value);
+      leftover = null;
+
+      // Hold back the last byte if odd length (split sample)
+      if (chunk.byteLength % 2 !== 0) {
+        leftover = Buffer.from(chunk.subarray(chunk.byteLength - 1));
+        chunk = chunk.subarray(0, chunk.byteLength - 1);
+      }
+
+      if (chunk.byteLength > 0) yield chunk;
     }
+
+    // Flush any remaining byte (only happens with malformed PCM)
+    if (leftover && leftover.byteLength > 0) yield leftover;
   } finally {
     reader.releaseLock();
   }
