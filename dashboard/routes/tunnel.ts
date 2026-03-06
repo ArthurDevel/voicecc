@@ -16,8 +16,8 @@ import {
   getTunnelStartedAt,
   startTunnel,
   stopTunnel,
-} from "../../services/tunnel.js";
-import { readEnv } from "../../services/env.js";
+} from "../../server/services/tunnel.js";
+import { readEnv } from "../../server/services/env.js";
 
 // ============================================================================
 // ROUTES

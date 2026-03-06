@@ -1,5 +1,5 @@
 /**
- * Shared types for the Claude Code voice sidecar.
+ * Shared types for the Claude Code voice server.
  *
  * Defines all DTOs and interfaces used across the voice pipeline modules:
  * - Voice loop configuration and state

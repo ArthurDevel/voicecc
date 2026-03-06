@@ -13,7 +13,7 @@ import {
   validateAndConsumeCode,
   isValidDeviceToken,
   isPairingCodeActive,
-} from "../../services/device-pairing.js";
+} from "../../server/services/device-pairing.js";
 
 // ============================================================================
 // ROUTES

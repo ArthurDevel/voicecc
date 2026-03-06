@@ -6,7 +6,7 @@
  * - Auto-start enabled integrations (Twilio, Browser Call) with tunnel as dependency
  */
 
-import { startDashboard } from "./dashboard/server.js";
+import { startDashboard } from "../dashboard/server.js";
 import { readEnv } from "./services/env.js";
 import { startTunnel, isTunnelRunning, getTunnelUrl } from "./services/tunnel.js";
 import { startTwilioServer } from "./services/twilio-manager.js";

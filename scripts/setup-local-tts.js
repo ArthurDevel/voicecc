@@ -22,10 +22,10 @@ import { join } from "path";
 // CONSTANTS
 // ============================================================================
 
-const VENV_DIR = join("sidecar", ".venv");
+const VENV_DIR = join("server", "voice", ".venv");
 const PIP = join(VENV_DIR, "bin", "pip");
 const PYTHON = join(VENV_DIR, "bin", "python3");
-const MIC_VPIO = join("sidecar", "mic-vpio");
+const MIC_VPIO = join("server", "voice", "mic-vpio");
 
 const PYTHON_PACKAGES = [
   "mlx-audio",
@@ -112,7 +112,7 @@ function compileMicVpio() {
     return;
   }
 
-  const source = join("sidecar", "mic-vpio.swift");
+  const source = join("server", "voice", "mic-vpio.swift");
 
   if (!commandExists("swiftc")) {
     throw new Error(

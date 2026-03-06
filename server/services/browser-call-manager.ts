@@ -50,7 +50,7 @@ export async function startBrowserCallServer(dashboardPort: number): Promise<voi
     throw new Error("Browser call server is already running");
   }
 
-  browserProcess = spawn("npx", ["tsx", "sidecar/browser-server.ts"], {
+  browserProcess = spawn("npx", ["tsx", "server/voice/browser-server.ts"], {
     cwd: process.cwd(),
     stdio: ["ignore", "pipe", "pipe"],
     env: { ...process.env, DASHBOARD_PORT: String(dashboardPort) },
