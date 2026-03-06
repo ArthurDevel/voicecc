@@ -24,7 +24,7 @@ import { join } from "path";
  */
 export function needsSetup() {
   const dashboardMissing = !existsSync(join("dashboard", "dist", "index.html"));
-  const micVpioMissing = process.platform === "darwin" && !existsSync(join("sidecar", "mic-vpio"));
+  const micVpioMissing = process.platform === "darwin" && !existsSync(join("server", "voice", "mic-vpio"));
   return dashboardMissing || micVpioMissing;
 }
 
@@ -51,7 +51,7 @@ export function runSetup() {
  * Compile the native mic-vpio audio binary (macOS only).
  */
 function buildMicVpio() {
-  const bin = join("sidecar", "mic-vpio");
+  const bin = join("server", "voice", "mic-vpio");
   if (existsSync(bin)) {
     console.log("mic-vpio already compiled, skipping.");
     return;
@@ -62,11 +62,11 @@ function buildMicVpio() {
   }
   console.log("Compiling mic-vpio...");
   try {
-    run("swiftc -O -o sidecar/mic-vpio sidecar/mic-vpio.swift -framework AudioToolbox -framework CoreAudio");
+    run("swiftc -O -o server/voice/mic-vpio server/voice/mic-vpio.swift -framework AudioToolbox -framework CoreAudio");
   } catch (err) {
     console.error("\n[voicecc] WARNING: Failed to compile mic-vpio.");
     console.error("  Terminal voice mode will not work. Browser/phone calling is unaffected.");
-    console.error("  Try manually: swiftc -O -o sidecar/mic-vpio sidecar/mic-vpio.swift -framework AudioToolbox -framework CoreAudio\n");
+    console.error("  Try manually: swiftc -O -o server/voice/mic-vpio server/voice/mic-vpio.swift -framework AudioToolbox -framework CoreAudio\n");
     return;
   }
   console.log("mic-vpio compiled successfully.");

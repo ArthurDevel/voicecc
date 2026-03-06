@@ -104,7 +104,7 @@ export function authRoutes(): Hono {
   do script "${CLAUDE_BIN}"
 end tell`;
 
-    return new Promise((resolve) => {
+    return new Promise<Response>((resolve) => {
       execFile("osascript", ["-e", script], (err) => {
         if (err) {
           resolve(c.json({ error: err.message }, 500));

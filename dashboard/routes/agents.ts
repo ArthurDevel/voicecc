@@ -17,9 +17,9 @@ import {
   createAgent,
   deleteAgent,
   updateAgentConfig,
-} from "../../services/agent-store.js";
-import type { AgentConfig } from "../../services/agent-store.js";
-import { getHeartbeatStatus, initiateAgentCall } from "../../services/heartbeat.js";
+} from "../../server/services/agent-store.js";
+import type { AgentConfig } from "../../server/services/agent-store.js";
+import { getHeartbeatStatus, initiateAgentCall } from "../../server/services/heartbeat.js";
 
 // ============================================================================
 // ROUTES

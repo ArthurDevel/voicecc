@@ -9,7 +9,7 @@
 
 import { readEnv } from "./env.js";
 import twilioSdk from "twilio";
-import { startTwilioServer as startServer } from "../sidecar/twilio-server.js";
+import { startTwilioServer as startServer } from "../voice/twilio-server.js";
 
 // ============================================================================
 // TYPES

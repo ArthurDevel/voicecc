@@ -12,8 +12,8 @@
     "sourceMap": true
   },
   "include": [
-    "run.ts",
-    "sidecar/**/*.ts",
+    "server/index.ts",
+    "server/**/*.ts",
     "dashboard/**/*.ts",
     "services/**/*.ts",
     "dashboard/routes/**/*.ts"
