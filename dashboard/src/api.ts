@@ -54,6 +54,26 @@ export async function post<T = unknown>(path: string, body?: unknown): Promise<T
 }
 
 /**
+ * Send a PATCH request to the API with a JSON body.
+ *
+ * @param path - API path (e.g. "/api/agents/my-agent")
+ * @param body - JSON-serializable body
+ * @returns Parsed JSON response
+ */
+export async function patch<T = unknown>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(path, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: "Request failed" }));
+    throw { status: res.status, message: data.error || "Request failed" } as ApiError;
+  }
+  return res.json();
+}
+
+/**
  * Send a DELETE request to the API.
  *
  * @param path - API path (e.g. "/api/mcp-servers/notion")

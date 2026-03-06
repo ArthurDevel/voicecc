@@ -16,6 +16,7 @@ import {
   getAgent,
   createAgent,
   deleteAgent,
+  updateAgentConfig,
 } from "../../services/agent-store.js";
 import type { AgentConfig } from "../../services/agent-store.js";
 import { getHeartbeatStatus, initiateAgentCall } from "../../services/heartbeat.js";
@@ -68,6 +69,18 @@ export function agentsRoutes(): Hono {
     try {
       await createAgent(body.id, body.soulMd, body.heartbeatMd, body.config);
       return c.json({ success: true });
+    } catch (err) {
+      return c.json({ error: (err as Error).message }, 400);
+    }
+  });
+
+  /** Update an agent's config */
+  app.patch("/:id", async (c) => {
+    const id = c.req.param("id");
+    const body = await c.req.json<{ config: Partial<AgentConfig> }>();
+    try {
+      const updated = await updateAgentConfig(id, body.config);
+      return c.json({ config: updated });
     } catch (err) {
       return c.json({ error: (err as Error).message }, 400);
     }
