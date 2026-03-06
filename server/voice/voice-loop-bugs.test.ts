@@ -92,7 +92,8 @@ function sleep(ms: number): Promise<void> {
  * @param turns - Array of turn configurations, consumed in order
  * @returns A function matching the SDK query() signature (cast with `as any`)
  */
-function createMockQueryFn(turns: MockTurn[]): (...args: unknown[]) => unknown {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function createMockQueryFn(turns: MockTurn[]): any {
   return function mockQueryFn({ prompt }: { prompt: AsyncIterable<unknown> }) {
     let turnIndex = 0;
 
@@ -474,7 +475,7 @@ test("BUG: narration summaries should emit immediately, not queue and burst at e
   });
 
   // Simulate a long-running tool (Write tool taking 450ms)
-  const toolStart: ClaudeStreamEvent = { type: "tool_start", toolName: "Write" };
+  const toolStart: ClaudeStreamEvent = { type: "tool_start", toolName: "Write", content: "" };
   const initialTexts = narrator.processEvent(toolStart);
 
   for (const text of initialTexts) {
@@ -485,7 +486,7 @@ test("BUG: narration summaries should emit immediately, not queue and burst at e
   await new Promise((r) => setTimeout(r, 450));
 
   // Tool ends
-  const toolEnd: ClaudeStreamEvent = { type: "tool_end" };
+  const toolEnd: ClaudeStreamEvent = { type: "tool_end", content: "" };
   const endTexts = narrator.processEvent(toolEnd);
 
   for (const text of endTexts) {

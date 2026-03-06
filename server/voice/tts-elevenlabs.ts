@@ -318,7 +318,7 @@ async function* readResponseChunks(response: Response): AsyncGenerator<Buffer> {
       if (done) break;
       if (!value) continue;
 
-      let chunk = leftover ? Buffer.concat([leftover, value]) : Buffer.from(value);
+      let chunk: Buffer = leftover ? Buffer.concat([leftover, value]) : Buffer.from(value);
       leftover = null;
 
       // Hold back the last byte if odd length (split sample)
