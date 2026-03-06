@@ -1,15 +1,17 @@
 /**
  * Interval-based heartbeat scheduler for agent check-ins.
  *
- * Spawns a full Claude Code session per heartbeat check so the agent can
+ * Creates a persistent Claude Code session per heartbeat check so the agent can
  * execute whatever HEARTBEAT.md instructs (check email, calendar, APIs, etc.).
  * When a heartbeat determines the user should be contacted, initiates an
- * outbound Twilio call.
+ * outbound Twilio call and hands the live Claude session to the voice session
+ * so it retains full context of what it checked.
  *
  * - Start/stop a 60-second global interval that checks all enabled agents
  * - Track per-agent check intervals and concurrent-check guards
- * - Spawn Claude Code SDK query() sessions with full tool access
+ * - Create persistent Claude sessions with full tool access
  * - Parse JSON heartbeat responses and initiate outbound calls
+ * - Pass live Claude sessions to the Twilio server for voice call continuity
  * - Expose last heartbeat results for the API
  */
 
@@ -18,12 +20,13 @@ import { readFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
-import { query as claudeQuery, type SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import twilio from "twilio";
+import { createClaudeSession, type ClaudeSession } from "../sidecar/claude-session.js";
 import { listAgents, getAgent, AGENTS_DIR, type Agent } from "./agent-store.js";
 import { readEnv } from "./env.js";
 import { getTunnelUrl, isTunnelRunning } from "./tunnel.js";
 import { isRunning as isTwilioRunning } from "./twilio-manager.js";
+import { setCallClaudeSession } from "../sidecar/twilio-server.js";
 
 // ============================================================================
 // CONSTANTS
@@ -39,6 +42,9 @@ const SESSION_TIMEOUT_MS = 120_000;
 
 /** User-facing prompt sent to the heartbeat Claude session */
 const HEARTBEAT_PROMPT = readFileSync(join(__dirname, "..", "init", "defaults", "system-heartbeat.md"), "utf-8").trim();
+
+/** Default voice system prompt (shared with voice sessions) */
+const DEFAULT_SYSTEM_PROMPT = readFileSync(join(__dirname, "..", "init", "defaults", "system.md"), "utf-8").trim();
 
 // ============================================================================
 // TYPES
@@ -115,13 +121,15 @@ export function getHeartbeatStatus(): Record<string, HeartbeatResult> {
  *
  * Flow:
  * 1. Check preconditions (tunnel + Twilio server running)
- * 2. Generate UUID token and register it with the Twilio server process
- * 3. Place outbound call via Twilio SDK with TwiML streaming to our WebSocket
+ * 2. Generate UUID token and register it with the Twilio server
+ * 3. Optionally attach a live Claude session for voice call continuity
+ * 4. Place outbound call via Twilio SDK with TwiML streaming to our WebSocket
  *
  * @param agent - Full agent data including config with phone number
+ * @param claudeSession - Optional live Claude session to hand off to the voice call
  * @returns The Twilio call SID
  */
-export async function initiateAgentCall(agent: Agent): Promise<string> {
+export async function initiateAgentCall(agent: Agent, opts?: { claudeSession?: ClaudeSession; initialPrompt?: string }): Promise<string> {
   // Check preconditions
   if (!isTunnelRunning()) {
     throw new Error("Tunnel is not running. Cannot place outbound call.");
@@ -145,8 +153,13 @@ export async function initiateAgentCall(agent: Agent): Promise<string> {
     throw new Error("USER_PHONE_NUMBER must be set in Settings > General");
   }
 
-  // Register the call token with the Twilio server process
-  await registerCallToken(twilioPort, token, agent.id);
+  // Register the call token with the Twilio server (with optional initial prompt)
+  await registerCallToken(twilioPort, token, agent.id, opts?.initialPrompt);
+
+  // Attach the live Claude session if provided (heartbeat-initiated calls)
+  if (opts?.claudeSession) {
+    setCallClaudeSession(token, opts.claudeSession);
+  }
 
   // Get the tunnel URL (strip protocol for WebSocket URL)
   const fullTunnelUrl = getTunnelUrl()!;
@@ -209,9 +222,9 @@ async function checkAllAgents(): Promise<void> {
 }
 
 /**
- * Spawn a Claude Code session to run the heartbeat check for a single agent.
- * Adds the agent to inFlightChecks during execution.
- * Parses the JSON response and initiates a call if shouldCall is true.
+ * Run a heartbeat check for a single agent using a persistent Claude session.
+ * If the check determines shouldCall, keeps the session alive and passes it
+ * to the outbound call so the voice session continues with full context.
  *
  * @param agent - Full agent data with SOUL.md, MEMORY.md, HEARTBEAT.md
  */
@@ -219,8 +232,11 @@ async function checkSingleAgent(agent: Agent): Promise<HeartbeatResult> {
   inFlightChecks.add(agent.id);
   lastCheckTimes[agent.id] = Date.now();
 
+  let session: ClaudeSession | null = null;
+
   try {
-    const result = await runHeartbeatSession(agent);
+    const { result, claudeSession } = await runHeartbeatSession(agent);
+    session = claudeSession;
     lastResults[agent.id] = result;
 
     console.log(
@@ -229,7 +245,9 @@ async function checkSingleAgent(agent: Agent): Promise<HeartbeatResult> {
 
     if (result.shouldCall) {
       try {
-        await initiateAgentCall(agent);
+        // Pass the live session to the call — it will be handed to the voice session
+        await initiateAgentCall(agent, { claudeSession: session });
+        session = null; // Don't close — voice session owns it now
       } catch (err) {
         console.error(`[heartbeat] failed to call agent "${agent.id}":`, err);
       }
@@ -237,90 +255,79 @@ async function checkSingleAgent(agent: Agent): Promise<HeartbeatResult> {
 
     return result;
   } finally {
+    // Close the session if we still own it (shouldCall was false, or call failed)
+    if (session) {
+      await session.close();
+    }
     inFlightChecks.delete(agent.id);
   }
 }
 
 /**
- * Run a Claude Code SDK query() session with the agent's system prompt.
- * Collects assistant text messages and parses the final JSON response.
- * Times out after SESSION_TIMEOUT_MS and treats timeout as shouldCall: false.
+ * Run a heartbeat check using a persistent Claude session.
+ * Creates the session with the agent's full context (voice instructions +
+ * SOUL.md + MEMORY.md + HEARTBEAT.md), sends the heartbeat prompt, and
+ * parses the JSON response.
+ *
+ * Returns both the parsed result and the live session so the caller can
+ * decide whether to keep it alive for a voice call.
  *
  * @param agent - Full agent data
- * @returns Parsed HeartbeatResult
+ * @returns The heartbeat result and the live Claude session
  */
-async function runHeartbeatSession(agent: Agent): Promise<HeartbeatResult> {
-  const systemPrompt = [agent.soulMd, agent.memoryMd, agent.heartbeatMd].join("\n\n");
+async function runHeartbeatSession(agent: Agent): Promise<{ result: HeartbeatResult; claudeSession: ClaudeSession }> {
+  // Include voice instructions so the session is ready for voice call continuity
+  const systemPrompt = [DEFAULT_SYSTEM_PROMPT, agent.soulMd, agent.memoryMd, agent.heartbeatMd].join("\n\n");
 
-  const abortController = new AbortController();
-  const timeout = setTimeout(() => abortController.abort(), SESSION_TIMEOUT_MS);
+  const claudeSession = await createClaudeSession({
+    allowedTools: [],
+    permissionMode: "bypassPermissions",
+    systemPrompt: "",
+    customSystemPrompt: systemPrompt,
+    cwd: join(AGENTS_DIR, agent.id),
+  });
+
+  // Set up a timeout to close the session if it takes too long
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    claudeSession.interrupt();
+  }, SESSION_TIMEOUT_MS);
 
   try {
-    const messages: SDKMessage[] = [];
+    // Send the heartbeat prompt and collect the response text
+    let responseText = "";
+    const eventStream = claudeSession.sendMessage(HEARTBEAT_PROMPT);
 
-    const q = claudeQuery({
-      prompt: HEARTBEAT_PROMPT,
-      options: {
-        systemPrompt,
-        permissionMode: "bypassPermissions",
-        allowDangerouslySkipPermissions: true,
-        abortController,
-        cwd: join(AGENTS_DIR, agent.id),
-        stderr: (data: string) => {
-          const msg = data.trim();
-          if (msg) console.error(`[heartbeat-stderr] ${msg}`);
-        },
-      },
-    });
-
-    for await (const event of q) {
-      messages.push(event);
+    for await (const event of eventStream) {
+      if (event.type === "text_delta") {
+        responseText += event.content;
+      }
+      if (event.type === "result") break;
     }
 
-    // Find the last assistant text block
-    const jsonText = extractLastAssistantText(messages);
-    if (!jsonText) {
-      console.error(`[heartbeat] no assistant text found for agent "${agent.id}"`);
-      return failSafeResult(agent.id);
+    if (timedOut) {
+      console.error(`[heartbeat] session timed out for agent "${agent.id}"`);
+      return { result: failSafeResult(agent.id), claudeSession };
     }
 
-    return parseHeartbeatResponse(agent.id, jsonText);
+    if (!responseText) {
+      console.error(`[heartbeat] no response text for agent "${agent.id}"`);
+      return { result: failSafeResult(agent.id), claudeSession };
+    }
+
+    const result = parseHeartbeatResponse(agent.id, responseText);
+    return { result, claudeSession };
   } catch (err) {
-    if (abortController.signal.aborted) {
+    if (timedOut) {
       console.error(`[heartbeat] session timed out for agent "${agent.id}"`);
     } else {
       console.error(`[heartbeat] session error for agent "${agent.id}":`, err);
     }
-    return failSafeResult(agent.id);
+    return { result: failSafeResult(agent.id), claudeSession };
   } finally {
     clearTimeout(timeout);
   }
-}
-
-/**
- * Extract the text content from the last assistant message in the SDK message stream.
- * Scans all messages for assistant-type messages, returns the text from the last one.
- *
- * @param messages - Array of SDK messages from the query session
- * @returns The extracted text string, or null if none found
- */
-function extractLastAssistantText(messages: SDKMessage[]): string | null {
-  let lastText: string | null = null;
-
-  for (const msg of messages) {
-    if (msg.type === "assistant" && msg.message?.content) {
-      const blocks = msg.message.content;
-      if (Array.isArray(blocks)) {
-        for (const block of blocks) {
-          if (block.type === "text") {
-            lastText = block.text;
-          }
-        }
-      }
-    }
-  }
-
-  return lastText;
 }
 
 /**
@@ -371,16 +378,17 @@ function failSafeResult(agentId: string): HeartbeatResult {
 }
 
 /**
- * Register a call token with the Twilio server process via HTTP POST.
- * The Twilio server runs as a separate child process, so we need to
- * communicate via its HTTP endpoint.
+ * Register a call token with the Twilio server via HTTP POST.
+ * Even though the Twilio server now runs in-process, we still use the HTTP
+ * endpoint to register tokens since the WebSocket upgrade path validates
+ * against the activeCalls map populated by this endpoint.
  *
  * @param port - Twilio server port
  * @param token - UUID token for the call
  * @param agentId - Agent identifier to associate with the call
  */
-async function registerCallToken(port: number, token: string, agentId: string): Promise<void> {
-  const body = JSON.stringify({ token, agentId });
+async function registerCallToken(port: number, token: string, agentId: string, initialPrompt?: string): Promise<void> {
+  const body = JSON.stringify({ token, agentId, ...(initialPrompt && { initialPrompt }) });
 
   const response = await fetch(`http://localhost:${port}/register-call`, {
     method: "POST",
