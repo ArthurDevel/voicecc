@@ -1,15 +1,15 @@
 /**
- * Twilio voice server process management.
+ * Twilio voice server management.
  *
- * Manages the lifecycle of the twilio-server child process:
+ * Manages the lifecycle of the Twilio server (runs in-process):
  * - Start the server with dashboard port and optional tunnel URL
  * - Stop the server
  * - Report running status
  */
 
-import { spawn, ChildProcess } from "child_process";
 import { readEnv } from "./env.js";
 import twilioSdk from "twilio";
+import { startTwilioServer as startServer } from "../sidecar/twilio-server.js";
 
 // ============================================================================
 // TYPES
@@ -24,9 +24,6 @@ export interface TwilioStatus {
 // STATE
 // ============================================================================
 
-/** Twilio server child process handle */
-let twilioProcess: ChildProcess | null = null;
-
 /** Whether the Twilio voice server is running */
 let twilioRunning = false;
 
@@ -36,9 +33,9 @@ let twilioRunning = false;
 
 /**
  * Start the Twilio voice server.
- * Reads .env for TWILIO_AUTH_TOKEN. If tunnelUrl and TwiML app SID exist,
- * updates the TwiML app voice URL via Twilio SDK.
- * Spawns twilio-server.ts as a child process with DASHBOARD_PORT env var.
+ * Reads .env for TWILIO_AUTH_TOKEN. If tunnelUrl exists, updates phone number
+ * webhooks via Twilio SDK.
+ * Starts the Twilio server in-process.
  *
  * @param dashboardPort - The dashboard server port (for proxying)
  * @param tunnelUrl - Optional tunnel public URL for webhook configuration
@@ -60,20 +57,6 @@ export async function startTwilioServer(dashboardPort: number, tunnelUrl?: strin
   if (tunnelUrl && accountSid && envVars.TWILIO_AUTH_TOKEN) {
     const client = twilioSdk(accountSid, envVars.TWILIO_AUTH_TOKEN);
 
-    // Update TwiML App voice URL if configured
-    const twimlAppSid = envVars.TWILIO_TWIML_APP_SID;
-    if (twimlAppSid) {
-      try {
-        await client.applications(twimlAppSid).update({
-          voiceUrl: webhookUrl!,
-          voiceMethod: "POST",
-        });
-        console.log(`Updated TwiML App voice URL to ${webhookUrl}`);
-      } catch (err) {
-        console.error(`Failed to update TwiML App voice URL: ${err}`);
-      }
-    }
-
     // Update all phone numbers on the account to point to the new webhook URL
     try {
       const numbers = await client.incomingPhoneNumbers.list();
@@ -91,27 +74,8 @@ export async function startTwilioServer(dashboardPort: number, tunnelUrl?: strin
     }
   }
 
-  // Start the Twilio server (pass dashboard port so it can proxy non-Twilio requests)
-  twilioProcess = spawn("npx", ["tsx", "sidecar/twilio-server.ts"], {
-    cwd: process.cwd(),
-    stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, DASHBOARD_PORT: String(dashboardPort) },
-  });
-
-  twilioProcess.stdout?.on("data", (chunk: Buffer) => {
-    process.stdout.write(`[twilio-server] ${chunk.toString()}`);
-  });
-  twilioProcess.stderr?.on("data", (chunk: Buffer) => {
-    process.stderr.write(`[twilio-server] ${chunk.toString()}`);
-  });
-
-  twilioProcess.on("exit", (code) => {
-    if (twilioRunning) {
-      console.error(`Twilio server exited unexpectedly (code ${code})`);
-    }
-    twilioRunning = false;
-    twilioProcess = null;
-  });
+  // Start the Twilio server in-process
+  await startServer(dashboardPort);
 
   twilioRunning = true;
   console.log("Twilio server started.");
@@ -121,10 +85,8 @@ export async function startTwilioServer(dashboardPort: number, tunnelUrl?: strin
  * Stop the Twilio voice server.
  */
 export function stopTwilioServer(): void {
-  if (twilioProcess && !twilioProcess.killed) {
-    twilioProcess.kill("SIGTERM");
-  }
-  twilioProcess = null;
+  // In-process server doesn't have a clean shutdown mechanism yet;
+  // mark as not running so new calls are rejected.
   twilioRunning = false;
 }
 
