@@ -227,9 +227,6 @@ export async function createElevenlabsTts(config: ElevenlabsTtsConfig): Promise<
           const audioDurationMs = (pcmBuffer.length / BYTES_PER_SECOND) * 1000;
           const genMs = Date.now() - sentAt;
 
-          console.log(
-            `[tts-elevenlabs] chunk ${chunkIndex} at +${now}ms (${(audioDurationMs / 1000).toFixed(1)}s audio, generated in ${genMs}ms)`
-          );
           chunkIndex++;
 
           await writePcm(speakerInput, pcmBuffer);

@@ -40,7 +40,7 @@ const TTS_SAMPLE_RATE = 24000;
 const TTS_PROVIDER = (process.env.TTS_PROVIDER ?? "local") as TtsProviderType;
 const STT_PROVIDER = (process.env.STT_PROVIDER ?? "local") as SttProviderType;
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY ?? "";
-const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID ?? "JBFqnCBsd6RMkjVDRZzb";
+const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID ?? "WrjxnKxK0m1uiaH0uteU";
 const ELEVENLABS_MODEL_ID = process.env.ELEVENLABS_MODEL_ID ?? "eleven_turbo_v2_5";
 const ELEVENLABS_STT_MODEL_ID = process.env.ELEVENLABS_STT_MODEL_ID ?? "scribe_v1";
 
