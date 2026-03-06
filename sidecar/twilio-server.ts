@@ -425,12 +425,18 @@ async function handleStreamStart(
   if (agentId) {
     try {
       const agent = await getAgent(agentId);
-      const agentPrompt = [agent.soulMd, agent.memoryMd, agent.heartbeatMd].join("\n\n");
+      const agentPrompt = [
+        "You are in voice mode -- your responses will be spoken aloud. Keep answers conversational and brief.",
+        "# SOUL (Your Identity)",
+        agent.soulMd,
+        "# MEMORY (Your Persistent Memory)",
+        agent.memoryMd,
+      ].join("\n\n");
       sessionConfig = {
         ...DEFAULT_CONFIG,
         claudeSession: {
           ...DEFAULT_CONFIG.claudeSession,
-          systemPrompt: agentPrompt,
+          customSystemPrompt: agentPrompt,
         },
         onSessionEnd: () => ws.close(),
       };
