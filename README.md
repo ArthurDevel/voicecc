@@ -2,6 +2,20 @@
 
 A Claude Code plugin for hands-free voice interaction with local speech-to-text, text-to-speech, and voice activity detection.
 
+## Project Structure
+
+```
+server/             Backend: voice pipeline + orchestration services
+  voice/            Real-time audio: STT, TTS, VAD, session management
+  services/         Orchestration: tunnel, Twilio, browser calls, agents
+  index.ts          Entry point (boots dashboard + auto-starts integrations)
+dashboard/          Web UI (Vite + React) + API routes (Hono)
+lander/             Static landing page
+init/               Default prompt templates for new agents
+scripts/            Setup utilities (postinstall, local STT/TTS setup)
+bin/                CLI entry point (voicecc command)
+```
+
 ## Installation
 
 ### Prerequisites
