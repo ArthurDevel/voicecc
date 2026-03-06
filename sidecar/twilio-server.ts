@@ -113,6 +113,10 @@ interface ActiveCall {
   session: VoiceSession | null;
   /** Agent identifier for agent-initiated calls (undefined for default inbound calls) */
   agentId?: string;
+  /** Initial prompt for the agent to speak first (e.g. "Call Me" or heartbeat reason) */
+  initialPrompt?: string;
+  /** Pre-existing Claude session from heartbeat (passed to voice session instead of creating new one) */
+  claudeSession?: import("./claude-session.js").ClaudeSession;
 }
 
 // ============================================================================
@@ -127,17 +131,33 @@ const activeCalls = new Map<string, ActiveCall>();
 // ============================================================================
 
 /**
+ * Attach a pre-existing Claude session to a registered call token.
+ * Called by the heartbeat scheduler after registering a token, so the
+ * voice session can continue the same Claude session instead of creating a new one.
+ *
+ * @param token - The call token previously registered via /register-call
+ * @param session - The live Claude session from the heartbeat check
+ */
+export function setCallClaudeSession(token: string, session: import("./claude-session.js").ClaudeSession): void {
+  const call = activeCalls.get(token);
+  if (call) {
+    call.claudeSession = session;
+  }
+}
+
+/**
  * Start the Twilio HTTP + WebSocket server.
  *
- * Loads configuration from .env via dotenv. Throws immediately if required
+ * Reads configuration from process.env. Throws immediately if required
  * env vars (TWILIO_AUTH_TOKEN, TWILIO_WEBHOOK_URL) are missing.
  * Creates an HTTP server for the /twilio/incoming-call webhook and a
  * WebSocket server for Twilio media stream connections.
  *
+ * @param dashboardPort - Dashboard server port for proxying non-Twilio requests
  * @returns Resolves when the server is listening
  * @throws Error if TWILIO_AUTH_TOKEN or TWILIO_WEBHOOK_URL are not set
  */
-async function startTwilioServer(): Promise<void> {
+export async function startTwilioServer(dashboardPort: number): Promise<void> {
   const authToken = process.env.TWILIO_AUTH_TOKEN;
   const webhookUrl = process.env.TWILIO_WEBHOOK_URL;
   const port = parseInt(process.env.TWILIO_PORT ?? "", 10) || DEFAULT_PORT;
@@ -151,8 +171,6 @@ async function startTwilioServer(): Promise<void> {
 
   // Extract the host from the webhook URL for TwiML WebSocket URLs
   const webhookHost = new URL(webhookUrl).host;
-
-  const dashboardPort = parseInt(process.env.DASHBOARD_PORT ?? "", 10);
 
   // Create HTTP server
   const server = createServer((req, res) => {
@@ -277,8 +295,8 @@ function handleRegisterCall(req: IncomingMessage, res: ServerResponse): void {
   });
 
   req.on("end", () => {
-    const { token, agentId } = JSON.parse(body) as { token: string; agentId: string };
-    activeCalls.set(token, { callSid: "", session: null, agentId });
+    const { token, agentId, initialPrompt } = JSON.parse(body) as { token: string; agentId: string; initialPrompt?: string };
+    activeCalls.set(token, { callSid: "", session: null, agentId, initialPrompt });
 
     console.log(`Registered outbound call token: ${token}, agentId: ${agentId}`);
 
@@ -447,7 +465,7 @@ async function handleStreamStart(
 
   // Build session config -- use agent personality if agentId is set, otherwise default
   const agentId = call.agentId;
-  let sessionConfig = { ...DEFAULT_CONFIG, onSessionEnd: () => ws.close() };
+  let sessionConfig: Parameters<typeof createVoiceSession>[1] = { ...DEFAULT_CONFIG, onSessionEnd: () => ws.close() };
 
   if (agentId) {
     try {
@@ -462,7 +480,18 @@ async function handleStreamStart(
         },
         onSessionEnd: () => ws.close(),
       };
-      console.log(`Using agent "${agentId}" personality for call ${callSid}`);
+
+      // If heartbeat attached a live Claude session, pass it through
+      if (call.claudeSession) {
+        sessionConfig.existingClaudeSession = call.claudeSession;
+        sessionConfig.initialPrompt = "The user just answered your call. Greet them and briefly explain why you're calling.";
+        console.log(`Using existing heartbeat Claude session for agent "${agentId}" call ${callSid}`);
+      } else if (call.initialPrompt) {
+        sessionConfig.initialPrompt = call.initialPrompt;
+        console.log(`Using agent "${agentId}" with initial prompt for call ${callSid}`);
+      } else {
+        console.log(`Using agent "${agentId}" personality for call ${callSid}`);
+      }
     } catch (err) {
       console.error(`Failed to load agent "${agentId}", using default config:`, err);
     }
@@ -539,10 +568,15 @@ function proxyToDashboard(req: IncomingMessage, res: ServerResponse, dashboardPo
 }
 
 // ============================================================================
-// ENTRY POINT
+// STANDALONE ENTRY POINT
 // ============================================================================
 
-startTwilioServer().catch((err) => {
-  console.error(`Twilio server failed: ${err}`);
-  process.exit(1);
-});
+// When run directly as a script (legacy child-process mode), auto-start.
+const isDirectRun = process.argv[1]?.endsWith("twilio-server.ts") || process.argv[1]?.endsWith("twilio-server.js");
+if (isDirectRun) {
+  const dashboardPort = parseInt(process.env.DASHBOARD_PORT ?? "", 10) || 0;
+  startTwilioServer(dashboardPort).catch((err) => {
+    console.error(`Twilio server failed: ${err}`);
+    process.exit(1);
+  });
+}
