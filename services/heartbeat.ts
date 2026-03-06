@@ -14,9 +14,12 @@
  */
 
 import { randomUUID } from "crypto";
+import { readFileSync } from "fs";
+import { dirname, join } from "path";
+import { fileURLToPath } from "url";
+
 import { query as claudeQuery, type SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import twilio from "twilio";
-import { join } from "path";
 import { listAgents, getAgent, AGENTS_DIR, type Agent } from "./agent-store.js";
 import { readEnv } from "./env.js";
 import { getTunnelUrl, isTunnelRunning } from "./tunnel.js";
@@ -26,6 +29,8 @@ import { isRunning as isTwilioRunning } from "./twilio-manager.js";
 // CONSTANTS
 // ============================================================================
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
 /** Global check interval in milliseconds (60 seconds) */
 const CHECK_INTERVAL_MS = 60_000;
 
@@ -33,8 +38,7 @@ const CHECK_INTERVAL_MS = 60_000;
 const SESSION_TIMEOUT_MS = 120_000;
 
 /** User-facing prompt sent to the heartbeat Claude session */
-const HEARTBEAT_PROMPT =
-  'Execute the heartbeat checklist in HEARTBEAT.md. Use tools as needed to check all conditions. Respond with exactly one JSON object: {"shouldCall": true/false, "reason": "brief explanation"}';
+const HEARTBEAT_PROMPT = readFileSync(join(__dirname, "..", "init", "defaults", "system-heartbeat.md"), "utf-8").trim();
 
 // ============================================================================
 // TYPES
