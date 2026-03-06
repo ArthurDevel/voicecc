@@ -14,6 +14,10 @@
  * - Provide clean session teardown
  */
 
+import { readFileSync } from "fs";
+import { dirname, join } from "path";
+import { fileURLToPath } from "url";
+
 import { query as claudeQuery, type Query, type Options, type SDKMessage, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { ClaudeSessionConfig, ClaudeStreamEvent } from "./types.js";
 
@@ -92,8 +96,8 @@ interface ClaudeSession {
 // CONSTANTS
 // ============================================================================
 
-const DEFAULT_SYSTEM_PROMPT =
-  "Respond concisely. You are in voice mode -- your responses will be spoken aloud. Keep answers conversational and brief.";
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const DEFAULT_SYSTEM_PROMPT = readFileSync(join(__dirname, "..", "init", "defaults", "system.md"), "utf-8").trim();
 
 // ============================================================================
 // MAIN HANDLERS
@@ -124,6 +128,7 @@ async function createClaudeSession(
       : { systemPrompt: { type: "preset" as const, preset: "claude_code" as const, append: systemPrompt } }),
     permissionMode: config.permissionMode as Options["permissionMode"],
     allowDangerouslySkipPermissions: config.permissionMode === "bypassPermissions",
+    ...(config.cwd && { cwd: config.cwd }),
     stderr: (data: string) => {
       const msg = data.trim();
       if (msg) console.error(`[claude-stderr] ${msg}`);

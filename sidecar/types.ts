@@ -66,6 +66,8 @@ export interface ClaudeSessionConfig {
   systemPrompt: string;
   /** If set, replaces the entire system prompt (skips CLAUDE.md). Used for agent calls. */
   customSystemPrompt?: string;
+  /** Working directory for the Claude Code session */
+  cwd?: string;
 }
 
 /**

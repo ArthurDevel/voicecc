@@ -13,8 +13,10 @@
 
 import "dotenv/config";
 
+import { readFileSync } from "fs";
 import { homedir } from "os";
-import { join } from "path";
+import { dirname, join } from "path";
+import { fileURLToPath } from "url";
 
 import { createLocalAudioAdapter } from "./local-audio.js";
 import { createVoiceSession } from "./voice-session.js";
@@ -24,6 +26,9 @@ import type { TtsProviderConfig, SttProviderConfig, TtsProviderType, SttProvider
 // ============================================================================
 // CONSTANTS
 // ============================================================================
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const DEFAULT_SYSTEM_PROMPT = readFileSync(join(__dirname, "..", "init", "defaults", "system.md"), "utf-8").trim();
 
 /** Mic capture sample rate in Hz (must match VAD/STT expectations) */
 const MIC_SAMPLE_RATE = 16000;
@@ -71,8 +76,7 @@ const DEFAULT_CONFIG = {
   claudeSession: {
     allowedTools: [] as string[],
     permissionMode: "bypassPermissions",
-    systemPrompt:
-      "Respond concisely. You are in voice mode -- your responses will be spoken aloud. Keep answers conversational and brief.",
+    systemPrompt: DEFAULT_SYSTEM_PROMPT,
   },
 };
 
