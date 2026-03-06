@@ -1,5 +1,5 @@
 /**
- * Claude session via the @anthropic-ai/claude-code SDK.
+ * Claude session via the @anthropic-ai/claude-agent-sdk.
  *
  * Keeps a single persistent Claude Code process alive across turns using
  * streaming I/O (AsyncIterable<SDKUserMessage> input). This eliminates the
@@ -14,7 +14,7 @@
  * - Provide clean session teardown
  */
 
-import { query as claudeQuery, type Query, type Options, type SDKMessage, type SDKUserMessage } from "@anthropic-ai/claude-code";
+import { query as claudeQuery, type Query, type Options, type SDKMessage, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { ClaudeSessionConfig, ClaudeStreamEvent } from "./types.js";
 
 /** Injectable query function signature for testing. Matches the SDK query() contract. */
@@ -92,8 +92,6 @@ interface ClaudeSession {
 // CONSTANTS
 // ============================================================================
 
-const CLAUDE_BIN = "/Users/Focus/.local/bin/claude";
-
 const DEFAULT_SYSTEM_PROMPT =
   "Respond concisely. You are in voice mode -- your responses will be spoken aloud. Keep answers conversational and brief.";
 
@@ -116,12 +114,16 @@ async function createClaudeSession(
   // Event channel — SDK events are routed here for sendMessage to consume
   const sdkEvents = new AsyncQueue<SDKMessage>();
 
+  // systemPrompt as string replaces the entire system prompt.
+  // { type: 'preset', preset: 'claude_code', append: '...' } appends to default.
   const options: Options = {
-    pathToClaudeCodeExecutable: CLAUDE_BIN,
     includePartialMessages: true,
     maxThinkingTokens: 10000,
-    appendSystemPrompt: systemPrompt,
+    ...(config.customSystemPrompt
+      ? { systemPrompt: config.customSystemPrompt }
+      : { systemPrompt: { type: "preset" as const, preset: "claude_code" as const, append: systemPrompt } }),
     permissionMode: config.permissionMode as Options["permissionMode"],
+    allowDangerouslySkipPermissions: config.permissionMode === "bypassPermissions",
     stderr: (data: string) => {
       const msg = data.trim();
       if (msg) console.error(`[claude-stderr] ${msg}`);

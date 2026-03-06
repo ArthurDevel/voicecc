@@ -23,7 +23,9 @@ import { join } from "path";
  * @returns {boolean} True if setup is needed
  */
 export function needsSetup() {
-  return !existsSync(join("dashboard", "dist", "index.html"));
+  const dashboardMissing = !existsSync(join("dashboard", "dist", "index.html"));
+  const micVpioMissing = process.platform === "darwin" && !existsSync(join("sidecar", "mic-vpio"));
+  return dashboardMissing || micVpioMissing;
 }
 
 /**
@@ -31,6 +33,7 @@ export function needsSetup() {
  */
 export function runSetup() {
   installClaudeMd();
+  buildMicVpio();
   buildDashboard();
 
   console.log("");
@@ -43,6 +46,31 @@ export function runSetup() {
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
+
+/**
+ * Compile the native mic-vpio audio binary (macOS only).
+ */
+function buildMicVpio() {
+  const bin = join("sidecar", "mic-vpio");
+  if (existsSync(bin)) {
+    console.log("mic-vpio already compiled, skipping.");
+    return;
+  }
+  if (process.platform !== "darwin") {
+    console.log("Skipping mic-vpio (macOS only).");
+    return;
+  }
+  console.log("Compiling mic-vpio...");
+  try {
+    run("swiftc -O -o sidecar/mic-vpio sidecar/mic-vpio.swift -framework AudioToolbox -framework CoreAudio");
+  } catch (err) {
+    console.error("\n[voicecc] WARNING: Failed to compile mic-vpio.");
+    console.error("  Terminal voice mode will not work. Browser/phone calling is unaffected.");
+    console.error("  Try manually: swiftc -O -o sidecar/mic-vpio sidecar/mic-vpio.swift -framework AudioToolbox -framework CoreAudio\n");
+    return;
+  }
+  console.log("mic-vpio compiled successfully.");
+}
 
 /**
  * Build the dashboard Vite app if not already built.
