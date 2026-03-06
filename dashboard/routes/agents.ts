@@ -60,9 +60,9 @@ export function agentsRoutes(): Hono {
   app.post("/", async (c) => {
     const body = await c.req.json<{
       id: string;
-      soulMd: string;
-      heartbeatMd: string;
-      config: AgentConfig;
+      soulMd?: string;
+      heartbeatMd?: string;
+      config?: Partial<AgentConfig>;
     }>();
 
     try {

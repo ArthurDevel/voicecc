@@ -11,16 +11,25 @@
  * - Delete agent directory
  */
 
+import { readFileSync } from "fs";
 import { readFile, writeFile, mkdir, readdir, rm, access } from "fs/promises";
-import { join } from "path";
+import { dirname, join } from "path";
 import { homedir } from "os";
+import { fileURLToPath } from "url";
 
 // ============================================================================
 // CONSTANTS
 // ============================================================================
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const DEFAULTS_DIR = join(__dirname, "..", "init", "defaults");
+
 /** Root directory for all agent data */
 export const AGENTS_DIR = join(homedir(), ".claude-voice-agents");
+
+/** Default file contents for new agents, read from init/defaults/ */
+const DEFAULT_SOUL_MD = readFileSync(join(DEFAULTS_DIR, "soul.md"), "utf-8");
+const DEFAULT_HEARTBEAT_MD = readFileSync(join(DEFAULTS_DIR, "heartbeat.md"), "utf-8");
 
 /** Agent ID must be alphanumeric + hyphens, 1-50 chars */
 const AGENT_ID_REGEX = /^[a-zA-Z0-9-]{1,50}$/;
@@ -123,9 +132,9 @@ export async function getAgent(id: string): Promise<Agent> {
  */
 export async function createAgent(
   id: string,
-  soulMd: string,
-  heartbeatMd: string,
-  config: AgentConfig,
+  soulMd?: string,
+  heartbeatMd?: string,
+  config?: Partial<AgentConfig>,
 ): Promise<void> {
   validateAgentId(id);
 
@@ -136,11 +145,16 @@ export async function createAgent(
   // Creates both AGENTS_DIR and the agent subdirectory in one call
   await mkdir(agentDir, { recursive: true });
 
+  const finalConfig: AgentConfig = {
+    heartbeatIntervalMinutes: config?.heartbeatIntervalMinutes ?? 10,
+    enabled: config?.enabled ?? true,
+  };
+
   await Promise.all([
-    writeFile(join(agentDir, "SOUL.md"), soulMd, "utf-8"),
+    writeFile(join(agentDir, "SOUL.md"), soulMd || DEFAULT_SOUL_MD, "utf-8"),
     writeFile(join(agentDir, "MEMORY.md"), "", "utf-8"),
-    writeFile(join(agentDir, "HEARTBEAT.md"), heartbeatMd, "utf-8"),
-    writeFile(join(agentDir, "config.json"), JSON.stringify(config, null, 2), "utf-8"),
+    writeFile(join(agentDir, "HEARTBEAT.md"), heartbeatMd || DEFAULT_HEARTBEAT_MD, "utf-8"),
+    writeFile(join(agentDir, "config.json"), JSON.stringify(finalConfig, null, 2), "utf-8"),
   ]);
 }
 
