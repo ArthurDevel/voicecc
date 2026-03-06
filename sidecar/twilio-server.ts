@@ -18,9 +18,11 @@
 import "dotenv/config";
 
 import { randomUUID } from "crypto";
+import { readFileSync } from "fs";
 import { createServer, request as httpRequest } from "http";
 import { homedir } from "os";
-import { join } from "path";
+import { dirname, join } from "path";
+import { fileURLToPath } from "url";
 
 import twilio from "twilio";
 import { WebSocketServer } from "ws";
@@ -28,7 +30,7 @@ import { WebSocketServer } from "ws";
 import { createTwilioAudioAdapter } from "./twilio-audio.js";
 import { createVoiceSession } from "./voice-session.js";
 import { createAudioInactivityWatchdog } from "./audio-inactivity.js";
-import { getAgent } from "../services/agent-store.js";
+import { getAgent, AGENTS_DIR } from "../services/agent-store.js";
 
 import type { IncomingMessage, ServerResponse } from "http";
 import type { Duplex } from "stream";
@@ -39,6 +41,9 @@ import type { TtsProviderConfig, SttProviderConfig, TtsProviderType, SttProvider
 // ============================================================================
 // CONSTANTS
 // ============================================================================
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const DEFAULT_SYSTEM_PROMPT = readFileSync(join(__dirname, "..", "init", "defaults", "system.md"), "utf-8").trim();
 
 /** Default port for the Twilio HTTP/WebSocket server */
 const DEFAULT_PORT = 8080;
@@ -92,9 +97,8 @@ const DEFAULT_CONFIG = {
   claudeSession: {
     allowedTools: [] as string[],
     permissionMode: "bypassPermissions",
-    systemPrompt:
-      "Respond concisely. You are in voice mode -- your responses will be spoken aloud. Keep answers conversational and brief.",
-  },
+    systemPrompt: DEFAULT_SYSTEM_PROMPT,
+  } as import("./types.js").ClaudeSessionConfig,
 };
 
 // ============================================================================
@@ -385,6 +389,7 @@ function handleCallSession(ws: WebSocket, token: string): void {
 
   ws.on("error", (err) => {
     console.error(`WebSocket error for token ${token}: ${err}`);
+    ws.close();
   });
 
   // Listen for Twilio media stream events
@@ -447,18 +452,13 @@ async function handleStreamStart(
   if (agentId) {
     try {
       const agent = await getAgent(agentId);
-      const agentPrompt = [
-        "You are in voice mode -- your responses will be spoken aloud. Keep answers conversational and brief.",
-        "# SOUL (Your Identity)",
-        agent.soulMd,
-        "# MEMORY (Your Persistent Memory)",
-        agent.memoryMd,
-      ].join("\n\n");
+      const agentPrompt = [DEFAULT_SYSTEM_PROMPT, agent.soulMd].join("\n\n");
       sessionConfig = {
         ...DEFAULT_CONFIG,
         claudeSession: {
           ...DEFAULT_CONFIG.claudeSession,
           customSystemPrompt: agentPrompt,
+          cwd: join(AGENTS_DIR, agentId),
         },
         onSessionEnd: () => ws.close(),
       };

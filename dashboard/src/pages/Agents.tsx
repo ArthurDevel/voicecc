@@ -23,9 +23,6 @@ interface AgentSummary {
 
 interface CreateAgentForm {
   id: string;
-  soulMd: string;
-  heartbeatMd: string;
-  heartbeatIntervalMinutes: number;
 }
 
 // ============================================================================
@@ -34,9 +31,6 @@ interface CreateAgentForm {
 
 const INITIAL_FORM: CreateAgentForm = {
   id: "",
-  soulMd: "",
-  heartbeatMd: "",
-  heartbeatIntervalMinutes: 10,
 };
 
 // ============================================================================
@@ -70,15 +64,7 @@ export function Agents() {
     setError(null);
     setSubmitting(true);
     try {
-      await post("/api/agents", {
-        id: form.id,
-        soulMd: form.soulMd,
-        heartbeatMd: form.heartbeatMd,
-        config: {
-          heartbeatIntervalMinutes: form.heartbeatIntervalMinutes,
-          enabled: true,
-        },
-      });
+      await post("/api/agents", { id: form.id });
       // Refresh list and reset form
       const updated = await get<AgentSummary[]>("/api/agents");
       setAgents(updated);
@@ -140,7 +126,7 @@ export function Agents() {
             )}
 
             {/* ID */}
-            <div style={{ marginBottom: 12 }}>
+            <div style={{ marginBottom: 16 }}>
               <label style={{ display: "block", marginBottom: 4, fontSize: 13, fontWeight: 500, color: "var(--text-primary)" }}>ID</label>
               <input
                 type="text"
@@ -148,42 +134,6 @@ export function Agents() {
                 onChange={(e) => setForm({ ...form, id: e.target.value })}
                 placeholder="my-agent"
                 style={{ width: "100%", padding: "6px 10px", fontSize: 13, background: "var(--bg-main)", color: "var(--text-primary)", border: "1px solid var(--border-color)", borderRadius: 0, boxSizing: "border-box" }}
-              />
-            </div>
-
-            {/* Soul MD */}
-            <div style={{ marginBottom: 12 }}>
-              <label style={{ display: "block", marginBottom: 4, fontSize: 13, fontWeight: 500, color: "var(--text-primary)" }}>SOUL.md</label>
-              <textarea
-                rows={6}
-                value={form.soulMd}
-                onChange={(e) => setForm({ ...form, soulMd: e.target.value })}
-                placeholder="Agent personality and instructions..."
-                style={{ width: "100%", padding: "6px 10px", fontSize: 13, fontFamily: "monospace", background: "var(--bg-main)", color: "var(--text-primary)", border: "1px solid var(--border-color)", borderRadius: 0, boxSizing: "border-box", resize: "vertical" }}
-              />
-            </div>
-
-            {/* Heartbeat MD */}
-            <div style={{ marginBottom: 12 }}>
-              <label style={{ display: "block", marginBottom: 4, fontSize: 13, fontWeight: 500, color: "var(--text-primary)" }}>HEARTBEAT.md</label>
-              <textarea
-                rows={6}
-                value={form.heartbeatMd}
-                onChange={(e) => setForm({ ...form, heartbeatMd: e.target.value })}
-                placeholder="Heartbeat checklist instructions..."
-                style={{ width: "100%", padding: "6px 10px", fontSize: 13, fontFamily: "monospace", background: "var(--bg-main)", color: "var(--text-primary)", border: "1px solid var(--border-color)", borderRadius: 0, boxSizing: "border-box", resize: "vertical" }}
-              />
-            </div>
-
-            {/* Heartbeat Interval */}
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ display: "block", marginBottom: 4, fontSize: 13, fontWeight: 500, color: "var(--text-primary)" }}>Heartbeat Interval (minutes)</label>
-              <input
-                type="number"
-                value={form.heartbeatIntervalMinutes}
-                onChange={(e) => setForm({ ...form, heartbeatIntervalMinutes: Number(e.target.value) })}
-                min={1}
-                style={{ width: 120, padding: "6px 10px", fontSize: 13, background: "var(--bg-main)", color: "var(--text-primary)", border: "1px solid var(--border-color)", borderRadius: 0, boxSizing: "border-box" }}
               />
             </div>
 
