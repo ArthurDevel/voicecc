@@ -33,8 +33,8 @@ let twilioRunning = false;
 
 /**
  * Start the Twilio voice server.
- * Reads .env for TWILIO_AUTH_TOKEN. If tunnelUrl and TwiML app SID exist,
- * updates the TwiML app voice URL via Twilio SDK.
+ * Reads .env for TWILIO_AUTH_TOKEN. If tunnelUrl exists, updates phone number
+ * webhooks via Twilio SDK.
  * Starts the Twilio server in-process.
  *
  * @param dashboardPort - The dashboard server port (for proxying)
@@ -56,20 +56,6 @@ export async function startTwilioServer(dashboardPort: number, tunnelUrl?: strin
 
   if (tunnelUrl && accountSid && envVars.TWILIO_AUTH_TOKEN) {
     const client = twilioSdk(accountSid, envVars.TWILIO_AUTH_TOKEN);
-
-    // Update TwiML App voice URL if configured
-    const twimlAppSid = envVars.TWILIO_TWIML_APP_SID;
-    if (twimlAppSid) {
-      try {
-        await client.applications(twimlAppSid).update({
-          voiceUrl: webhookUrl!,
-          voiceMethod: "POST",
-        });
-        console.log(`Updated TwiML App voice URL to ${webhookUrl}`);
-      } catch (err) {
-        console.error(`Failed to update TwiML App voice URL: ${err}`);
-      }
-    }
 
     // Update all phone numbers on the account to point to the new webhook URL
     try {
