@@ -9,16 +9,25 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { get, post, del } from "../api";
+import { get, post, del, patch } from "../api";
 
 // ============================================================================
 // TYPES
 // ============================================================================
 
+interface VoicePreference {
+  id: string;
+  name: string;
+}
+
 interface AgentConfig {
   heartbeatIntervalMinutes: number;
   phoneNumber: string;
   enabled: boolean;
+  voice?: {
+    elevenlabs?: VoicePreference;
+    local?: VoicePreference;
+  };
 }
 
 interface Agent {
@@ -64,6 +73,10 @@ export function AgentDetail() {
   const [calling, setCalling] = useState(false);
   const [callError, setCallError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [activeProvider, setActiveProvider] = useState<string | null>(null);
+  const [voices, setVoices] = useState<Array<{ id: string; name: string }>>([]);
+  const [voicesError, setVoicesError] = useState<string | null>(null);
+  const [savingVoice, setSavingVoice] = useState(false);
 
   // ============================================================================
   // EVENT HANDLERS
@@ -76,6 +89,36 @@ export function AgentDetail() {
       .then(setAgent)
       .catch(() => {});
   }, [id]);
+
+  /** Fetch active TTS provider and available voices */
+  useEffect(() => {
+    get<{ active: string }>("/api/providers/tts")
+      .then((data) => {
+        setActiveProvider(data.active);
+        return get<{ voices: Array<{ id: string; name: string }> }>(
+          `/api/providers/tts/${data.active}/voices`
+        );
+      })
+      .then((data) => setVoices(data.voices))
+      .catch((err) => setVoicesError((err as { message?: string })?.message || "Failed to load voices"));
+  }, []);
+
+  /** Update the agent's voice preference for the active provider */
+  const handleVoiceChange = async (voiceId: string) => {
+    if (!id || !agent || !activeProvider) return;
+    setSavingVoice(true);
+    try {
+      const providerKey = activeProvider as "elevenlabs" | "local";
+      const existingVoice = agent.config.voice ?? {};
+      const newVoice = voiceId === ""
+        ? { ...existingVoice, [providerKey]: undefined }
+        : { ...existingVoice, [providerKey]: { id: voiceId, name: voices.find((v) => v.id === voiceId)?.name ?? "" } };
+      await patch(`/api/agents/${id}`, { config: { voice: newVoice } });
+      setAgent({ ...agent, config: { ...agent.config, voice: newVoice } });
+    } finally {
+      setSavingVoice(false);
+    }
+  };
 
   /**
    * Trigger an outbound call for this agent.
@@ -197,6 +240,43 @@ export function AgentDetail() {
         <div className="settings-panel" style={{ marginBottom: 24, padding: 20 }}>
           <h3 style={SECTION_LABEL_STYLE}>HEARTBEAT.md</h3>
           <pre style={PRE_STYLE}>{agent.heartbeatMd || "(empty)"}</pre>
+        </div>
+
+        {/* Voice */}
+        <div className="settings-panel" style={{ marginBottom: 24, padding: 20 }}>
+          <h3 style={SECTION_LABEL_STYLE}>Voice</h3>
+          {activeProvider && voices.length > 0 ? (
+            <div>
+              <label style={{ display: "block", fontSize: 13, color: "var(--text-secondary)", marginBottom: 6 }}>
+                {activeProvider === "elevenlabs" ? "ElevenLabs" : "Local Kokoro"} voice
+              </label>
+              <select
+                value={agent.config.voice?.[activeProvider as "elevenlabs" | "local"]?.id ?? ""}
+                onChange={(e) => handleVoiceChange(e.target.value)}
+                disabled={savingVoice}
+                style={{
+                  padding: "6px 10px",
+                  fontSize: 13,
+                  background: "var(--bg-main)",
+                  color: "var(--text-primary)",
+                  border: "1px solid var(--border-color)",
+                  borderRadius: 0,
+                  cursor: savingVoice ? "not-allowed" : "pointer",
+                  opacity: savingVoice ? 0.6 : 1,
+                  minWidth: 200,
+                }}
+              >
+                <option value="">Default</option>
+                {voices.map((v) => (
+                  <option key={v.id} value={v.id}>{v.name}</option>
+                ))}
+              </select>
+            </div>
+          ) : voicesError ? (
+            <p style={{ margin: 0, fontSize: 13, color: "#d73a49" }}>{voicesError}</p>
+          ) : (
+            <p style={{ margin: 0, fontSize: 13, color: "var(--text-secondary)" }}>Loading voices...</p>
+          )}
         </div>
 
         {/* Config */}

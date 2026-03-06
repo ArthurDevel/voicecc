@@ -21,7 +21,7 @@ import { join } from "path";
 
 import { Hono } from "hono";
 
-import { getAvailableTtsProviders, getTtsProviderStatus } from "../../sidecar/tts-provider.js";
+import { getAvailableTtsProviders, getTtsProviderStatus, listVoicesForProvider } from "../../sidecar/tts-provider.js";
 import { getAvailableSttProviders, getSttProviderStatus } from "../../sidecar/stt-provider.js";
 import { readEnv } from "../../services/env.js";
 
@@ -84,6 +84,17 @@ export function providersRoutes(): Hono {
     const type = c.req.param("type") as TtsProviderType;
     const status = await getTtsProviderStatus(type);
     return c.json(status);
+  });
+
+  /** List available voices for a TTS provider */
+  app.get("/tts/:type/voices", async (c) => {
+    const type = c.req.param("type") as TtsProviderType;
+    try {
+      const voices = await listVoicesForProvider(type);
+      return c.json({ voices });
+    } catch (err) {
+      return c.json({ error: (err as Error).message }, 400);
+    }
   });
 
   // ---- STT routes ----
