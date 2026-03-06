@@ -157,7 +157,7 @@ function waitForReady(proc: ChildProcess): Promise<void> {
       clearTimeout(timeout);
       reject(new Error(
         `mic-vpio failed to start: ${err.message}. ` +
-        `Compile with: swiftc -O -o sidecar/mic-vpio sidecar/mic-vpio.swift -framework AudioToolbox -framework CoreAudio`
+        `Compile with: swiftc -O -o server/voice/mic-vpio server/voice/mic-vpio.swift -framework AudioToolbox -framework CoreAudio`
       ));
     });
 

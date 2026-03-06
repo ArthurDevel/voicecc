@@ -8,7 +8,7 @@
  * Bug 2: Stale Claude SDK events from an interrupted turn leak into the next
  *         turn's sendMessage (user gets wrong response or premature end).
  *
- * Run: npx tsx --test sidecar/voice-loop-bugs.test.ts
+ * Run: npx tsx --test server/voice/voice-loop-bugs.test.ts
  */
 
 import { test } from "node:test";

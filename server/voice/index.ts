@@ -1,5 +1,5 @@
 /**
- * Entry point for the Claude Code voice sidecar.
+ * Entry point for the Claude Code voice server.
  *
  * Thin wrapper that creates a local audio adapter and voice session.
  * All voice loop logic lives in voice-session.ts.
@@ -28,7 +28,7 @@ import type { TtsProviderConfig, SttProviderConfig, TtsProviderType, SttProvider
 // ============================================================================
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const DEFAULT_SYSTEM_PROMPT = readFileSync(join(__dirname, "..", "init", "defaults", "system.md"), "utf-8").trim();
+const DEFAULT_SYSTEM_PROMPT = readFileSync(join(__dirname, "..", "..", "init", "defaults", "system.md"), "utf-8").trim();
 
 /** Mic capture sample rate in Hz (must match VAD/STT expectations) */
 const MIC_SAMPLE_RATE = 16000;

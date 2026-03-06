@@ -4,7 +4,7 @@
  * Verifies that the watchdog fires a callback when audio frames stop arriving,
  * and that ongoing audio keeps the connection alive.
  *
- * Run: npx tsx --test sidecar/audio-inactivity.test.ts
+ * Run: npx tsx --test server/voice/audio-inactivity.test.ts
  */
 
 import { test } from "node:test";

@@ -6,7 +6,7 @@
  * postMessage/process interface the browser uses. Tests outcomes only --
  * no assumptions about internal buffering strategy.
  *
- * Run: npx tsx --test sidecar/browser-audio-playback.test.ts
+ * Run: npx tsx --test server/voice/browser-audio-playback.test.ts
  */
 
 import { test } from "node:test";
@@ -25,7 +25,7 @@ function loadProcessor(): {
   postMessage: (data: Record<string, unknown>) => void;
   process: (inputs: Float32Array[][], outputs: Float32Array[][]) => boolean;
 } {
-  const source = readFileSync(join(__dirname, "../dashboard/public/audio-processor.js"), "utf-8");
+  const source = readFileSync(join(__dirname, "../../dashboard/public/audio-processor.js"), "utf-8");
 
   let ProcessorClass: any;
 

@@ -22,7 +22,7 @@ import { fileURLToPath } from "url";
 // ============================================================================
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const DEFAULTS_DIR = join(__dirname, "..", "init", "defaults");
+const DEFAULTS_DIR = join(__dirname, "..", "..", "init", "defaults");
 
 /** Root directory for all agent data */
 export const AGENTS_DIR = join(homedir(), ".claude-voice-agents");
