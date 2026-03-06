@@ -62,8 +62,10 @@ export interface ClaudeSessionConfig {
   allowedTools: string[];
   /** Permission mode -- must be "bypassPermissions" for voice loop */
   permissionMode: string;
-  /** System prompt instructing Claude to respond concisely for voice output */
+  /** System prompt appended to the default (includes CLAUDE.md) */
   systemPrompt: string;
+  /** If set, replaces the entire system prompt (skips CLAUDE.md). Used for agent calls. */
+  customSystemPrompt?: string;
 }
 
 /**

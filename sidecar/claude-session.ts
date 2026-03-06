@@ -116,11 +116,15 @@ async function createClaudeSession(
   // Event channel — SDK events are routed here for sendMessage to consume
   const sdkEvents = new AsyncQueue<SDKMessage>();
 
+  // customSystemPrompt replaces the entire system prompt (skips CLAUDE.md).
+  // appendSystemPrompt appends to the default (includes CLAUDE.md).
   const options: Options = {
     pathToClaudeCodeExecutable: CLAUDE_BIN,
     includePartialMessages: true,
     maxThinkingTokens: 10000,
-    appendSystemPrompt: systemPrompt,
+    ...(config.customSystemPrompt
+      ? { customSystemPrompt: config.customSystemPrompt }
+      : { appendSystemPrompt: systemPrompt }),
     permissionMode: config.permissionMode as Options["permissionMode"],
     stderr: (data: string) => {
       const msg = data.trim();
