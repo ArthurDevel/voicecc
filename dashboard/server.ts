@@ -27,6 +27,7 @@ import { mcpServersRoutes } from "./routes/mcp-servers.js";
 import { authRoutes } from "./routes/auth.js";
 import { integrationsRoutes, setDashboardPort as setIntegrationsDashboardPort } from "./routes/integrations.js";
 import { providersRoutes } from "./routes/providers.js";
+import { agentsRoutes } from "./routes/agents.js";
 import { loadDeviceTokens } from "../services/device-pairing.js";
 
 // ============================================================================
@@ -61,6 +62,7 @@ function createApp(): Hono {
   app.route("/api/auth", authRoutes());
   app.route("/api/integrations", integrationsRoutes());
   app.route("/api/providers", providersRoutes());
+  app.route("/api/agents", agentsRoutes());
 
   // Status endpoint (user CLAUDE.md conflict check)
   app.get("/api/status", async (c) => {
