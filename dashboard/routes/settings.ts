@@ -7,7 +7,7 @@
  */
 
 import { Hono } from "hono";
-import { readEnv, writeEnvFile } from "../../services/env.js";
+import { readEnv, writeEnvFile } from "../../server/services/env.js";
 
 // ============================================================================
 // CONSTANTS
