@@ -102,7 +102,7 @@ export function agentsRoutes(): Hono {
     const id = c.req.param("id");
     try {
       const agent = await getAgent(id);
-      await initiateAgentCall(agent);
+      await initiateAgentCall(agent, { initialPrompt: "The user pressed the 'Call Me' button. Greet them and ask how you can help." });
       return c.json({ success: true });
     } catch (err) {
       return c.json({ error: (err as Error).message }, 400);
