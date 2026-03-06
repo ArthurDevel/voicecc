@@ -11,6 +11,7 @@ import { readEnv } from "./services/env.js";
 import { startTunnel, isTunnelRunning, getTunnelUrl } from "./services/tunnel.js";
 import { startTwilioServer } from "./services/twilio-manager.js";
 import { startBrowserCallServer } from "./services/browser-call-manager.js";
+import { startHeartbeat } from "./services/heartbeat.js";
 
 // ============================================================================
 // MAIN ENTRYPOINT
@@ -27,6 +28,8 @@ async function main(): Promise<void> {
   console.log(`  Dashboard:  http://localhost:${port}`);
   console.log("  Press Ctrl+C to stop.");
   console.log("");
+
+  startHeartbeat();
 
   const envVars = await readEnv();
   const tunnelPort = parseInt(envVars.TWILIO_PORT || "8080", 10);

@@ -27,6 +27,7 @@ import { WebSocketServer } from "ws";
 
 import { createTwilioAudioAdapter } from "./twilio-audio.js";
 import { createVoiceSession } from "./voice-session.js";
+import { getAgent } from "../services/agent-store.js";
 
 import type { IncomingMessage, ServerResponse } from "http";
 import type { Duplex } from "stream";
@@ -99,6 +100,8 @@ interface ActiveCall {
   callSid: string;
   /** Voice session handle (null until WebSocket start event creates it) */
   session: VoiceSession | null;
+  /** Agent identifier for agent-initiated calls (undefined for default inbound calls) */
+  agentId?: string;
 }
 
 // ============================================================================
@@ -144,6 +147,12 @@ async function startTwilioServer(): Promise<void> {
   const server = createServer((req, res) => {
     if (req.method === "POST" && req.url === "/twilio/incoming-call") {
       handleIncomingCall(req, res, authToken, webhookUrl, webhookHost);
+      return;
+    }
+
+    // Register an outbound call token with an optional agentId before Twilio connects
+    if (req.method === "POST" && req.url === "/register-call") {
+      handleRegisterCall(req, res);
       return;
     }
 
@@ -242,6 +251,32 @@ function handleIncomingCall(
 }
 
 /**
+ * Handle a POST /register-call request to pre-register an outbound call token.
+ *
+ * Called by the heartbeat scheduler or API before placing an outbound Twilio call.
+ * Registers the token in activeCalls so the subsequent WebSocket upgrade is accepted.
+ *
+ * @param req - HTTP request with JSON body { token, agentId }
+ * @param res - HTTP response
+ */
+function handleRegisterCall(req: IncomingMessage, res: ServerResponse): void {
+  let body = "";
+  req.on("data", (chunk: Buffer) => {
+    body += chunk.toString();
+  });
+
+  req.on("end", () => {
+    const { token, agentId } = JSON.parse(body) as { token: string; agentId: string };
+    activeCalls.set(token, { callSid: "", session: null, agentId });
+
+    console.log(`Registered outbound call token: ${token}, agentId: ${agentId}`);
+
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ success: true }));
+  });
+}
+
+/**
  * Handle a WebSocket upgrade request for the Twilio media stream.
  *
  * Extracts the per-call token from the URL path, validates it against
@@ -258,9 +293,9 @@ function handleWebSocketUpgrade(
   head: Buffer,
   wss: WebSocketServer,
 ): void {
-  // Extract token from URL path: /media/:token
+  // Extract token from URL path: /media/:token (allow optional query params)
   const url = req.url ?? "";
-  const match = url.match(/^\/media\/([a-f0-9-]+)$/);
+  const match = url.match(/^\/media\/([a-f0-9-]+)(?:\?.*)?$/);
 
   if (!match) {
     console.log(`Rejected WebSocket upgrade: invalid path ${url}`);
@@ -274,6 +309,13 @@ function handleWebSocketUpgrade(
     console.log(`Rejected WebSocket upgrade: unknown token ${token}`);
     socket.destroy();
     return;
+  }
+
+  // Parse agentId from query string if present (used for outbound agent calls)
+  const urlObj = new URL(url, "http://localhost");
+  const queryAgentId = urlObj.searchParams.get("agentId");
+  if (queryAgentId) {
+    activeCalls.get(token)!.agentId = queryAgentId;
   }
 
   // Accept the WebSocket connection
@@ -376,15 +418,34 @@ async function handleStreamStart(
   if (!call) return;
   call.callSid = callSid;
 
+  // Build session config -- use agent personality if agentId is set, otherwise default
+  const agentId = call.agentId;
+  let sessionConfig = { ...DEFAULT_CONFIG, onSessionEnd: () => ws.close() };
+
+  if (agentId) {
+    try {
+      const agent = await getAgent(agentId);
+      const agentPrompt = [agent.soulMd, agent.memoryMd, agent.heartbeatMd].join("\n\n");
+      sessionConfig = {
+        ...DEFAULT_CONFIG,
+        claudeSession: {
+          ...DEFAULT_CONFIG.claudeSession,
+          systemPrompt: agentPrompt,
+        },
+        onSessionEnd: () => ws.close(),
+      };
+      console.log(`Using agent "${agentId}" personality for call ${callSid}`);
+    } catch (err) {
+      console.error(`Failed to load agent "${agentId}", using default config:`, err);
+    }
+  }
+
   try {
     // Create the Twilio audio adapter
     const adapter = createTwilioAudioAdapter({ ws, streamSid });
 
     // Create the voice session (acquires a session lock -- may throw if limit reached)
-    const session = await createVoiceSession(adapter, {
-      ...DEFAULT_CONFIG,
-      onSessionEnd: () => ws.close(),
-    });
+    const session = await createVoiceSession(adapter, sessionConfig);
 
     call.session = session;
   } catch (err) {

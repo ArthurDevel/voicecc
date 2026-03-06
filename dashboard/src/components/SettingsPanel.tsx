@@ -22,6 +22,7 @@ interface SettingsPanelProps {
 
 export function SettingsPanel({ twilioRunning }: SettingsPanelProps) {
   const [maxSessions, setMaxSessions] = useState("");
+  const [userPhoneNumber, setUserPhoneNumber] = useState("");
   const [statusText, setStatusText] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -30,6 +31,7 @@ export function SettingsPanel({ twilioRunning }: SettingsPanelProps) {
     get<Record<string, string>>("/api/settings")
       .then((data) => {
         setMaxSessions(data.MAX_CONCURRENT_SESSIONS || "");
+        setUserPhoneNumber(data.USER_PHONE_NUMBER || "");
       })
       .catch(() => setStatusText("Error loading settings"));
   }, []);
@@ -39,14 +41,14 @@ export function SettingsPanel({ twilioRunning }: SettingsPanelProps) {
     setSaving(true);
     setStatusText("Saving...");
     try {
-      await post("/api/settings", { MAX_CONCURRENT_SESSIONS: maxSessions });
+      await post("/api/settings", { MAX_CONCURRENT_SESSIONS: maxSessions, USER_PHONE_NUMBER: userPhoneNumber });
       setStatusText("Saved!");
       setTimeout(() => setStatusText((prev) => (prev === "Saved!" ? "" : prev)), 2000);
     } catch {
       setStatusText("Error saving settings");
     }
     setSaving(false);
-  }, [maxSessions]);
+  }, [maxSessions, userPhoneNumber]);
 
   return (
     <>
@@ -68,6 +70,17 @@ export function SettingsPanel({ twilioRunning }: SettingsPanelProps) {
             placeholder="2"
             value={maxSessions}
             onChange={(e) => setMaxSessions(e.target.value)}
+          />
+        </div>
+
+        <div className="settings-row">
+          <label htmlFor="setting-user-phone" style={{ fontWeight: 500, color: "var(--text-primary)" }}>Your Phone Number</label>
+          <input
+            type="text"
+            id="setting-user-phone"
+            placeholder="+15551234567"
+            value={userPhoneNumber}
+            onChange={(e) => setUserPhoneNumber(e.target.value)}
           />
         </div>
 
