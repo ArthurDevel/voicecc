@@ -110,9 +110,7 @@ export function AgentDetail() {
     try {
       const providerKey = activeProvider as "elevenlabs" | "local";
       const existingVoice = agent.config.voice ?? {};
-      const newVoice = voiceId === ""
-        ? { ...existingVoice, [providerKey]: undefined }
-        : { ...existingVoice, [providerKey]: { id: voiceId, name: voices.find((v) => v.id === voiceId)?.name ?? "" } };
+      const newVoice = { ...existingVoice, [providerKey]: { id: voiceId, name: voices.find((v) => v.id === voiceId)?.name ?? "" } };
       await patch(`/api/agents/${id}`, { config: { voice: newVoice } });
       setAgent({ ...agent, config: { ...agent.config, voice: newVoice } });
     } finally {
@@ -266,7 +264,6 @@ export function AgentDetail() {
                   minWidth: 200,
                 }}
               >
-                <option value="">Default</option>
                 {voices.map((v) => (
                   <option key={v.id} value={v.id}>{v.name}</option>
                 ))}
