@@ -83,7 +83,7 @@ export function mcpServersRoutes(): Hono {
     const claudePath = join(homedir(), ".local", "bin", "claude");
     const args = ["mcp", "add", "--transport", transport, "--scope", scope, name, url];
 
-    return new Promise((resolve) => {
+    return new Promise<Response>((resolve) => {
       execFile(claudePath, args, { timeout: 15000 }, (err, stdout, stderr) => {
         if (err) {
           console.error("[mcp-servers] add error:", err.message);
@@ -109,7 +109,7 @@ export function mcpServersRoutes(): Hono {
   do script "${claudePath} \\"${escapedPrompt}\\""
 end tell`;
 
-    return new Promise((resolve) => {
+    return new Promise<Response>((resolve) => {
       execFile("osascript", ["-e", script], (err) => {
         if (err) {
           resolve(c.json({ error: err.message }, 500));
@@ -126,7 +126,7 @@ end tell`;
     const claudePath = join(homedir(), ".local", "bin", "claude");
     const args = ["mcp", "remove", name];
 
-    return new Promise((resolve) => {
+    return new Promise<Response>((resolve) => {
       execFile(claudePath, args, { timeout: 15000 }, (err, stdout, stderr) => {
         if (err) {
           console.error("[mcp-servers] remove error:", err.message);
