@@ -21,12 +21,12 @@ import { join } from "path";
 
 import { Hono } from "hono";
 
-import { getAvailableTtsProviders, getTtsProviderStatus, listVoicesForProvider } from "../../sidecar/tts-provider.js";
-import { getAvailableSttProviders, getSttProviderStatus } from "../../sidecar/stt-provider.js";
-import { readEnv } from "../../services/env.js";
+import { getAvailableTtsProviders, getTtsProviderStatus, listVoicesForProvider } from "../../server/voice/tts-provider.js";
+import { getAvailableSttProviders, getSttProviderStatus } from "../../server/voice/stt-provider.js";
+import { readEnv } from "../../server/services/env.js";
 
-import type { TtsProviderType } from "../../sidecar/types.js";
-import type { SttProviderType } from "../../sidecar/types.js";
+import type { TtsProviderType } from "../../server/voice/types.js";
+import type { SttProviderType } from "../../server/voice/types.js";
 
 // ============================================================================
 // TYPES

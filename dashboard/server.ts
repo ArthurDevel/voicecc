@@ -28,7 +28,7 @@ import { authRoutes } from "./routes/auth.js";
 import { integrationsRoutes, setDashboardPort as setIntegrationsDashboardPort } from "./routes/integrations.js";
 import { providersRoutes } from "./routes/providers.js";
 import { agentsRoutes } from "./routes/agents.js";
-import { loadDeviceTokens } from "../services/device-pairing.js";
+import { loadDeviceTokens } from "../server/services/device-pairing.js";
 
 // ============================================================================
 // CONSTANTS

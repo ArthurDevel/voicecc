@@ -8,10 +8,10 @@
  */
 
 import { Hono } from "hono";
-import { startBrowserCallServer, stopBrowserCallServer, getBrowserCallStatus, isBrowserCallRunning } from "../../services/browser-call-manager.js";
-import { startTunnel, stopTunnel, getTunnelUrl, isTunnelRunning } from "../../services/tunnel.js";
-import { readEnv } from "../../services/env.js";
-import { isRunning as isTwilioRunning } from "../../services/twilio-manager.js";
+import { startBrowserCallServer, stopBrowserCallServer, getBrowserCallStatus, isBrowserCallRunning } from "../../server/services/browser-call-manager.js";
+import { startTunnel, stopTunnel, getTunnelUrl, isTunnelRunning } from "../../server/services/tunnel.js";
+import { readEnv } from "../../server/services/env.js";
+import { isRunning as isTwilioRunning } from "../../server/services/twilio-manager.js";
 
 // ============================================================================
 // STATE
