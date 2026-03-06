@@ -34,9 +34,41 @@ const PYTHON_VENV_PATH = join(__dirname, ".venv", "bin", "python3");
 /** Path to the mic-vpio binary (required for local TTS) */
 const MIC_VPIO_PATH = join(__dirname, "mic-vpio");
 
+/** ElevenLabs API base URL */
+const ELEVENLABS_API_BASE = "https://api.elevenlabs.io/v1";
+
+/** Known Kokoro voice options */
+const KOKORO_VOICES: VoiceOption[] = [
+  { id: "af_heart", name: "Heart (Female)" },
+  { id: "af_alloy", name: "Alloy (Female)" },
+  { id: "af_aoede", name: "Aoede (Female)" },
+  { id: "af_bella", name: "Bella (Female)" },
+  { id: "af_jessica", name: "Jessica (Female)" },
+  { id: "af_kore", name: "Kore (Female)" },
+  { id: "af_nicole", name: "Nicole (Female)" },
+  { id: "af_nova", name: "Nova (Female)" },
+  { id: "af_river", name: "River (Female)" },
+  { id: "af_sarah", name: "Sarah (Female)" },
+  { id: "af_sky", name: "Sky (Female)" },
+  { id: "am_adam", name: "Adam (Male)" },
+  { id: "am_echo", name: "Echo (Male)" },
+  { id: "am_eric", name: "Eric (Male)" },
+  { id: "am_liam", name: "Liam (Male)" },
+  { id: "am_michael", name: "Michael (Male)" },
+  { id: "am_onyx", name: "Onyx (Male)" },
+];
+
 // ============================================================================
 // INTERFACES
 // ============================================================================
+
+/**
+ * A voice option returned by listVoicesForProvider.
+ */
+export interface VoiceOption {
+  id: string;
+  name: string;
+}
 
 /**
  * Metadata about a TTS provider for display in the dashboard.
@@ -138,6 +170,33 @@ export async function getTtsProviderStatus(providerType: TtsProviderType): Promi
         return { ready: false, reason: "missing_api_key", detail: "ELEVENLABS_API_KEY is not set in .env" };
       }
       return { ready: true };
+    }
+
+    default:
+      throw new Error(`Unknown TTS provider: ${providerType}`);
+  }
+}
+
+/**
+ * List available voices for a TTS provider.
+ * Local: returns a hardcoded list of known Kokoro voices.
+ * ElevenLabs: fetches available voices from the API.
+ *
+ * @param providerType - The provider to list voices for
+ * @returns Array of voice options
+ */
+export async function listVoicesForProvider(
+  providerType: TtsProviderType,
+): Promise<VoiceOption[]> {
+  switch (providerType) {
+    case "local":
+      return KOKORO_VOICES;
+
+    case "elevenlabs": {
+      const res = await fetch(`${ELEVENLABS_API_BASE}/voices`);
+      if (!res.ok) throw new Error(`ElevenLabs API error: ${res.status}`);
+      const data = (await res.json()) as { voices: Array<{ voice_id: string; name: string }> };
+      return data.voices.map((v) => ({ id: v.voice_id, name: v.name }));
     }
 
     default:

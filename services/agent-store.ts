@@ -38,10 +38,23 @@ const AGENT_ID_REGEX = /^[a-zA-Z0-9-]{1,50}$/;
 // TYPES
 // ============================================================================
 
+/** Voice preference for a single TTS provider */
+export interface VoicePreference {
+  id: string;
+  name: string;
+}
+
+/** Per-provider voice preferences */
+export interface AgentVoiceConfig {
+  elevenlabs?: VoicePreference;
+  local?: VoicePreference;
+}
+
 /** Configuration stored in config.json for each agent */
 export interface AgentConfig {
   heartbeatIntervalMinutes: number;
   enabled: boolean;
+  voice?: AgentVoiceConfig;
 }
 
 /** Full agent data including all file contents */
@@ -168,6 +181,28 @@ export async function deleteAgent(id: string): Promise<void> {
   const agentDir = join(AGENTS_DIR, id);
   await assertAgentExists(agentDir, id);
   await rm(agentDir, { recursive: true });
+}
+
+/**
+ * Update an agent's config.json by merging partial updates.
+ * Throws if the agent does not exist.
+ *
+ * @param id - Agent identifier
+ * @param patch - Partial config to merge
+ * @returns The updated full config
+ */
+export async function updateAgentConfig(
+  id: string,
+  patch: Partial<AgentConfig>,
+): Promise<AgentConfig> {
+  const agentDir = join(AGENTS_DIR, id);
+  await assertAgentExists(agentDir, id);
+
+  const configPath = join(agentDir, "config.json");
+  const existing: AgentConfig = JSON.parse(await readFile(configPath, "utf-8"));
+  const updated: AgentConfig = { ...existing, ...patch };
+  await writeFile(configPath, JSON.stringify(updated, null, 2), "utf-8");
+  return updated;
 }
 
 // ============================================================================
