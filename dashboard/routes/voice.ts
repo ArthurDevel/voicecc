@@ -33,7 +33,7 @@ export function voiceRoutes(): Hono {
   do script "${VOICE_CMD}"
 end tell`;
 
-    return new Promise((resolve) => {
+    return new Promise<Response>((resolve) => {
       execFile("osascript", ["-e", script], (err) => {
         if (err) {
           resolve(c.json({ error: err.message }, 500));

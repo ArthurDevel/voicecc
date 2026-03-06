@@ -93,7 +93,7 @@ export async function createElevenlabsStt(config: ElevenlabsSttConfig): Promise<
 
     // Encode audio as WAV and upload to ElevenLabs
     const wavBuffer = encodeWav(combinedSamples);
-    const wavBlob = new Blob([wavBuffer], { type: "audio/wav" });
+    const wavBlob = new Blob([new Uint8Array(wavBuffer)], { type: "audio/wav" });
 
     const formData = new FormData();
     formData.append("file", wavBlob, "audio.wav");
