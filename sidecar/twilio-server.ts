@@ -27,6 +27,7 @@ import { WebSocketServer } from "ws";
 
 import { createTwilioAudioAdapter } from "./twilio-audio.js";
 import { createVoiceSession } from "./voice-session.js";
+import { createAudioInactivityWatchdog } from "./audio-inactivity.js";
 import { getAgent } from "../services/agent-store.js";
 
 import type { IncomingMessage, ServerResponse } from "http";
@@ -44,6 +45,12 @@ const DEFAULT_PORT = 8080;
 
 /** Interruption threshold for phone calls (higher than local mic due to no VPIO echo cancellation) */
 const PHONE_INTERRUPTION_THRESHOLD_MS = 2000;
+
+/** Close the WebSocket if no Twilio audio frames arrive within this window (ms) */
+const AUDIO_INACTIVITY_TIMEOUT_MS = 5000;
+
+/** How often to check for audio inactivity (ms) */
+const AUDIO_INACTIVITY_CHECK_INTERVAL_MS = 2000;
 
 /** Read provider selection and ElevenLabs config from environment */
 const TTS_PROVIDER = (process.env.TTS_PROVIDER ?? "local") as TtsProviderType;
@@ -339,6 +346,17 @@ function handleWebSocketUpgrade(
 function handleCallSession(ws: WebSocket, token: string): void {
   let cleaned = false;
 
+  // Detect stale calls: if Twilio stops sending audio frames (caller hung up
+  // but WebSocket didn't close cleanly), close the WebSocket to trigger cleanup.
+  const watchdog = createAudioInactivityWatchdog({
+    timeoutMs: AUDIO_INACTIVITY_TIMEOUT_MS,
+    checkIntervalMs: AUDIO_INACTIVITY_CHECK_INTERVAL_MS,
+    onTimeout: () => {
+      console.log(`[twilio-server] No audio received, closing stale call (token: ${token})`);
+      ws.close();
+    },
+  });
+
   /**
    * Clean up the call session. Stops the voice session, removes from
    * activeCalls map. Uses cleaned flag to prevent double-cleanup.
@@ -346,6 +364,8 @@ function handleCallSession(ws: WebSocket, token: string): void {
   async function cleanup(): Promise<void> {
     if (cleaned) return;
     cleaned = true;
+
+    watchdog.dispose();
 
     const call = activeCalls.get(token);
     if (call?.session) {
@@ -371,7 +391,13 @@ function handleCallSession(ws: WebSocket, token: string): void {
   ws.on("message", (data: Buffer | string) => {
     const msg = JSON.parse(typeof data === "string" ? data : data.toString("utf-8"));
 
+    if (msg.event === "media") {
+      watchdog.ping();
+      // Don't return -- TwilioAudioAdapter's onAudio listener also handles media events
+    }
+
     if (msg.event === "start") {
+      watchdog.ping();
       handleStreamStart(ws, token, msg).catch((err) => {
         console.error(`Error handling stream start: ${err}`);
       });
@@ -383,10 +409,6 @@ function handleCallSession(ws: WebSocket, token: string): void {
       ws.close();
       return;
     }
-
-    // "connected" and "media" events are handled elsewhere:
-    // - "connected": informational, no action needed
-    // - "media": handled by TwilioAudioAdapter's onAudio listener
   });
 }
 
