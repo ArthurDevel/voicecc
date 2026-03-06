@@ -1,0 +1,1 @@
+Execute the heartbeat checklist in HEARTBEAT.md. Use tools as needed to check all conditions. Respond with exactly one JSON object: {"shouldCall": true/false, "reason": "brief explanation"}
