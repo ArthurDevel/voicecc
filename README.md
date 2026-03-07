@@ -22,7 +22,6 @@ bin/                CLI entry point (voicecc command)
 - macOS or Linux
 - Node.js 18+
 - An ElevenLabs API key
-- `cloudflared` for Twilio/Browser Call tunneling (`brew install cloudflared`)
 
 ### Install
 
