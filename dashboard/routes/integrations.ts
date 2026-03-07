@@ -116,16 +116,10 @@ async function startIntegration(name: string): Promise<void> {
     if (!envVars.TWILIO_AUTH_TOKEN) {
       throw new Error("TWILIO_AUTH_TOKEN is not configured. Set your Twilio credentials first.");
     }
-    if (isBrowserCallRunning()) {
-      throw new Error("Browser call server is already running on this port");
-    }
     if (!isTwilioRunning()) {
       await startTwilioServer(dashboardPort, getTunnelUrl() ?? undefined);
     }
   } else if (name === "browser-call") {
-    if (isTwilioRunning()) {
-      throw new Error("Twilio server is already running on this port");
-    }
     if (!isBrowserCallRunning()) {
       await startBrowserCallServer(dashboardPort);
     }
@@ -140,15 +134,12 @@ async function startIntegration(name: string): Promise<void> {
 function stopIntegration(name: string): void {
   if (name === "twilio") {
     stopTwilioServer();
-    // Only stop tunnel if browser call is also stopped
-    if (!isBrowserCallRunning()) {
-      stopTunnel();
-    }
   } else if (name === "browser-call") {
     stopBrowserCallServer();
-    // Only stop tunnel if Twilio is also stopped
-    if (!isTwilioRunning()) {
-      stopTunnel();
-    }
+  }
+
+  // Stop tunnel if no integrations need it
+  if (!isTwilioRunning() && !isBrowserCallRunning()) {
+    stopTunnel();
   }
 }

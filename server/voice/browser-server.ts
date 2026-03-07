@@ -1,23 +1,15 @@
 /**
- * Standalone HTTP + WebSocket server for browser audio sessions.
+ * Browser audio WebSocket handlers for the unified voice server.
  *
- * Runs on TWILIO_PORT (default 8080) -- same port as twilio-server.ts.
- * Only one of browser-server / twilio-server runs at a time.
- * Entry point for the browser call sidecar process.
+ * Provides WebSocket upgrade logic for browser-based audio sessions.
+ * Used by voice-server.ts which owns the HTTP server.
  *
  * Responsibilities:
- * - Start HTTP server on TWILIO_PORT for browser audio connections
  * - Accept WebSocket upgrades on /audio?token=<deviceToken>
  * - Validate device tokens via isValidDeviceToken() (localhost bypasses validation)
  * - Reject duplicate connections for the same device token
  * - Create BrowserAudioAdapter + VoiceSession per connection
- * - Proxy non-audio HTTP requests to the dashboard server
- * - Send periodic ws.ping() to keep connections alive through tunnel
  */
-
-import "dotenv/config";
-
-import { createServer, request as httpRequest } from "http";
 
 import { WebSocketServer } from "ws";
 
@@ -25,7 +17,7 @@ import { createBrowserAudioAdapter } from "./browser-audio.js";
 import { createVoiceSession } from "./voice-session.js";
 import { isValidDeviceToken } from "../services/device-pairing.js";
 
-import type { IncomingMessage, ServerResponse } from "http";
+import type { IncomingMessage } from "http";
 import type { Duplex } from "stream";
 import type { WebSocket } from "ws";
 import type { VoiceSession } from "./voice-session.js";
@@ -35,14 +27,8 @@ import type { TtsProviderConfig, SttProviderConfig } from "./types.js";
 // CONSTANTS
 // ============================================================================
 
-/** Default port for the browser audio server (same as Twilio) */
-const DEFAULT_PORT = 8080;
-
 /** Interruption threshold for browser calls (lower than Twilio's 2000ms because browser getUserMedia includes AEC) */
 const BROWSER_INTERRUPTION_THRESHOLD_MS = 1500;
-
-/** Ping interval to keep WebSocket connections alive through tunnel (ms) */
-const PING_INTERVAL_MS = 30_000;
 
 /** Read ElevenLabs config from environment */
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY ?? "";
@@ -105,62 +91,7 @@ interface ActiveBrowserSession {
 const activeSessions = new Map<string, ActiveBrowserSession>();
 
 // ============================================================================
-// MAIN ENTRYPOINT
-// ============================================================================
-
-/**
- * Start the browser audio HTTP + WebSocket server.
- *
- * Reads TWILIO_PORT (default 8080) and DASHBOARD_PORT from environment.
- * Creates an HTTP server that proxies non-audio requests to the dashboard.
- * WebSocket upgrade on /audio?token=<token> with device token validation.
- * Sends periodic ws.ping() every 30s to keep connections alive through tunnel.
- *
- * @returns Resolves when the server is listening
- * @throws Error if DASHBOARD_PORT is not set
- */
-async function startBrowserServer(): Promise<void> {
-  const port = parseInt(process.env.TWILIO_PORT ?? "", 10) || DEFAULT_PORT;
-  const dashboardPort = parseInt(process.env.DASHBOARD_PORT ?? "", 10);
-
-  if (!dashboardPort) {
-    throw new Error("DASHBOARD_PORT is required");
-  }
-
-  // Create HTTP server
-  const server = createServer((req, res) => {
-    // Proxy all HTTP requests to the dashboard server
-    proxyToDashboard(req, res, dashboardPort);
-  });
-
-  // Create WebSocket server (no automatic HTTP handling -- upgrades only)
-  const wss = new WebSocketServer({ noServer: true });
-
-  // Handle WebSocket upgrade requests
-  server.on("upgrade", (req: IncomingMessage, socket: Duplex, head: Buffer) => {
-    handleWebSocketUpgrade(req, socket, head, wss);
-  });
-
-  // Periodic ping to keep connections alive through tunnel
-  setInterval(() => {
-    wss.clients.forEach((ws) => {
-      if (ws.readyState === ws.OPEN) {
-        ws.ping();
-      }
-    });
-  }, PING_INTERVAL_MS);
-
-  // Start listening
-  return new Promise<void>((resolve) => {
-    server.listen(port, () => {
-      console.log(`Browser audio server listening on port ${port}`);
-      resolve();
-    });
-  });
-}
-
-// ============================================================================
-// MAIN HANDLERS
+// EXPORTED HANDLERS
 // ============================================================================
 
 /**
@@ -175,7 +106,7 @@ async function startBrowserServer(): Promise<void> {
  * @param head - First packet of the upgraded stream
  * @param wss - WebSocketServer instance to accept the upgrade
  */
-function handleWebSocketUpgrade(
+export function handleBrowserUpgrade(
   req: IncomingMessage,
   socket: Duplex,
   head: Buffer,
@@ -225,6 +156,10 @@ function handleWebSocketUpgrade(
     handleBrowserSession(ws, token || "localhost");
   });
 }
+
+// ============================================================================
+// INTERNAL HANDLERS
+// ============================================================================
 
 /**
  * Handle a connected browser audio WebSocket session.
@@ -299,48 +234,3 @@ async function createSession(ws: WebSocket, entry: ActiveBrowserSession): Promis
 
   entry.session = session;
 }
-
-/**
- * Proxy an HTTP request to the dashboard server on localhost.
- * Forwards the request method, path, headers, and body.
- *
- * @param req - Original incoming request
- * @param res - Response to write the proxied result to
- * @param dashboardPort - Port the dashboard server is listening on
- */
-function proxyToDashboard(req: IncomingMessage, res: ServerResponse, dashboardPort: number): void {
-  const clientIp = req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown";
-  console.log(`[proxy] ${req.method} ${req.url} from ${clientIp}`);
-
-  const proxyReq = httpRequest(
-    {
-      hostname: "127.0.0.1",
-      port: dashboardPort,
-      path: req.url,
-      method: req.method,
-      headers: req.headers,
-    },
-    (proxyRes) => {
-      console.log(`[proxy] ${req.url} -> ${proxyRes.statusCode}`);
-      res.writeHead(proxyRes.statusCode ?? 502, proxyRes.headers);
-      proxyRes.pipe(res);
-    },
-  );
-
-  proxyReq.on("error", (err) => {
-    console.error(`[proxy] ${req.url} proxy error:`, err.message);
-    res.writeHead(502, { "Content-Type": "text/plain" });
-    res.end("Dashboard unavailable");
-  });
-
-  req.pipe(proxyReq);
-}
-
-// ============================================================================
-// ENTRY POINT
-// ============================================================================
-
-startBrowserServer().catch((err) => {
-  console.error(`Browser audio server failed: ${err}`);
-  process.exit(1);
-});
