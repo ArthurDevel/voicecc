@@ -23,16 +23,6 @@ async function main(): Promise<void> {
   const dashboardPort = await startDashboard();
   const voicePort = await startVoiceServer(dashboardPort);
 
-  console.log("");
-  console.log("========================================");
-  console.log("             VOICECC RUNNING            ");
-  console.log("========================================");
-  console.log("");
-  console.log(`  Dashboard:  http://localhost:${dashboardPort}`);
-  console.log(`  Voice:      http://localhost:${voicePort}`);
-  console.log("  Press Ctrl+C to stop.");
-  console.log("");
-
   startHeartbeat();
 
   const envVars = await readEnv();
@@ -62,6 +52,21 @@ async function main(): Promise<void> {
       console.error(`Browser Call auto-start failed: ${err}`);
     }
   }
+
+  // Print startup banner after integrations so tunnel URL is available
+  const tunnelUrl = getTunnelUrl();
+  console.log("");
+  console.log("========================================");
+  console.log("             VOICECC RUNNING            ");
+  console.log("========================================");
+  console.log("");
+  console.log(`  Dashboard:  http://localhost:${dashboardPort}`);
+  if (tunnelUrl) {
+    console.log(`  Tunnel:     ${tunnelUrl}`);
+  }
+  console.log("");
+  console.log("  Press Ctrl+C to stop.");
+  console.log("");
 }
 
 // ============================================================================
