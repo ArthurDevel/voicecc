@@ -1,8 +1,8 @@
 /**
  * Postinstall setup script for voicecc.
  *
- * Lightweight first-run setup that installs the CLAUDE.md file,
- * compiles the mic-vpio binary (macOS), and builds the dashboard.
+ * Lightweight first-run setup that installs the CLAUDE.md file
+ * and builds the dashboard.
  *
  * Called from bin/voicecc.js on first run (or when setup is incomplete).
  */
@@ -22,9 +22,7 @@ import { join } from "path";
  * @returns {boolean} True if setup is needed
  */
 export function needsSetup() {
-  const dashboardMissing = !existsSync(join("dashboard", "dist", "index.html"));
-  const micVpioMissing = process.platform === "darwin" && !existsSync(join("server", "voice", "mic-vpio"));
-  return dashboardMissing || micVpioMissing;
+  return !existsSync(join("dashboard", "dist", "index.html"));
 }
 
 /**
@@ -32,7 +30,6 @@ export function needsSetup() {
  */
 export function runSetup() {
   installClaudeMd();
-  buildMicVpio();
   buildDashboard();
 
   console.log("");
@@ -45,31 +42,6 @@ export function runSetup() {
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
-
-/**
- * Compile the native mic-vpio audio binary (macOS only).
- */
-function buildMicVpio() {
-  const bin = join("server", "voice", "mic-vpio");
-  if (existsSync(bin)) {
-    console.log("mic-vpio already compiled, skipping.");
-    return;
-  }
-  if (process.platform !== "darwin") {
-    console.log("Skipping mic-vpio (macOS only).");
-    return;
-  }
-  console.log("Compiling mic-vpio...");
-  try {
-    run("swiftc -O -o server/voice/mic-vpio server/voice/mic-vpio.swift -framework AudioToolbox -framework CoreAudio");
-  } catch (err) {
-    console.error("\n[voicecc] WARNING: Failed to compile mic-vpio.");
-    console.error("  Terminal voice mode will not work. Browser/phone calling is unaffected.");
-    console.error("  Try manually: swiftc -O -o server/voice/mic-vpio server/voice/mic-vpio.swift -framework AudioToolbox -framework CoreAudio\n");
-    return;
-  }
-  console.log("mic-vpio compiled successfully.");
-}
 
 /**
  * Build the dashboard Vite app if not already built.

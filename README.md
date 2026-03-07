@@ -27,23 +27,20 @@ bin/                CLI entry point (voicecc command)
 ### Install
 
 ```bash
-# 1. Install system dependencies (macOS)
-brew install cloudflared
-
-# 2. Install Voice CC
+# 1. Install Voice CC
 npm install -g voicecc
 
-# 3. Start the dashboard
+# 2. Start the dashboard
 voicecc
 ```
 
 ## How It Works
 
-1. **Mic capture**: VPIO (macOS) or PulseAudio (Linux) records 16kHz mono PCM with echo cancellation
+1. **Mic capture**: Browser captures 16kHz mono PCM via WebRTC
 2. **Voice activity detection**: Silero VAD v5 detects speech segments
 3. **Speech-to-text**: ElevenLabs Scribe API transcribes audio
 4. **Endpointing**: VAD silence-based turn detection
 5. **Claude inference**: Transcript sent to Claude Code Agent SDK session with streaming response
 6. **Narration**: Claude's response stripped of markdown and split into sentences
 7. **Text-to-speech**: ElevenLabs streaming TTS API generates audio
-8. **Speaker playback**: Audio output through VPIO/PulseAudio at 24kHz
+8. **Speaker playback**: Audio output through browser at 24kHz

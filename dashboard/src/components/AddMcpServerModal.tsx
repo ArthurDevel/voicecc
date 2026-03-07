@@ -77,12 +77,6 @@ export function AddMcpServerModal({ servers, onClose, onAdded }: AddMcpServerMod
     setAddingName(null);
   };
 
-  /** Open Terminal with the auth flow for a server */
-  const handleAuth = (serverName: string) => {
-    post(`/api/mcp-servers/${serverName}/auth`).catch(() => {});
-  };
-
-
   return (
     <div className="modal-overlay visible" onClick={handleOverlayClick}>
       <div className="modal" style={{ width: 620 }}>
@@ -112,13 +106,6 @@ export function AddMcpServerModal({ servers, onClose, onAdded }: AddMcpServerMod
                   <span className="mcp-add-card-url">{preset.url}</span>
                   {loading ? (
                     <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>Loading...</span>
-                  ) : needsAuth ? (
-                    <button
-                      className="mcp-add-card-btn auth"
-                      onClick={() => handleAuth(installed!.name)}
-                    >
-                      Authenticate
-                    </button>
                   ) : !installed && (
                     <button
                       className="mcp-add-card-btn"
