@@ -1,13 +1,11 @@
 /**
- * HTTP + WebSocket server that accepts Twilio phone calls and creates a
- * voice session per call.
+ * Twilio voice call handlers for the unified voice server.
  *
- * Standalone entry point for the Twilio voice call path. Runs as a separate
- * process from the local mic path (index.ts).
+ * Provides HTTP request handlers and WebSocket upgrade logic for Twilio
+ * phone calls. Used by voice-server.ts which owns the HTTP server.
  *
  * Responsibilities:
- * - Start HTTP server on TWILIO_PORT for Twilio webhooks
- * - Validate incoming call webhooks via Twilio signature verification
+ * - Handle incoming call webhooks via Twilio signature verification
  * - Generate per-call UUID tokens for secure WebSocket upgrade
  * - Accept Twilio media stream WebSocket connections
  * - Create a TwilioAudioAdapter + VoiceSession per call
@@ -15,11 +13,8 @@
  * - Tear down sessions on hangup, stop phrase, or error
  */
 
-import "dotenv/config";
-
 import { randomUUID } from "crypto";
 import { readFileSync } from "fs";
-import { createServer, request as httpRequest } from "http";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
@@ -30,6 +25,8 @@ import { createTwilioAudioAdapter } from "./twilio-audio.js";
 import { createVoiceSession } from "./voice-session.js";
 import { createAudioInactivityWatchdog } from "./audio-inactivity.js";
 import { getAgent, AGENTS_DIR } from "../services/agent-store.js";
+import { getTunnelUrl } from "../services/tunnel.js";
+import { readEnv } from "../services/env.js";
 
 import type { IncomingMessage, ServerResponse } from "http";
 import type { Duplex } from "stream";
@@ -43,9 +40,6 @@ import type { TtsProviderConfig, SttProviderConfig } from "./types.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_SYSTEM_PROMPT = readFileSync(join(__dirname, "..", "..", "init", "defaults", "system.md"), "utf-8").trim();
-
-/** Default port for the Twilio HTTP/WebSocket server */
-const DEFAULT_PORT = 8080;
 
 /** Interruption threshold for phone calls (higher than local mic due to no VPIO echo cancellation) */
 const PHONE_INTERRUPTION_THRESHOLD_MS = 2000;
@@ -122,7 +116,7 @@ interface ActiveCall {
 const activeCalls = new Map<string, ActiveCall>();
 
 // ============================================================================
-// MAIN ENTRYPOINT
+// EXPORTED HANDLERS
 // ============================================================================
 
 /**
@@ -141,71 +135,47 @@ export function setCallClaudeSession(token: string, session: import("./claude-se
 }
 
 /**
- * Start the Twilio HTTP + WebSocket server.
+ * Handle Twilio-specific HTTP requests.
  *
- * Reads configuration from process.env. Throws immediately if required
- * env vars (TWILIO_AUTH_TOKEN, TWILIO_WEBHOOK_URL) are missing.
- * Creates an HTTP server for the /twilio/incoming-call webhook and a
- * WebSocket server for Twilio media stream connections.
+ * Routes POST /twilio/incoming-call and POST /register-call.
+ * Returns true if the request was handled, false otherwise (so the
+ * caller can fall through to other handlers like the dashboard proxy).
  *
- * @param dashboardPort - Dashboard server port for proxying non-Twilio requests
- * @returns Resolves when the server is listening
- * @throws Error if TWILIO_AUTH_TOKEN or TWILIO_WEBHOOK_URL are not set
+ * @param req - HTTP request
+ * @param res - HTTP response
+ * @returns true if handled
  */
-export async function startTwilioServer(dashboardPort: number): Promise<void> {
-  const authToken = process.env.TWILIO_AUTH_TOKEN;
-  const webhookUrl = process.env.TWILIO_WEBHOOK_URL;
-  const port = parseInt(process.env.TWILIO_PORT ?? "", 10) || DEFAULT_PORT;
-
-  if (!authToken) {
-    throw new Error("TWILIO_AUTH_TOKEN is required in .env");
-  }
-  if (!webhookUrl) {
-    throw new Error("TWILIO_WEBHOOK_URL is required in .env");
+export function handleTwilioHttpRequest(req: IncomingMessage, res: ServerResponse): boolean {
+  if (req.method === "POST" && req.url === "/twilio/incoming-call") {
+    handleIncomingCall(req, res);
+    return true;
   }
 
-  // Extract the host from the webhook URL for TwiML WebSocket URLs
-  const webhookHost = new URL(webhookUrl).host;
+  if (req.method === "POST" && req.url === "/register-call") {
+    handleRegisterCall(req, res);
+    return true;
+  }
 
-  // Create HTTP server
-  const server = createServer((req, res) => {
-    if (req.method === "POST" && req.url === "/twilio/incoming-call") {
-      handleIncomingCall(req, res, authToken, webhookUrl, webhookHost);
-      return;
-    }
+  return false;
+}
 
-    // Register an outbound call token with an optional agentId before Twilio connects
-    if (req.method === "POST" && req.url === "/register-call") {
-      handleRegisterCall(req, res);
-      return;
-    }
-
-    // Proxy all other requests to the dashboard server
-    if (dashboardPort) {
-      proxyToDashboard(req, res, dashboardPort);
-      return;
-    }
-
-    res.writeHead(404, { "Content-Type": "text/plain" });
-    res.end("Not Found");
-  });
-
-  // Create WebSocket server (no automatic HTTP handling -- upgrades only)
-  const wss = new WebSocketServer({ noServer: true });
-
-  // Handle WebSocket upgrade requests
-  server.on("upgrade", (req: IncomingMessage, socket: Duplex, head: Buffer) => {
-    handleWebSocketUpgrade(req, socket, head, wss);
-  });
-
-  // Start listening
-  return new Promise<void>((resolve) => {
-    server.listen(port, () => {
-      console.log(`Twilio server listening on port ${port}`);
-      console.log(`Webhook URL: ${webhookUrl}`);
-      resolve();
-    });
-  });
+/**
+ * Handle a WebSocket upgrade for Twilio media streams.
+ *
+ * Delegates to the internal handleWebSocketUpgrade with the shared WSS.
+ *
+ * @param req - HTTP upgrade request
+ * @param socket - Underlying TCP socket
+ * @param head - First packet of the upgraded stream
+ * @param wss - WebSocketServer instance to accept the upgrade
+ */
+export function handleTwilioUpgrade(
+  req: IncomingMessage,
+  socket: Duplex,
+  head: Buffer,
+  wss: WebSocketServer,
+): void {
+  handleWebSocketUpgrade(req, socket, head, wss);
 }
 
 // ============================================================================
@@ -217,19 +187,14 @@ export async function startTwilioServer(dashboardPort: number): Promise<void> {
  *
  * Validates the Twilio request signature, generates a per-call token, and
  * responds with TwiML that tells Twilio to connect a media stream WebSocket.
+ * Reads auth token and tunnel URL lazily per-request so values are always current.
  *
  * @param req - HTTP request from Twilio
  * @param res - HTTP response to send TwiML back
- * @param authToken - Twilio auth token for signature validation
- * @param webhookUrl - Public webhook URL for signature validation
- * @param webhookHost - Host portion of the webhook URL for WebSocket URLs
  */
 function handleIncomingCall(
   req: IncomingMessage,
   res: ServerResponse,
-  authToken: string,
-  webhookUrl: string,
-  webhookHost: string,
 ): void {
   // Collect the POST body for signature validation
   let body = "";
@@ -237,12 +202,34 @@ function handleIncomingCall(
     body += chunk.toString();
   });
 
-  req.on("end", () => {
+  req.on("end", async () => {
+    // Read auth token and tunnel URL lazily per-request
+    const env = await readEnv();
+    const authToken = env.TWILIO_AUTH_TOKEN;
+    const tunnelUrl = getTunnelUrl();
+
+    if (!authToken) {
+      console.log("Rejected incoming call: TWILIO_AUTH_TOKEN not set");
+      res.writeHead(500, { "Content-Type": "text/plain" });
+      res.end("Server misconfigured");
+      return;
+    }
+
+    if (!tunnelUrl) {
+      console.log("Rejected incoming call: no tunnel URL available");
+      res.writeHead(500, { "Content-Type": "text/plain" });
+      res.end("Server misconfigured");
+      return;
+    }
+
+    const webhookHost = new URL(tunnelUrl).host;
+
     // Parse URL-encoded POST body into key-value params
     const params = parseUrlEncodedBody(body);
 
     // Validate Twilio signature (use full URL -- Twilio signs against the complete endpoint URL)
-    const validationUrl = webhookUrl.replace(/\/$/, "") + req.url;
+    const webhookUrl = tunnelUrl.replace(/\/$/, "");
+    const validationUrl = webhookUrl + req.url;
     const signature = req.headers["x-twilio-signature"] as string;
     if (!signature || !twilio.validateRequest(authToken, signature, validationUrl, params)) {
       console.log("Rejected incoming call: invalid Twilio signature");
@@ -539,49 +526,4 @@ function parseUrlEncodedBody(body: string): Record<string, string> {
   }
 
   return params;
-}
-
-/**
- * Proxy an HTTP request to the dashboard server on localhost.
- * Forwards the request method, path, headers, and body.
- *
- * @param req - Original incoming request
- * @param res - Response to write the proxied result to
- * @param dashboardPort - Port the dashboard server is listening on
- */
-function proxyToDashboard(req: IncomingMessage, res: ServerResponse, dashboardPort: number): void {
-  const proxyReq = httpRequest(
-    {
-      hostname: "127.0.0.1",
-      port: dashboardPort,
-      path: req.url,
-      method: req.method,
-      headers: req.headers,
-    },
-    (proxyRes) => {
-      res.writeHead(proxyRes.statusCode ?? 502, proxyRes.headers);
-      proxyRes.pipe(res);
-    },
-  );
-
-  proxyReq.on("error", () => {
-    res.writeHead(502, { "Content-Type": "text/plain" });
-    res.end("Dashboard unavailable");
-  });
-
-  req.pipe(proxyReq);
-}
-
-// ============================================================================
-// STANDALONE ENTRY POINT
-// ============================================================================
-
-// When run directly as a script (legacy child-process mode), auto-start.
-const isDirectRun = process.argv[1]?.endsWith("twilio-server.ts") || process.argv[1]?.endsWith("twilio-server.js");
-if (isDirectRun) {
-  const dashboardPort = parseInt(process.env.DASHBOARD_PORT ?? "", 10) || 0;
-  startTwilioServer(dashboardPort).catch((err) => {
-    console.error(`Twilio server failed: ${err}`);
-    process.exit(1);
-  });
 }
