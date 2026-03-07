@@ -17,7 +17,7 @@
 
 /**
  * Abstraction over audio I/O for the voice session.
- * Implemented by local-audio.ts (VPIO) and twilio-audio.ts (WebSocket).
+ * Implemented by browser-audio.ts (WebSocket) and twilio-audio.ts (WebSocket).
  */
 export interface AudioAdapter {
   /**

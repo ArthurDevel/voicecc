@@ -8,11 +8,10 @@
  * after the deadline, the user is authenticated.
  *
  * - GET /    -- probe and return { authenticated: boolean }
- * - POST /login -- open Terminal.app with `claude` for interactive login
  */
 
 import { Hono } from "hono";
-import { execFile, spawn } from "child_process";
+import { spawn } from "child_process";
 import { homedir } from "os";
 import { join } from "path";
 
@@ -95,24 +94,6 @@ export function authRoutes(): Hono {
   app.get("/", async (c) => {
     const authenticated = await probeClaudeAuth();
     return c.json({ authenticated });
-  });
-
-  /** Open Terminal.app with `claude` for interactive login */
-  app.post("/login", async (c) => {
-    const script = `tell application "Terminal"
-  activate
-  do script "${CLAUDE_BIN}"
-end tell`;
-
-    return new Promise<Response>((resolve) => {
-      execFile("osascript", ["-e", script], (err) => {
-        if (err) {
-          resolve(c.json({ error: err.message }, 500));
-          return;
-        }
-        resolve(c.json({ success: true }));
-      });
-    });
   });
 
   return app;
