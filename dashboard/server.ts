@@ -8,6 +8,7 @@
  */
 
 import { Hono } from "hono";
+import { basicAuth } from "hono/basic-auth";
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { readFileSync } from "fs";
@@ -47,6 +48,12 @@ const USER_CLAUDE_MD_PATH = join(homedir(), ".claude", "CLAUDE.md");
  */
 function createApp(): Hono {
   const app = new Hono();
+
+  // Dashboard password protection (HTTP Basic Auth)
+  const dashboardPassword = process.env.DASHBOARD_PASSWORD;
+  if (dashboardPassword) {
+    app.use("*", basicAuth({ username: "admin", password: dashboardPassword }));
+  }
 
   // API route groups
   app.route("/api/claude-md", claudeMdRoutes());
