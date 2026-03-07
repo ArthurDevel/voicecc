@@ -28,7 +28,6 @@ bin/                CLI entry point (voicecc command)
 
 ```bash
 # 1. Install system dependencies (macOS)
-xcode-select --install
 brew install cloudflared
 
 # 2. Install Voice CC
