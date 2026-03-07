@@ -1,17 +1,11 @@
 /**
- * Browser call server process management.
+ * Browser call server state management.
  *
- * Manages the lifecycle of the browser-server child process.
- * Analogous to twilio-manager.ts but simpler -- no TwiML app updates,
- * no Twilio SDK dependency.
- *
- * Responsibilities:
- * - Spawn browser-server.ts as a child process with DASHBOARD_PORT env var
- * - Stop the server via SIGTERM
- * - Report running status
+ * Tracks whether the browser call integration is enabled/active.
+ * The actual WebSocket handling runs in the unified voice server
+ * (voice-server.ts) — this module just manages the enabled state
+ * for the dashboard UI.
  */
-
-import { spawn, ChildProcess } from "child_process";
 
 // ============================================================================
 // TYPES
@@ -19,7 +13,7 @@ import { spawn, ChildProcess } from "child_process";
 
 /** Browser call server status for the dashboard UI */
 export interface BrowserCallStatus {
-  /** Whether the browser-server process is alive */
+  /** Whether the browser call integration is active */
   running: boolean;
 }
 
@@ -27,10 +21,7 @@ export interface BrowserCallStatus {
 // STATE
 // ============================================================================
 
-/** Browser server child process handle */
-let browserProcess: ChildProcess | null = null;
-
-/** Whether the browser call server is running */
+/** Whether the browser call integration is active */
 let browserRunning = false;
 
 // ============================================================================
@@ -38,57 +29,29 @@ let browserRunning = false;
 // ============================================================================
 
 /**
- * Start the browser call server.
- * Spawns browser-server.ts as a child process with DASHBOARD_PORT env var.
- * Uses TWILIO_PORT from .env (default 8080).
+ * Mark the browser call integration as started.
+ * The voice server is already running and accepts /audio WebSocket connections.
  *
- * @param dashboardPort - The dashboard server port (for proxying)
- * @throws Error if the server is already running
+ * @param _dashboardPort - Unused (kept for API compatibility)
  */
-export async function startBrowserCallServer(dashboardPort: number): Promise<void> {
+export async function startBrowserCallServer(_dashboardPort: number): Promise<void> {
   if (browserRunning) {
     throw new Error("Browser call server is already running");
   }
 
-  browserProcess = spawn("npx", ["tsx", "server/voice/browser-server.ts"], {
-    cwd: process.cwd(),
-    stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, DASHBOARD_PORT: String(dashboardPort) },
-  });
-
-  browserProcess.stdout?.on("data", (chunk: Buffer) => {
-    process.stdout.write(`[browser-server] ${chunk.toString()}`);
-  });
-  browserProcess.stderr?.on("data", (chunk: Buffer) => {
-    process.stderr.write(`[browser-server] ${chunk.toString()}`);
-  });
-
-  browserProcess.on("exit", (code) => {
-    if (browserRunning) {
-      console.error(`Browser call server exited unexpectedly (code ${code})`);
-    }
-    browserRunning = false;
-    browserProcess = null;
-  });
-
   browserRunning = true;
-  console.log("Browser call server started.");
+  console.log("Browser call integration started.");
 }
 
 /**
- * Stop the browser call server.
- * Sends SIGTERM to the child process and clears state.
+ * Mark the browser call integration as stopped.
  */
 export function stopBrowserCallServer(): void {
-  if (browserProcess && !browserProcess.killed) {
-    browserProcess.kill("SIGTERM");
-  }
-  browserProcess = null;
   browserRunning = false;
 }
 
 /**
- * Get the status of the browser call server.
+ * Get the status of the browser call integration.
  *
  * @returns Status with running state
  */
@@ -97,9 +60,9 @@ export function getBrowserCallStatus(): BrowserCallStatus {
 }
 
 /**
- * Check whether the browser call server process is currently alive.
+ * Check whether the browser call integration is active.
  *
- * @returns True if the server is running
+ * @returns True if the integration is active
  */
 export function isBrowserCallRunning(): boolean {
   return browserRunning;

@@ -1,15 +1,13 @@
 /**
- * Twilio voice server management.
+ * Twilio integration state management.
  *
- * Manages the lifecycle of the Twilio server (runs in-process):
- * - Start the server with dashboard port and optional tunnel URL
- * - Stop the server
- * - Report running status
+ * Tracks whether the Twilio integration is enabled/active and handles
+ * Twilio-specific setup (webhook URL updates). The actual HTTP/WebSocket
+ * handling runs in the unified voice server (voice-server.ts).
  */
 
 import { readEnv } from "./env.js";
 import twilioSdk from "twilio";
-import { startTwilioServer as startServer } from "../voice/twilio-server.js";
 
 // ============================================================================
 // TYPES
@@ -32,17 +30,17 @@ let twilioRunning = false;
 // ============================================================================
 
 /**
- * Start the Twilio voice server.
+ * Start the Twilio integration.
  * Reads .env for TWILIO_AUTH_TOKEN. If tunnelUrl exists, updates phone number
- * webhooks via Twilio SDK.
- * Starts the Twilio server in-process.
+ * webhooks via Twilio SDK. The voice server is already running and handles
+ * Twilio HTTP/WebSocket requests.
  *
- * @param dashboardPort - The dashboard server port (for proxying)
+ * @param _dashboardPort - Unused (kept for API compatibility)
  * @param tunnelUrl - Optional tunnel public URL for webhook configuration
  */
-export async function startTwilioServer(dashboardPort: number, tunnelUrl?: string): Promise<void> {
+export async function startTwilioServer(_dashboardPort: number, tunnelUrl?: string): Promise<void> {
   if (twilioRunning) {
-    throw new Error("Twilio server is already running");
+    throw new Error("Twilio is already running");
   }
 
   const envVars = await readEnv();
@@ -74,11 +72,8 @@ export async function startTwilioServer(dashboardPort: number, tunnelUrl?: strin
     }
   }
 
-  // Start the Twilio server in-process
-  await startServer(dashboardPort);
-
   twilioRunning = true;
-  console.log("Twilio server started.");
+  console.log("Twilio integration started.");
 }
 
 /**
