@@ -33,6 +33,19 @@ npm install -g voicecc
 voicecc
 ```
 
+## Development
+
+```bash
+# 1. Install dependencies
+npm install
+
+# 2. Start the backend server
+npm start
+
+# 3. In a separate terminal, start the dashboard with hot reload
+npm run dev:dashboard
+```
+
 ## How It Works
 
 1. **Mic capture**: Browser captures 16kHz mono PCM via WebRTC
