@@ -13,8 +13,7 @@
  * - Clear the buffer after transcription or on demand
  */
 
-import type { SttProcessor } from "./stt.js";
-import type { TranscriptionResult } from "./types.js";
+import type { SttProcessor, TranscriptionResult } from "./types.js";
 
 // ============================================================================
 // CONSTANTS

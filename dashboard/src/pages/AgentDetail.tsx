@@ -108,7 +108,7 @@ export function AgentDetail() {
     if (!id || !agent || !activeProvider) return;
     setSavingVoice(true);
     try {
-      const providerKey = activeProvider as "elevenlabs" | "local";
+      const providerKey = activeProvider as "elevenlabs";
       const existingVoice = agent.config.voice ?? {};
       const newVoice = { ...existingVoice, [providerKey]: { id: voiceId, name: voices.find((v) => v.id === voiceId)?.name ?? "" } };
       await patch(`/api/agents/${id}`, { config: { voice: newVoice } });
@@ -246,10 +246,10 @@ export function AgentDetail() {
           {activeProvider && voices.length > 0 ? (
             <div>
               <label style={{ display: "block", fontSize: 13, color: "var(--text-secondary)", marginBottom: 6 }}>
-                {activeProvider === "elevenlabs" ? "ElevenLabs" : "Local Kokoro"} voice
+                ElevenLabs voice
               </label>
               <select
-                value={agent.config.voice?.[activeProvider as "elevenlabs" | "local"]?.id ?? ""}
+                value={agent.config.voice?.[activeProvider as "elevenlabs"]?.id ?? ""}
                 onChange={(e) => handleVoiceChange(e.target.value)}
                 disabled={savingVoice}
                 style={{
