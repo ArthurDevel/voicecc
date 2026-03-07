@@ -20,7 +20,6 @@ import "dotenv/config";
 import { randomUUID } from "crypto";
 import { readFileSync } from "fs";
 import { createServer, request as httpRequest } from "http";
-import { homedir } from "os";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
@@ -36,7 +35,7 @@ import type { IncomingMessage, ServerResponse } from "http";
 import type { Duplex } from "stream";
 import type { WebSocket } from "ws";
 import type { VoiceSession } from "./voice-session.js";
-import type { TtsProviderConfig, SttProviderConfig, TtsProviderType, SttProviderType } from "./types.js";
+import type { TtsProviderConfig, SttProviderConfig } from "./types.js";
 
 // ============================================================================
 // CONSTANTS
@@ -57,9 +56,7 @@ const AUDIO_INACTIVITY_TIMEOUT_MS = 5000;
 /** How often to check for audio inactivity (ms) */
 const AUDIO_INACTIVITY_CHECK_INTERVAL_MS = 2000;
 
-/** Read provider selection and ElevenLabs config from environment */
-const TTS_PROVIDER = (process.env.TTS_PROVIDER ?? "local") as TtsProviderType;
-const STT_PROVIDER = (process.env.STT_PROVIDER ?? "local") as SttProviderType;
+/** Read ElevenLabs config from environment */
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY ?? "";
 const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID ?? "WrjxnKxK0m1uiaH0uteU";
 const ELEVENLABS_MODEL_ID = process.env.ELEVENLABS_MODEL_ID ?? "eleven_turbo_v2_5";
@@ -67,15 +64,13 @@ const ELEVENLABS_STT_MODEL_ID = process.env.ELEVENLABS_STT_MODEL_ID ?? "scribe_v
 
 /** TTS provider configuration built from env vars */
 const ttsProvider: TtsProviderConfig = {
-  provider: TTS_PROVIDER,
-  local: { model: "prince-canuma/Kokoro-82M", voice: "af_heart" },
+  provider: "elevenlabs",
   elevenlabs: { apiKey: ELEVENLABS_API_KEY, voiceId: ELEVENLABS_VOICE_ID, modelId: ELEVENLABS_MODEL_ID },
 };
 
 /** STT provider configuration built from env vars */
 const sttProvider: SttProviderConfig = {
-  provider: STT_PROVIDER,
-  local: { modelPath: join(homedir(), ".claude-voice-models", "whisper-small") },
+  provider: "elevenlabs",
   elevenlabs: { apiKey: ELEVENLABS_API_KEY, modelId: ELEVENLABS_STT_MODEL_ID },
 };
 
@@ -480,15 +475,13 @@ async function handleStreamStart(
         },
         onSessionEnd: () => ws.close(),
       };
-      // Override TTS voice if the agent has a preference for the active provider
-      if (agent.config.voice?.[TTS_PROVIDER]) {
-        const voicePref = agent.config.voice[TTS_PROVIDER];
-        const overriddenTts = { ...ttsProvider };
-        if (TTS_PROVIDER === "local") {
-          overriddenTts.local = { ...overriddenTts.local, voice: voicePref.id };
-        } else {
-          overriddenTts.elevenlabs = { ...overriddenTts.elevenlabs, voiceId: voicePref.id };
-        }
+      // Override TTS voice if the agent has a preference
+      if (agent.config.voice?.elevenlabs) {
+        const voicePref = agent.config.voice.elevenlabs;
+        const overriddenTts: TtsProviderConfig = {
+          ...ttsProvider,
+          elevenlabs: { ...ttsProvider.elevenlabs, voiceId: voicePref.id },
+        };
         sessionConfig = { ...sessionConfig, ttsProvider: overriddenTts };
         console.log(`Using voice "${voicePref.name}" (${voicePref.id}) for agent "${agentId}"`);
       }

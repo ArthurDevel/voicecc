@@ -57,7 +57,7 @@ interface VadProcessor {
  * @throws Error if the ONNX model fails to load
  */
 async function createVad(onEvent: VadEventCallback): Promise<VadProcessor> {
-  // Dynamic import to avoid ONNX runtime conflict with kokoro-js.
+  // Dynamic import for avr-vad.
   const { RealTimeVAD } = await import("avr-vad");
 
   let lastProbability = 0;

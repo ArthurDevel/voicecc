@@ -21,14 +21,6 @@
  * Passed to `startVoiceLoop` to initialize all modules.
  */
 export interface VoiceLoopConfig {
-  /** Path to the sherpa-onnx Whisper ONNX model directory */
-  sttModelPath: string;
-  /** mlx-audio model ID for TTS (e.g. "prince-canuma/Kokoro-82M") */
-  ttsModel: string;
-  /** TTS voice ID (e.g. "af_heart" for Kokoro) */
-  ttsVoice: string;
-  /** Directory for cached model files */
-  modelCacheDir: string;
   /** Endpointing configuration for turn detection */
   endpointing: EndpointingConfig;
   /** Narration configuration for Claude response processing */
@@ -80,21 +72,52 @@ export interface NarrationConfig {
 }
 
 /**
- * Configuration for the TTS (text-to-speech) module.
+ * TTS player instance that converts text to spoken audio output.
  */
-export interface TtsConfig {
-  /** mlx-audio model ID (e.g. "prince-canuma/Kokoro-82M") */
-  model: string;
-  /** Voice ID (e.g. "af_heart" for Kokoro) */
-  voice: string;
-  /** Writable stream for PCM audio output (VPIO process stdin) */
-  speakerInput: import("stream").Writable;
-  /** Callback to clear the VPIO playback buffer on interruption */
-  interruptPlayback: () => void;
-  /** Callback to resume VPIO stdin processing after an interrupt */
-  resumePlayback: () => void;
-  /** Override server command for testing (default: Python TTS server) */
-  serverCommand?: string[];
+export interface TtsPlayer {
+  /**
+   * Convert text to audio and play it through the speakers.
+   * @param text - The text to speak
+   */
+  speak(text: string): Promise<void>;
+
+  /**
+   * Stream text chunks into TTS for incremental playback.
+   * @param texts - Async iterable of text chunks
+   */
+  speakStream(texts: AsyncIterable<TextChunk>): Promise<void>;
+
+  /** Interrupt current playback immediately. */
+  interrupt(): void;
+
+  /** Check whether TTS is currently generating and playing audio. */
+  isSpeaking(): boolean;
+
+  /** Free all TTS resources. */
+  destroy(): void;
+}
+
+/**
+ * STT processor instance that converts speech audio to text.
+ */
+export interface SttProcessor {
+  /**
+   * Appends audio samples to the internal buffer.
+   * @param samples - Float32Array of audio samples (16kHz, normalized -1.0 to 1.0)
+   */
+  accumulate(samples: Float32Array): void;
+
+  /**
+   * Batch-transcribes the accumulated audio buffer. Clears the buffer afterward.
+   * @returns Transcription result with text, isFinal flag, and timestamp
+   */
+  transcribe(): Promise<TranscriptionResult>;
+
+  /** Clears the accumulated audio buffer without transcribing. */
+  clearBuffer(): void;
+
+  /** Frees underlying resources. */
+  destroy(): void;
 }
 
 // ============================================================================
@@ -218,10 +241,10 @@ export interface VoiceLoopState {
 // ============================================================================
 
 /** Available TTS provider backends */
-export type TtsProviderType = "local" | "elevenlabs";
+export type TtsProviderType = "elevenlabs";
 
 /** Available STT provider backends */
-export type SttProviderType = "local" | "elevenlabs";
+export type SttProviderType = "elevenlabs";
 
 /**
  * Readiness status for a provider.
@@ -231,7 +254,7 @@ export interface ProviderStatus {
   /** Whether the provider is ready to use */
   ready: boolean;
   /** Reason the provider is not ready (only present when ready is false) */
-  reason?: "not_installed" | "missing_api_key" | "unsupported_platform";
+  reason?: "missing_api_key";
   /** Human-readable detail about why the provider is not ready */
   detail?: string;
 }
@@ -243,8 +266,6 @@ export interface ProviderStatus {
 export interface TtsProviderConfig {
   /** Which TTS provider to use */
   provider: TtsProviderType;
-  /** Settings for the local Kokoro TTS provider */
-  local: { model: string; voice: string };
   /** Settings for the ElevenLabs TTS provider */
   elevenlabs: { apiKey: string; voiceId: string; modelId: string };
 }
@@ -256,8 +277,6 @@ export interface TtsProviderConfig {
 export interface SttProviderConfig {
   /** Which STT provider to use */
   provider: SttProviderType;
-  /** Settings for the local Whisper STT provider */
-  local: { modelPath: string };
   /** Settings for the ElevenLabs STT provider */
   elevenlabs: { apiKey: string; modelId: string };
 }
