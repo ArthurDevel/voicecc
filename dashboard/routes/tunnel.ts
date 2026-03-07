@@ -2,7 +2,7 @@
  * Tunnel management API routes.
  *
  * Delegates to the tunnel service for cloudflared lifecycle operations:
- * - GET /check -- is cloudflared installed
+ * - GET /check -- always true (cloudflared npm package auto-downloads the binary)
  * - GET /status -- running state + public URL
  * - POST /start -- start tunnel
  * - POST /stop -- stop tunnel
@@ -10,7 +10,6 @@
 
 import { Hono } from "hono";
 import {
-  checkCloudflaredInstalled,
   isTunnelRunning,
   getTunnelUrl,
   getTunnelStartedAt,
@@ -31,10 +30,9 @@ import { readEnv } from "../../server/services/env.js";
 export function tunnelRoutes(): Hono {
   const app = new Hono();
 
-  /** Check if cloudflared is installed */
-  app.get("/check", async (c) => {
-    const installed = await checkCloudflaredInstalled();
-    return c.json({ installed });
+  /** Always true -- the cloudflared npm package auto-downloads the binary */
+  app.get("/check", (c) => {
+    return c.json({ installed: true });
   });
 
   /** Get tunnel running status and URL */

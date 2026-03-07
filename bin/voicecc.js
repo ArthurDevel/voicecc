@@ -3,11 +3,11 @@
 /**
  * CLI entry point for the voicecc command.
  *
- * Checks if first-run setup is needed (build dashboard, etc.)
- * and runs it with visible output. Then spawns `tsx server/index.ts` for the dashboard.
+ * Copies CLAUDE.md on first run, then spawns the dashboard server.
  */
 
 import { spawn } from "node:child_process";
+import { copyFileSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -15,13 +15,12 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const PKG_ROOT = join(__dirname, "..");
 const TSX_BIN = join(PKG_ROOT, "node_modules", ".bin", "tsx");
 
-// Run setup if needed (first run or incomplete install)
 process.chdir(PKG_ROOT);
-const { needsSetup, runSetup } = await import("../scripts/postinstall.js");
 
-if (needsSetup()) {
-  console.log("[voicecc] Running first-time setup...\n");
-  runSetup();
+// Copy CLAUDE.md template if available
+const claudeMdSrc = join("init", "CLAUDE.md");
+if (existsSync(claudeMdSrc)) {
+  copyFileSync(claudeMdSrc, "CLAUDE.md");
 }
 
 // Start the dashboard

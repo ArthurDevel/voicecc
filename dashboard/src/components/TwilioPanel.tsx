@@ -1,14 +1,14 @@
 /**
  * Twilio PSTN voice setup modal wizard.
  *
- * Step-by-step modal for configuring Twilio credentials, cloudflared,
- * and phone number for PSTN calling. Steps:
+ * Step-by-step modal for configuring Twilio credentials and phone number
+ * for PSTN calling. cloudflared is auto-managed via the npm package. Steps:
  * 1. Create a Twilio account (credentials)
  * 2. Get a phone number
- * 3. Install cloudflared
- * 4. Start server
- * 5. Configure webhook
- * 6. Your phone number
+ * 3. Enable integration
+ * 4. Configure webhook
+ * 5. Your phone number
+ * 6. Test call
  */
 
 import { useState, useEffect, useCallback } from "react";
@@ -44,7 +44,6 @@ interface IntegrationsState {
 export function TwilioPanel({ onClose }: TwilioPanelProps) {
   const [accountSid, setAccountSid] = useState("");
   const [authToken, setAuthToken] = useState("");
-  const [cloudflaredInstalled, setCloudflaredInstalled] = useState<boolean | null>(null);
   const [status, setStatus] = useState<TwilioStatusData | null>(null);
   const [phoneNumbers, setPhoneNumbers] = useState<PhoneNumber[]>([]);
   const [actionText, setActionText] = useState("");
@@ -66,7 +65,6 @@ export function TwilioPanel({ onClose }: TwilioPanelProps) {
       .then((data) => setEnabled(data.twilio.enabled))
       .catch(() => {});
 
-    checkCloudflared();
     pollStatus();
     const interval = setInterval(pollStatus, 5000);
     return () => clearInterval(interval);
@@ -84,14 +82,6 @@ export function TwilioPanel({ onClose }: TwilioPanelProps) {
   /** Poll Twilio status */
   const pollStatus = () => {
     get<TwilioStatusData>("/api/twilio/status").then(setStatus).catch(() => {});
-  };
-
-  /** Check if cloudflared is installed */
-  const checkCloudflared = () => {
-    setCloudflaredInstalled(null);
-    get<{ installed: boolean }>("/api/tunnel/check")
-      .then((data) => setCloudflaredInstalled(data.installed))
-      .catch(() => setCloudflaredInstalled(false));
   };
 
   /**
@@ -182,32 +172,10 @@ export function TwilioPanel({ onClose }: TwilioPanelProps) {
 
         <hr className="setup-divider" />
 
-        {/* Step 3: cloudflared */}
+        {/* Step 3: Enable integration */}
         <div className="setup-step">
           <div className="setup-step-title">
             <span className="setup-step-number">3</span>
-            Install cloudflared
-          </div>
-          <div className="setup-step-desc">
-            cloudflared tunnels your local server so Twilio can reach it.
-            No account needed. Install via: <code>brew install cloudflared</code>
-          </div>
-          <div className="setup-paste-row">
-            <span style={{ fontSize: 12, color: cloudflaredInstalled === true ? "#2ea043" : cloudflaredInstalled === false ? "#d73a49" : "#999" }}>
-              {cloudflaredInstalled === null ? "Checking..." : cloudflaredInstalled ? "cloudflared is installed" : "cloudflared not found"}
-            </span>
-            <button style={{ background: "#333", border: "1px solid #404040", color: "#999" }} onClick={checkCloudflared}>
-              Re-check
-            </button>
-          </div>
-        </div>
-
-        <hr className="setup-divider" />
-
-        {/* Step 4: Enable integration */}
-        <div className="setup-step">
-          <div className="setup-step-title">
-            <span className="setup-step-number">4</span>
             {isRunning ? "Server running" : "Enable integration"}
           </div>
           <div className="setup-step-desc">
@@ -233,9 +201,9 @@ export function TwilioPanel({ onClose }: TwilioPanelProps) {
           </div>
         </div>
 
-        {/* Step 5: Webhook URL */}
+        {/* Step 4: Webhook URL */}
         <div className="setup-step">
-          <div className="setup-step-title"><span className="setup-step-number">5</span>Configure the Twilio webhook</div>
+          <div className="setup-step-title"><span className="setup-step-number">4</span>Configure the Twilio webhook</div>
           <div className="setup-step-desc">
             {webhookUrl ? (
               <>
@@ -252,9 +220,9 @@ export function TwilioPanel({ onClose }: TwilioPanelProps) {
 
         <hr className="setup-divider" />
 
-        {/* Step 6: Phone number display */}
+        {/* Step 5: Phone number display */}
         <div className="setup-step">
-          <div className="setup-step-title"><span className="setup-step-number">6</span>Your phone number</div>
+          <div className="setup-step-title"><span className="setup-step-number">5</span>Your phone number</div>
           <div className="setup-step-desc">
             {phoneNumbers.length > 0 ? (
               <>
@@ -277,7 +245,7 @@ export function TwilioPanel({ onClose }: TwilioPanelProps) {
 
         {/* Test Call */}
         <div className="setup-step">
-          <div className="setup-step-title"><span className="setup-step-number">7</span>Test your setup</div>
+          <div className="setup-step-title"><span className="setup-step-number">6</span>Test your setup</div>
           <div className="setup-step-desc">
             Enter your phone number and we'll call you with a test message.
             {testCallStatus && <div style={{ color: testCallStatus.startsWith("Error") ? "#d73a49" : "#2ea043", marginTop: 4, fontSize: 12 }}>{testCallStatus}</div>}
