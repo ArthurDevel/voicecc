@@ -14,14 +14,13 @@
 import "dotenv/config";
 
 import { readFileSync } from "fs";
-import { homedir } from "os";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
 import { createLocalAudioAdapter } from "./local-audio.js";
 import { createVoiceSession } from "./voice-session.js";
 
-import type { TtsProviderConfig, SttProviderConfig, TtsProviderType, SttProviderType } from "./types.js";
+import type { TtsProviderConfig, SttProviderConfig } from "./types.js";
 
 // ============================================================================
 // CONSTANTS
@@ -33,12 +32,10 @@ const DEFAULT_SYSTEM_PROMPT = readFileSync(join(__dirname, "..", "..", "init", "
 /** Mic capture sample rate in Hz (must match VAD/STT expectations) */
 const MIC_SAMPLE_RATE = 16000;
 
-/** TTS output sample rate in Hz -- must match tts-server.py output format */
+/** TTS output sample rate in Hz */
 const TTS_SAMPLE_RATE = 24000;
 
-/** Read provider selection and ElevenLabs config from environment */
-const TTS_PROVIDER = (process.env.TTS_PROVIDER ?? "local") as TtsProviderType;
-const STT_PROVIDER = (process.env.STT_PROVIDER ?? "local") as SttProviderType;
+/** Read ElevenLabs config from environment */
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY ?? "";
 const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID ?? "WrjxnKxK0m1uiaH0uteU";
 const ELEVENLABS_MODEL_ID = process.env.ELEVENLABS_MODEL_ID ?? "eleven_turbo_v2_5";
@@ -46,15 +43,13 @@ const ELEVENLABS_STT_MODEL_ID = process.env.ELEVENLABS_STT_MODEL_ID ?? "scribe_v
 
 /** TTS provider configuration built from env vars */
 const ttsProvider: TtsProviderConfig = {
-  provider: TTS_PROVIDER,
-  local: { model: "prince-canuma/Kokoro-82M", voice: "af_heart" },
+  provider: "elevenlabs",
   elevenlabs: { apiKey: ELEVENLABS_API_KEY, voiceId: ELEVENLABS_VOICE_ID, modelId: ELEVENLABS_MODEL_ID },
 };
 
 /** STT provider configuration built from env vars */
 const sttProvider: SttProviderConfig = {
-  provider: STT_PROVIDER,
-  local: { modelPath: join(homedir(), ".claude-voice-models", "whisper-small") },
+  provider: "elevenlabs",
   elevenlabs: { apiKey: ELEVENLABS_API_KEY, modelId: ELEVENLABS_STT_MODEL_ID },
 };
 

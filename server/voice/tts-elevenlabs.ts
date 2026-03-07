@@ -13,11 +13,8 @@
  * - Support interruption by cancelling in-flight requests and clearing playback
  */
 
-import { bufferSentences, writePcm } from "./tts.js";
-
 import type { Writable } from "stream";
-import type { TtsPlayer } from "./tts.js";
-import type { TextChunk } from "./types.js";
+import type { TtsPlayer, TextChunk } from "./types.js";
 
 // ============================================================================
 // CONSTANTS
@@ -292,6 +289,68 @@ export async function createElevenlabsTts(config: ElevenlabsTtsConfig): Promise<
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
+
+/**
+ * Write a PCM buffer to the speaker stream, respecting backpressure.
+ * @param stream - The speaker writable stream
+ * @param pcmBuffer - Raw PCM bytes to write
+ */
+function writePcm(stream: Writable, pcmBuffer: Buffer): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const ok = stream.write(pcmBuffer, (err: Error | null | undefined) => {
+      if (err) reject(err);
+    });
+    if (ok) {
+      resolve();
+    } else {
+      stream.once("drain", () => resolve());
+    }
+  });
+}
+
+/** Sentence-ending punctuation pattern: .!? followed by whitespace or end */
+const SENTENCE_END_RE = /[.!?][\s]+/;
+
+/** Minimum sentence length before we'll split on punctuation */
+const MIN_SENTENCE_LENGTH = 20;
+
+/**
+ * Buffer streaming text deltas into complete sentences for TTS generation.
+ * Chunks tagged with { flush: true } are yielded immediately (e.g. tool narration).
+ * Plain string chunks are buffered and split on sentence-ending punctuation.
+ * @param texts - Async iterable of TextChunk from the narrator
+ * @yields Complete sentences ready for TTS
+ */
+async function* bufferSentences(texts: AsyncIterable<TextChunk>): AsyncGenerator<string> {
+  let buffer = "";
+
+  for await (const raw of texts) {
+    if (typeof raw !== "string") {
+      if (buffer.trim()) {
+        yield buffer.trim();
+        buffer = "";
+      }
+      yield raw.text;
+      continue;
+    }
+
+    buffer += raw;
+
+    while (buffer.length >= MIN_SENTENCE_LENGTH) {
+      const match = SENTENCE_END_RE.exec(buffer.slice(MIN_SENTENCE_LENGTH - 1));
+      if (!match) break;
+
+      const splitIndex = MIN_SENTENCE_LENGTH - 1 + match.index + match[0].length;
+      const sentence = buffer.slice(0, splitIndex).trim();
+      buffer = buffer.slice(splitIndex);
+
+      if (sentence) yield sentence;
+    }
+  }
+
+  const remaining = buffer.trim();
+  if (remaining) yield remaining;
+}
 
 /**
  * Read chunks from a fetch Response body as an async iterable, ensuring each
