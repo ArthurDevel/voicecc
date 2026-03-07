@@ -1,16 +1,15 @@
 /**
- * Dashboard sidebar with navigation, voice button, and conversation list.
+ * Dashboard sidebar with navigation, browser call button, and conversation list.
  *
  * Renders:
- * - New Terminal Session button (opens Terminal)
  * - New Browser Session button (enabled when browser call server is running)
  * - Conversation list fetched from API
  * - Settings nav item in footer
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { get, post } from "../api";
+import { get } from "../api";
 import { BrowserCallModal } from "./BrowserCallModal";
 import type { TwilioStatus, BrowserCallStatus } from "../pages/Home";
 
@@ -37,8 +36,6 @@ interface ConversationSummary {
 
 export function Sidebar({ twilioStatus, browserCallStatus, authStatus }: SidebarProps) {
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
-  const [voiceButtonText, setVoiceButtonText] = useState("New Terminal Session");
-  const [voiceDisabled, setVoiceDisabled] = useState(false);
   const [showBrowserCallModal, setShowBrowserCallModal] = useState(false);
 
   const location = useLocation();
@@ -68,18 +65,6 @@ export function Sidebar({ twilioStatus, browserCallStatus, authStatus }: Sidebar
     }
   }, [isDark]);
 
-  const handleStartVoice = useCallback(async () => {
-    setVoiceDisabled(true);
-    setVoiceButtonText("Opening Terminal...");
-    try {
-      await post("/api/voice/start");
-      setVoiceButtonText("New Terminal Session");
-    } catch {
-      setVoiceButtonText("Error -- retry");
-    }
-    setVoiceDisabled(false);
-  }, []);
-
   const formatLabel = (conv: ConversationSummary): string => {
     const date = new Date(conv.timestamp);
     const dateStr = date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
@@ -107,15 +92,8 @@ export function Sidebar({ twilioStatus, browserCallStatus, authStatus }: Sidebar
         </span>
       </div>
 
-      {/* Top action buttons styled as primary/secondary */}
+      {/* Top action button */}
       <div style={{ padding: "16px 12px 0" }}>
-        <button
-          className="btn-start-voice"
-          disabled={voiceDisabled}
-          onClick={handleStartVoice}
-        >
-          {voiceButtonText}
-        </button>
         <span style={{ position: "relative" }} className="browser-call-wrap">
           <button
             className="btn-browser-call"
