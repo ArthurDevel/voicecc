@@ -33,12 +33,10 @@ import { fileURLToPath } from "url";
 import type { AudioAdapter } from "./audio-adapter.js";
 import type { SessionLock } from "./session-lock.js";
 import type { VadProcessor } from "./vad.js";
-import type { SttProcessor } from "./stt.js";
 import type { Endpointer } from "./endpointing.js";
 import type { ClaudeSession } from "./claude-session.js";
 import type { Narrator } from "./narration.js";
-import type { TtsPlayer } from "./tts.js";
-import type { VadEvent, VoiceLoopState, VoiceLoopStatus, TextChunk, EndpointingConfig, NarrationConfig, ClaudeSessionConfig, TtsProviderConfig, SttProviderConfig } from "./types.js";
+import type { SttProcessor, TtsPlayer, VadEvent, VoiceLoopState, VoiceLoopStatus, TextChunk, EndpointingConfig, NarrationConfig, ClaudeSessionConfig, TtsProviderConfig, SttProviderConfig } from "./types.js";
 
 // ============================================================================
 // CONSTANTS

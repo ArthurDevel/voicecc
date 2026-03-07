@@ -1,7 +1,7 @@
 {
   "name": "voicecc",
   "version": "1.0.11",
-  "description": "Voice mode plugin for Claude Code -- hands-free interaction via local STT/TTS/VAD",
+  "description": "Voice mode plugin for Claude Code -- hands-free interaction via ElevenLabs STT/TTS and VAD",
   "type": "module",
   "bin": {
     "voicecc": "bin/voicecc.js"
@@ -42,9 +42,6 @@
     "tsx": "^4.19.0",
     "twilio": "^5.0.0",
     "ws": "^8.18.0"
-  },
-  "optionalDependencies": {
-    "sherpa-onnx-node": "^1.11.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
