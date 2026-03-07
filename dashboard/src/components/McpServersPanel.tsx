@@ -7,7 +7,7 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
-import { get, post, del } from "../api";
+import { get, del } from "../api";
 import { TwilioPanel } from "./TwilioPanel";
 import { BrowserCallSetupPanel } from "./BrowserCallSetupPanel";
 import { AddMcpServerModal } from "./AddMcpServerModal";
@@ -120,19 +120,9 @@ export function McpServersPanel({ twilioRunning, browserCallRunning }: McpServer
                 <span className="mcp-server-name">{server.name}</span>
                 <span className="mcp-server-url" title={server.url}>{server.url}</span>
                 <span className="mcp-server-badge">{server.type.toUpperCase()}</span>
-                {server.status === "needs_auth" && server.type === "http" ? (
-                  <button
-                    className={`mcp-server-status ${dotClass(server.status)}`}
-                    title="Opens Terminal to re-add this server and trigger login"
-                    onClick={() => post(`/api/mcp-servers/${server.name}/auth`).catch(() => { })}
-                  >
-                    Authenticate
-                  </button>
-                ) : (
-                  <span className={`mcp-server-status ${dotClass(server.status)}`}>
-                    {statusLabel(server.status)}
-                  </span>
-                )}
+                <span className={`mcp-server-status ${dotClass(server.status)}`}>
+                  {statusLabel(server.status)}
+                </span>
                 <span className="mcp-delete-wrap">
                   <button
                     className={`mcp-delete-btn${isGlobal ? " disabled" : ""}`}

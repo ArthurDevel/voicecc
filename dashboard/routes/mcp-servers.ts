@@ -4,7 +4,6 @@
  * Runs `claude mcp list` and parses the output into structured entries:
  * - GET /        -- list all configured MCP servers with connection status
  * - POST /add    -- add a new MCP server by running `claude mcp add` directly
- * - POST /:name/auth -- open Terminal to guide user through MCP server auth
  */
 
 import { Hono } from "hono";
@@ -92,30 +91,6 @@ export function mcpServersRoutes(): Hono {
           return;
         }
         resolve(c.json({ success: true, output: stdout }));
-      });
-    });
-  });
-
-  /** Open Claude Code in Terminal to guide user through MCP server auth */
-  app.post("/:name/auth", async (c) => {
-    const { name } = c.req.param();
-    const claudePath = join(homedir(), ".local", "bin", "claude");
-
-    const prompt = `Please guide the user through authenticating the ${name} MCP server. Tell them to type /mcp. Be to the point, concise, use bullet points and bold.`;
-    // Escape double quotes for AppleScript string
-    const escapedPrompt = prompt.replace(/"/g, '\\"');
-    const script = `tell application "Terminal"
-  activate
-  do script "${claudePath} \\"${escapedPrompt}\\""
-end tell`;
-
-    return new Promise<Response>((resolve) => {
-      execFile("osascript", ["-e", script], (err) => {
-        if (err) {
-          resolve(c.json({ error: err.message }, 500));
-          return;
-        }
-        resolve(c.json({ success: true }));
       });
     });
   });

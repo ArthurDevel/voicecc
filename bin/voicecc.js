@@ -3,7 +3,7 @@
 /**
  * CLI entry point for the voicecc command.
  *
- * Checks if first-run setup is needed (compile mic-vpio, Python venv, etc.)
+ * Checks if first-run setup is needed (build dashboard, etc.)
  * and runs it with visible output. Then spawns `tsx server/index.ts` for the dashboard.
  */
 
