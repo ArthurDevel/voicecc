@@ -12,7 +12,6 @@ server/             Backend: voice pipeline + orchestration services
 dashboard/          Web UI (Vite + React) + API routes (Hono)
 lander/             Static landing page
 init/               Default prompt templates for new agents
-scripts/            Setup utilities (postinstall)
 bin/                CLI entry point (voicecc command)
 ```
 

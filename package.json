@@ -10,8 +10,7 @@
     "start": "tsx server/index.ts",
     "dev:dashboard": "cd dashboard && npx vite",
     "build:dashboard": "cd dashboard && npx vite build",
-    "prepublishOnly": "npm run build:dashboard",
-    "postinstall": "node -e \"const fs=require('fs');try{fs.writeFileSync('/dev/tty','\\n========================================\\n            VOICECC INSTALLED\\n========================================\\n\\n  Run voicecc to start the dashboard.\\n\\n')}catch(e){}\""
+    "prepublishOnly": "npm run build:dashboard"
   },
   "files": [
     "bin/",
@@ -19,7 +18,6 @@
     "dashboard/dist/",
     "dashboard/server.ts",
     "dashboard/routes/",
-    "scripts/",
     "init/",
     "tsconfig.json"
   ],
