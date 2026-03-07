@@ -1,9 +1,8 @@
 /**
  * Postinstall setup script for voicecc.
  *
- * Lightweight first-run setup that installs the CLAUDE.md file
- * and builds the dashboard. Local TTS/STT model installation is
- * handled on demand via setup-local-tts.js and setup-local-stt.js.
+ * Lightweight first-run setup that installs the CLAUDE.md file,
+ * compiles the mic-vpio binary (macOS), and builds the dashboard.
  *
  * Called from bin/voicecc.js on first run (or when setup is incomplete).
  */
