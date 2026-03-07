@@ -11,7 +11,6 @@ import { Hono } from "hono";
 import { startBrowserCallServer, stopBrowserCallServer, getBrowserCallStatus, isBrowserCallRunning } from "../../server/services/browser-call-manager.js";
 import { startTunnel, stopTunnel, getTunnelUrl, isTunnelRunning } from "../../server/services/tunnel.js";
 import { readEnv } from "../../server/services/env.js";
-import { isRunning as isTwilioRunning } from "../../server/services/twilio-manager.js";
 
 // ============================================================================
 // STATE
@@ -48,14 +47,9 @@ export function browserCallRoutes(): Hono {
     return c.json({ ...status, tunnelUrl: getTunnelUrl() });
   });
 
-  /** Start tunnel + browser call server */
+  /** Start tunnel + browser call integration */
   app.post("/start", async (c) => {
     try {
-      // Port conflict check: Twilio server uses the same port
-      if (isTwilioRunning()) {
-        return c.json({ error: "Twilio server is already running on this port" }, 409);
-      }
-
       const envVars = await readEnv();
       const port = parseInt(envVars.TWILIO_PORT || "8080", 10);
 
@@ -74,12 +68,9 @@ export function browserCallRoutes(): Hono {
     }
   });
 
-  /** Stop browser call server. Only stops tunnel if Twilio is also stopped. */
+  /** Stop browser call integration */
   app.post("/stop", (c) => {
     stopBrowserCallServer();
-    if (!isTwilioRunning()) {
-      stopTunnel();
-    }
     return c.json({ success: true });
   });
 
