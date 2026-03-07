@@ -109,7 +109,7 @@ function proxyToDashboard(req: IncomingMessage, res: ServerResponse, dashboardPo
       port: dashboardPort,
       path: req.url,
       method: req.method,
-      headers: req.headers,
+      headers: { ...req.headers, "x-forwarded-for": "127.0.0.1" },
     },
     (proxyRes) => {
       res.writeHead(proxyRes.statusCode ?? 502, proxyRes.headers);

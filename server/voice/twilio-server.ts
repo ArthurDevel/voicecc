@@ -137,9 +137,13 @@ export function setCallClaudeSession(token: string, session: import("./claude-se
 /**
  * Handle Twilio-specific HTTP requests.
  *
+ * Routes POST /twilio/incoming-call and POST /register-call.
+ * Returns true if the request was handled, false otherwise (so the
+ * caller can fall through to other handlers like the dashboard proxy).
+ *
  * @param req - HTTP request
  * @param res - HTTP response
- * @returns true if the request was handled, false to pass through
+ * @returns true if handled
  */
 export function handleTwilioHttpRequest(req: IncomingMessage, res: ServerResponse): boolean {
   if (req.method === "POST" && req.url === "/twilio/incoming-call") {
@@ -156,10 +160,9 @@ export function handleTwilioHttpRequest(req: IncomingMessage, res: ServerRespons
 }
 
 /**
- * Handle a WebSocket upgrade request for the Twilio media stream.
+ * Handle a WebSocket upgrade for Twilio media streams.
  *
- * Extracts the per-call token from the URL path, validates it against
- * the activeCalls map, and either accepts or rejects the connection.
+ * Delegates to the internal handleWebSocketUpgrade with the shared WSS.
  *
  * @param req - HTTP upgrade request
  * @param socket - Underlying TCP socket
@@ -172,79 +175,61 @@ export function handleTwilioUpgrade(
   head: Buffer,
   wss: WebSocketServer,
 ): void {
-  // Extract token from URL path: /media/:token (allow optional query params)
-  const url = req.url ?? "";
-  const match = url.match(/^\/media\/([a-f0-9-]+)(?:\?.*)?$/);
-
-  if (!match) {
-    console.log(`Rejected WebSocket upgrade: invalid path ${url}`);
-    socket.destroy();
-    return;
-  }
-
-  const token = match[1];
-
-  if (!activeCalls.has(token)) {
-    console.log(`Rejected WebSocket upgrade: unknown token ${token}`);
-    socket.destroy();
-    return;
-  }
-
-  // Parse agentId from query string if present (used for outbound agent calls)
-  const urlObj = new URL(url, "http://localhost");
-  const queryAgentId = urlObj.searchParams.get("agentId");
-  if (queryAgentId) {
-    activeCalls.get(token)!.agentId = queryAgentId;
-  }
-
-  // Accept the WebSocket connection
-  wss.handleUpgrade(req, socket, head, (ws: WebSocket) => {
-    wss.emit("connection", ws, req);
-    handleCallSession(ws, token);
-  });
+  handleWebSocketUpgrade(req, socket, head, wss);
 }
 
 // ============================================================================
-// INTERNAL HANDLERS
+// MAIN HANDLERS
 // ============================================================================
 
 /**
  * Handle an incoming call webhook from Twilio (POST /twilio/incoming-call).
  *
- * Reads auth token and webhook URL lazily so the server can start before
- * Twilio is configured. Validates the Twilio request signature, generates
- * a per-call token, and responds with TwiML that tells Twilio to connect
- * a media stream WebSocket.
+ * Validates the Twilio request signature, generates a per-call token, and
+ * responds with TwiML that tells Twilio to connect a media stream WebSocket.
+ * Reads auth token and tunnel URL lazily per-request so values are always current.
  *
  * @param req - HTTP request from Twilio
  * @param res - HTTP response to send TwiML back
  */
-function handleIncomingCall(req: IncomingMessage, res: ServerResponse): void {
-  // Collect the POST body first (before async work, to not miss data events)
+function handleIncomingCall(
+  req: IncomingMessage,
+  res: ServerResponse,
+): void {
+  // Collect the POST body for signature validation
   let body = "";
   req.on("data", (chunk: Buffer) => {
     body += chunk.toString();
   });
 
   req.on("end", async () => {
-    // Read config lazily -- Twilio may not be configured at server start
-    const envVars = await readEnv();
-    const authToken = envVars.TWILIO_AUTH_TOKEN;
-    const webhookUrl = getTunnelUrl();
+    // Read auth token and tunnel URL lazily per-request
+    const env = await readEnv();
+    const authToken = env.TWILIO_AUTH_TOKEN;
+    const tunnelUrl = getTunnelUrl();
 
-    if (!authToken || !webhookUrl) {
-      res.writeHead(503, { "Content-Type": "text/plain" });
-      res.end("Twilio not configured");
+    if (!authToken) {
+      console.log("Rejected incoming call: TWILIO_AUTH_TOKEN not set");
+      res.writeHead(500, { "Content-Type": "text/plain" });
+      res.end("Server misconfigured");
       return;
     }
 
-    const webhookHost = new URL(webhookUrl).host;
+    if (!tunnelUrl) {
+      console.log("Rejected incoming call: no tunnel URL available");
+      res.writeHead(500, { "Content-Type": "text/plain" });
+      res.end("Server misconfigured");
+      return;
+    }
+
+    const webhookHost = new URL(tunnelUrl).host;
 
     // Parse URL-encoded POST body into key-value params
     const params = parseUrlEncodedBody(body);
 
     // Validate Twilio signature (use full URL -- Twilio signs against the complete endpoint URL)
-    const validationUrl = webhookUrl.replace(/\/$/, "") + req.url;
+    const webhookUrl = tunnelUrl.replace(/\/$/, "");
+    const validationUrl = webhookUrl + req.url;
     const signature = req.headers["x-twilio-signature"] as string;
     if (!signature || !twilio.validateRequest(authToken, signature, validationUrl, params)) {
       console.log("Rejected incoming call: invalid Twilio signature");
@@ -299,6 +284,55 @@ function handleRegisterCall(req: IncomingMessage, res: ServerResponse): void {
 
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ success: true }));
+  });
+}
+
+/**
+ * Handle a WebSocket upgrade request for the Twilio media stream.
+ *
+ * Extracts the per-call token from the URL path, validates it against
+ * the activeCalls map, and either accepts or rejects the connection.
+ *
+ * @param req - HTTP upgrade request
+ * @param socket - Underlying TCP socket
+ * @param head - First packet of the upgraded stream
+ * @param wss - WebSocketServer instance to accept the upgrade
+ */
+function handleWebSocketUpgrade(
+  req: IncomingMessage,
+  socket: Duplex,
+  head: Buffer,
+  wss: WebSocketServer,
+): void {
+  // Extract token from URL path: /media/:token (allow optional query params)
+  const url = req.url ?? "";
+  const match = url.match(/^\/media\/([a-f0-9-]+)(?:\?.*)?$/);
+
+  if (!match) {
+    console.log(`Rejected WebSocket upgrade: invalid path ${url}`);
+    socket.destroy();
+    return;
+  }
+
+  const token = match[1];
+
+  if (!activeCalls.has(token)) {
+    console.log(`Rejected WebSocket upgrade: unknown token ${token}`);
+    socket.destroy();
+    return;
+  }
+
+  // Parse agentId from query string if present (used for outbound agent calls)
+  const urlObj = new URL(url, "http://localhost");
+  const queryAgentId = urlObj.searchParams.get("agentId");
+  if (queryAgentId) {
+    activeCalls.get(token)!.agentId = queryAgentId;
+  }
+
+  // Accept the WebSocket connection
+  wss.handleUpgrade(req, socket, head, (ws: WebSocket) => {
+    wss.emit("connection", ws, req);
+    handleCallSession(ws, token);
   });
 }
 
