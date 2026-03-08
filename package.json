@@ -1,6 +1,6 @@
 {
   "name": "voicecc",
-  "version": "1.0.11",
+  "version": "1.1.0",
   "description": "Voice mode plugin for Claude Code -- hands-free interaction via ElevenLabs STT/TTS and VAD",
   "type": "module",
   "bin": {
