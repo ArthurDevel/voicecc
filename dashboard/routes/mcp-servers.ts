@@ -8,8 +8,6 @@
 
 import { Hono } from "hono";
 import { execFile } from "child_process";
-import { homedir } from "os";
-import { join } from "path";
 
 // ============================================================================
 // TYPES
@@ -38,7 +36,7 @@ export function mcpServersRoutes(): Hono {
 
   /** List MCP servers from Claude CLI, including scope from `mcp get` */
   app.get("/", async (c) => {
-    const claudePath = join(homedir(), ".local", "bin", "claude");
+    const claudePath = "claude";
     const output = await new Promise<string>((resolve) => {
       execFile(claudePath, ["mcp", "list"], { timeout: 15000 }, (err, stdout, stderr) => {
         if (err) {
@@ -79,7 +77,7 @@ export function mcpServersRoutes(): Hono {
       scope: string;
     }>();
 
-    const claudePath = join(homedir(), ".local", "bin", "claude");
+    const claudePath = "claude";
     const args = ["mcp", "add", "--transport", transport, "--scope", scope, name, url];
 
     return new Promise<Response>((resolve) => {
@@ -98,7 +96,7 @@ export function mcpServersRoutes(): Hono {
   /** Remove an MCP server by running `claude mcp remove` */
   app.delete("/:name", async (c) => {
     const { name } = c.req.param();
-    const claudePath = join(homedir(), ".local", "bin", "claude");
+    const claudePath = "claude";
     const args = ["mcp", "remove", name];
 
     return new Promise<Response>((resolve) => {
