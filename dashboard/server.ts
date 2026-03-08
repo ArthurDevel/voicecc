@@ -47,7 +47,7 @@ const USER_CLAUDE_MD_PATH = join(homedir(), ".claude", "CLAUDE.md");
  *
  * @returns Configured Hono app instance
  */
-function createApp(): Hono {
+export function createApp(): Hono {
   const app = new Hono();
 
   // Dashboard password protection (HTTP Basic Auth)
