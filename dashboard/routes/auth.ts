@@ -14,6 +14,7 @@ import { Hono } from "hono";
 import { spawn } from "child_process";
 import { homedir } from "os";
 import { join } from "path";
+import { writeEnvKey } from "../../server/services/env.js";
 
 // ============================================================================
 // CONSTANTS
@@ -92,6 +93,26 @@ export function authRoutes(): Hono {
   const app = new Hono();
 
   app.get("/", async (c) => {
+    const authenticated = await probeClaudeAuth();
+    return c.json({ authenticated });
+  });
+
+  /**
+   * Save a Claude OAuth token to .env and re-probe authentication.
+   *
+   * @param token - The OAuth token from `claude setup-token`
+   * @returns { authenticated: boolean }
+   */
+  app.post("/token", async (c) => {
+    const { token } = await c.req.json<{ token: string }>();
+
+    if (!token || typeof token !== "string") {
+      return c.json({ error: "Token is required" }, 400);
+    }
+
+    await writeEnvKey("CLAUDE_CODE_OAUTH_TOKEN", token);
+    process.env.CLAUDE_CODE_OAUTH_TOKEN = token;
+
     const authenticated = await probeClaudeAuth();
     return c.json({ authenticated });
   });

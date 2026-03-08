@@ -10,6 +10,7 @@ import { useState, useEffect } from "react";
 import { useOutletContext, Link } from "react-router-dom";
 import { get } from "../api";
 import type { LayoutContext } from "../components/Layout";
+import { AuthTokenModal } from "../components/AuthTokenModal";
 
 // ============================================================================
 // TYPES
@@ -39,9 +40,10 @@ interface McpServerEntry {
 }
 
 export function Home() {
-  const { authStatus } = useOutletContext<LayoutContext>();
+  const { authStatus, setAuthStatus } = useOutletContext<LayoutContext>();
   const [browserCallRunning, setBrowserCallRunning] = useState<boolean | null>(null);
   const [mcpServers, setMcpServers] = useState<McpServerEntry[] | null>(null);
+  const [showTokenModal, setShowTokenModal] = useState(false);
 
   useEffect(() => {
     get<BrowserCallStatus>("/api/browser-call/status")
@@ -91,7 +93,19 @@ export function Home() {
             </span>
           </div>
 
+          {authStatus === false && (
+            <div className="settings-actions">
+              <button onClick={() => setShowTokenModal(true)}>Set up authentication</button>
+            </div>
+          )}
         </div>
+
+        {showTokenModal && (
+          <AuthTokenModal
+            onClose={() => setShowTokenModal(false)}
+            onAuthenticated={() => setAuthStatus(true)}
+          />
+        )}
 
         <div className="settings-panel">
           <h2 style={{ fontSize: 16, fontWeight: 600, color: "var(--text-primary)", marginBottom: 4 }}>
