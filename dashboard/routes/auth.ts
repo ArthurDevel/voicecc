@@ -12,15 +12,13 @@
 
 import { Hono } from "hono";
 import { spawn } from "child_process";
-import { homedir } from "os";
-import { join } from "path";
 import { writeEnvKey } from "../../server/services/env.js";
 
 // ============================================================================
 // CONSTANTS
 // ============================================================================
 
-const CLAUDE_BIN = join(homedir(), ".local", "bin", "claude");
+const CLAUDE_BIN = "claude";
 const PROBE_TIMEOUT_MS = 5_000;
 
 // ============================================================================
@@ -47,6 +45,11 @@ async function probeClaudeAuth(): Promise<boolean> {
 
     const child = spawn(CLAUDE_BIN, ["-p", "hi", "--output-format", "json"], {
       stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    child.on("error", () => {
+      clearTimeout(timer);
+      done(false);
     });
 
     const timer = setTimeout(() => {
@@ -110,8 +113,10 @@ export function authRoutes(): Hono {
       return c.json({ error: "Token is required" }, 400);
     }
 
-    await writeEnvKey("CLAUDE_CODE_OAUTH_TOKEN", token);
-    process.env.CLAUDE_CODE_OAUTH_TOKEN = token;
+    const cleanToken = token.replace(/[\n\r\s]/g, "");
+
+    await writeEnvKey("CLAUDE_CODE_OAUTH_TOKEN", cleanToken);
+    process.env.CLAUDE_CODE_OAUTH_TOKEN = cleanToken;
 
     const authenticated = await probeClaudeAuth();
     return c.json({ authenticated });
