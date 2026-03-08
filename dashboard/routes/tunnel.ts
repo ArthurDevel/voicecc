@@ -16,7 +16,7 @@ import {
   startTunnel,
   stopTunnel,
 } from "../../server/services/tunnel.js";
-import { readEnv } from "../../server/services/env.js";
+import { readEnv, writeEnvKey } from "../../server/services/env.js";
 
 // ============================================================================
 // ROUTES
@@ -40,13 +40,14 @@ export function tunnelRoutes(): Hono {
     return c.json({ running: isTunnelRunning(), url: getTunnelUrl(), startedAt: getTunnelStartedAt() });
   });
 
-  /** Start tunnel */
+  /** Start tunnel and persist TUNNEL_ENABLED=true */
   app.post("/start", async (c) => {
     const envVars = await readEnv();
     const port = parseInt(envVars.TWILIO_PORT || "8080", 10);
 
     try {
       const url = await startTunnel(port);
+      await writeEnvKey("TUNNEL_ENABLED", "true");
       return c.json({ success: true, url });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to start tunnel";
@@ -54,9 +55,10 @@ export function tunnelRoutes(): Hono {
     }
   });
 
-  /** Stop tunnel */
-  app.post("/stop", (c) => {
+  /** Stop tunnel and persist TUNNEL_ENABLED=false */
+  app.post("/stop", async (c) => {
     stopTunnel();
+    await writeEnvKey("TUNNEL_ENABLED", "false");
     return c.json({ success: true });
   });
 
