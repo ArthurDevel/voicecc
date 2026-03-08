@@ -1,54 +1,36 @@
 /**
- * Shared utility for decoding the macOS ready chime to raw PCM.
+ * Shared utility for loading the ready chime as raw PCM.
  *
- * Extracted from twilio-audio.ts so the chime decoding logic is reused across
- * audio adapters (Twilio, browser) without duplication.
+ * Reads a pre-converted raw 24kHz int16 mono PCM file bundled in init/.
+ * Works on both macOS and Linux with no runtime dependencies.
  *
  * Responsibilities:
- * - Decode macOS Glass.aiff to raw 24kHz int16 mono PCM via afconvert
- * - Use a PID-scoped temp file to avoid race conditions across processes
+ * - Load the bundled chime-24k.raw file as a Buffer
  */
 
-import { execSync } from "child_process";
-import { readFileSync, unlinkSync } from "fs";
+import { readFileSync } from "fs";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
 
 // ============================================================================
 // CONSTANTS
 // ============================================================================
 
-/** macOS system sound used for the ready chime */
-export const READY_CHIME_PATH = "/System/Library/Sounds/Glass.aiff";
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
-/** Temp file path for afconvert output, scoped by PID to avoid collisions */
-export const CHIME_TEMP_PATH = `/tmp/chime-24k-${process.pid}.raw`;
+/** Path to the bundled raw PCM chime (24kHz int16 mono) */
+const CHIME_PATH = join(__dirname, "..", "..", "init", "chime-24k.raw");
 
 // ============================================================================
 // MAIN ENTRYPOINT
 // ============================================================================
 
-/** CAF data chunk: 'data' (4B) + size (8B) + editCount (4B) = 16 bytes before PCM */
-const CAF_DATA_CHUNK_HEADER_SIZE = 16;
-
 /**
- * Decode the macOS Glass.aiff system sound to raw 24kHz int16 PCM.
- * Uses afconvert (macOS built-in) to convert to CAF format, then strips
- * the CAF container header to extract the raw PCM payload.
+ * Load the bundled chime as raw 24kHz int16 mono PCM.
  *
  * @returns Buffer containing raw 24kHz int16 mono PCM
- * @throws Error if afconvert fails, temp file cannot be read, or CAF has no data chunk
+ * @throws Error if the chime file is missing
  */
 export function decodeChimeToPcm(): Buffer {
-  execSync(`afconvert -f caff -d LEI16@24000 -c 1 ${READY_CHIME_PATH} ${CHIME_TEMP_PATH}`);
-
-  const caf = readFileSync(CHIME_TEMP_PATH);
-
-  unlinkSync(CHIME_TEMP_PATH);
-
-  // Find the 'data' chunk marker and skip past its header to the raw PCM
-  const dataMarker = caf.indexOf("data", 0, "ascii");
-  if (dataMarker === -1) {
-    throw new Error("CAF file missing 'data' chunk");
-  }
-
-  return caf.subarray(dataMarker + CAF_DATA_CHUNK_HEADER_SIZE);
+  return readFileSync(CHIME_PATH);
 }
