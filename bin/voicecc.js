@@ -9,7 +9,7 @@
  */
 
 import { spawn, execSync } from "node:child_process";
-import { copyFileSync, existsSync } from "node:fs";
+import { copyFileSync, existsSync, chownSync, mkdirSync } from "node:fs";
 import { writeFile, readFile } from "node:fs/promises";
 import { createInterface } from "node:readline";
 import { randomBytes } from "node:crypto";
@@ -169,6 +169,33 @@ async function runSetupWizard() {
 }
 
 // ============================================================================
+// ROOT PRIVILEGE DROP
+// ============================================================================
+
+const VOICECC_USER = "voicecc";
+
+/**
+ * Ensure a non-root user exists for running the server.
+ * Creates the user if it doesn't exist (Linux only).
+ */
+function ensureNonRootUser() {
+  try {
+    execSync(`id ${VOICECC_USER}`, { stdio: "ignore" });
+  } catch {
+    console.log(`Creating '${VOICECC_USER}' user...`);
+    execSync(`useradd -r -m -s /bin/bash ${VOICECC_USER}`, { stdio: "inherit" });
+  }
+}
+
+/**
+ * Give the voicecc user ownership of the package directory so it can
+ * read config, write .env, etc.
+ */
+function chownPkgRoot() {
+  execSync(`chown -R ${VOICECC_USER}:${VOICECC_USER} ${PKG_ROOT}`, { stdio: "inherit" });
+}
+
+// ============================================================================
 // MAIN ENTRYPOINT
 // ============================================================================
 
@@ -183,13 +210,29 @@ if (!existsSync(ENV_PATH)) {
   await runSetupWizard();
 }
 
-// Start the dashboard
-const child = spawn(TSX_BIN, ["server/index.ts"], {
-  cwd: PKG_ROOT,
-  stdio: "inherit",
-});
+// If running as root, re-exec as a non-root user
+const isRoot = process.getuid && process.getuid() === 0;
+if (isRoot) {
+  ensureNonRootUser();
+  chownPkgRoot();
 
-process.on("SIGINT", () => child.kill("SIGINT"));
-process.on("SIGTERM", () => child.kill("SIGTERM"));
+  console.log(`Dropping root privileges, running as '${VOICECC_USER}'...`);
+  const child = spawn("su", ["-", VOICECC_USER, "-c", `cd ${PKG_ROOT} && ${TSX_BIN} server/index.ts`], {
+    cwd: PKG_ROOT,
+    stdio: "inherit",
+  });
 
-child.on("exit", (code) => process.exit(code ?? 1));
+  process.on("SIGINT", () => child.kill("SIGINT"));
+  process.on("SIGTERM", () => child.kill("SIGTERM"));
+  child.on("exit", (code) => process.exit(code ?? 1));
+} else {
+  // Start the dashboard directly
+  const child = spawn(TSX_BIN, ["server/index.ts"], {
+    cwd: PKG_ROOT,
+    stdio: "inherit",
+  });
+
+  process.on("SIGINT", () => child.kill("SIGINT"));
+  process.on("SIGTERM", () => child.kill("SIGTERM"));
+  child.on("exit", (code) => process.exit(code ?? 1));
+}
