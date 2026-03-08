@@ -119,6 +119,23 @@ async function runSetupWizard() {
     await ask(rl, "Have you saved the password? Press Enter to continue. ");
   }
 
+  // Tunnel
+  console.log("");
+  console.log("Would you like to enable a public tunnel (via Cloudflare)?");
+  console.log("This is required if you want to access VoiceCC on a remote");
+  console.log("server, and/or want to make use of phone calling.");
+  console.log("");
+  console.log("  1) Yes, enable tunnel (recommended)");
+  console.log("  2) No, local only");
+  console.log("");
+  const tunnelChoice = await ask(rl, "Choose [1/2]: ");
+  const tunnelEnabled = tunnelChoice !== "2";
+  if (tunnelEnabled) {
+    console.log("Tunnel will start automatically on boot.");
+  } else {
+    console.log("Tunnel disabled. You can enable it later from Settings.");
+  }
+
   // Claude CLI
   if (!commandExists("claude")) {
     console.log("");
@@ -144,6 +161,7 @@ async function runSetupWizard() {
   const lines = [];
   if (apiKey) lines.push(`ELEVENLABS_API_KEY=${apiKey}`);
   if (password) lines.push(`DASHBOARD_PASSWORD=${password}`);
+  lines.push(`TUNNEL_ENABLED=${tunnelEnabled}`);
   await writeFile(ENV_PATH, lines.join("\n") + "\n", "utf-8");
 
   console.log("All done! Starting VoiceCC...");
