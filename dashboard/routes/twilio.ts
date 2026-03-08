@@ -3,8 +3,8 @@
  *
  * Manages the Twilio voice server lifecycle for PSTN phone calls:
  * - GET /status -- server running state and tunnel URL
- * - POST /start -- start tunnel + twilio server
- * - POST /stop -- stop twilio server + tunnel
+ * - POST /start -- start twilio server (requires tunnel)
+ * - POST /stop -- stop twilio server
  * - GET /phone-numbers -- fetch phone numbers from Twilio API
  */
 
@@ -12,7 +12,7 @@ import { Hono } from "hono";
 import twilioSdk from "twilio";
 import { readEnv } from "../../server/services/env.js";
 import { startTwilioServer, stopTwilioServer, getStatus } from "../../server/services/twilio-manager.js";
-import { startTunnel, stopTunnel, getTunnelUrl, isTunnelRunning } from "../../server/services/tunnel.js";
+import { getTunnelUrl, isTunnelRunning } from "../../server/services/tunnel.js";
 
 // ============================================================================
 // STATE
@@ -49,14 +49,11 @@ export function twilioRoutes(): Hono {
     return c.json({ running: status.running, tunnelUrl: getTunnelUrl() });
   });
 
-  /** Start tunnel + Twilio server */
+  /** Start Twilio server (requires tunnel to be running) */
   app.post("/start", async (c) => {
     try {
-      const envVars = await readEnv();
-      const port = parseInt(envVars.TWILIO_PORT || "8080", 10);
-
       if (!isTunnelRunning()) {
-        await startTunnel(port);
+        return c.json({ error: "Tunnel is not enabled. Enable it in Settings > General first." }, 400);
       }
       const status = await getStatus();
       if (!status.running) {
