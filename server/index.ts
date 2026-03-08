@@ -4,7 +4,8 @@
  * Responsibilities:
  * - Start the dashboard HTTP server (editor UI, conversation viewer, voice launcher)
  * - Start the unified voice server (Twilio + browser audio + dashboard proxy)
- * - Auto-start enabled integrations (Twilio, Browser Call) with tunnel as dependency
+ * - Auto-start tunnel if enabled (independent of integrations)
+ * - Auto-start enabled integrations (Twilio, Browser Call) -- require tunnel
  */
 
 import "dotenv/config";
@@ -29,33 +30,44 @@ async function main(): Promise<void> {
 
   const envVars = await readEnv();
 
+  // Auto-start tunnel if enabled (independent of integrations)
+  if (envVars.TUNNEL_ENABLED === "true") {
+    try {
+      await startTunnel(voicePort);
+    } catch (err) {
+      console.error(`Tunnel auto-start failed: ${err}`);
+    }
+  }
+
   // Auto-start Twilio if enabled
   if (envVars.TWILIO_ENABLED === "true") {
     console.log("Twilio integration enabled, starting...");
-    try {
-      if (!isTunnelRunning()) {
-        await startTunnel(voicePort);
+    if (!isTunnelRunning()) {
+      console.error("Twilio auto-start failed: Tunnel is not enabled. Enable it in Settings > General.");
+    } else {
+      try {
+        await startTwilioServer(dashboardPort, getTunnelUrl() ?? undefined);
+      } catch (err) {
+        console.error(`Twilio auto-start failed: ${err}`);
       }
-      await startTwilioServer(dashboardPort, getTunnelUrl() ?? undefined);
-    } catch (err) {
-      console.error(`Twilio auto-start failed: ${err}`);
     }
   }
 
   // Auto-start Browser Call if enabled
   if (envVars.BROWSER_CALL_ENABLED === "true") {
     console.log("Browser Call integration enabled, starting...");
-    try {
-      if (!isTunnelRunning()) {
-        await startTunnel(voicePort);
+    if (!isTunnelRunning()) {
+      console.error("Browser Call auto-start failed: Tunnel is not enabled. Enable it in Settings > General.");
+    } else {
+      try {
+        await startBrowserCallServer(dashboardPort);
+      } catch (err) {
+        console.error(`Browser Call auto-start failed: ${err}`);
       }
-      await startBrowserCallServer(dashboardPort);
-    } catch (err) {
-      console.error(`Browser Call auto-start failed: ${err}`);
     }
   }
 
-  // Print startup banner after integrations so tunnel URL is available
+  // Print startup banner
   const tunnelUrl = getTunnelUrl();
   console.log("");
   console.log("========================================");
@@ -63,9 +75,7 @@ async function main(): Promise<void> {
   console.log("========================================");
   console.log("");
   console.log(`  Dashboard:  http://localhost:${dashboardPort}`);
-  if (tunnelUrl) {
-    console.log(`  Tunnel:     ${tunnelUrl}`);
-  }
+  console.log(`  Tunnel:     ${tunnelUrl ?? "disabled"}`);
   console.log("");
   console.log("  Press Ctrl+C to stop.");
   console.log("");

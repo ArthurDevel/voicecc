@@ -3,7 +3,7 @@
  *
  * Manages the enabled state of integrations (Twilio, Browser Call).
  * Enabling an integration persists the flag to .env and immediately starts
- * the service (plus tunnel as a dependency). Disabling stops it.
+ * the service. Requires tunnel to be running. Disabling stops it.
  *
  * - GET / -- returns enabled state for each integration
  * - POST /:name -- sets enabled state and starts/stops the service
@@ -13,7 +13,7 @@ import { Hono } from "hono";
 import { readEnv, writeEnvKey } from "../../server/services/env.js";
 import { startTwilioServer, stopTwilioServer, isRunning as isTwilioRunning } from "../../server/services/twilio-manager.js";
 import { startBrowserCallServer, stopBrowserCallServer, isBrowserCallRunning } from "../../server/services/browser-call-manager.js";
-import { startTunnel, stopTunnel, isTunnelRunning, getTunnelUrl } from "../../server/services/tunnel.js";
+import { isTunnelRunning, getTunnelUrl } from "../../server/services/tunnel.js";
 
 // ============================================================================
 // CONSTANTS
@@ -99,18 +99,16 @@ export function integrationsRoutes(): Hono {
 // ============================================================================
 
 /**
- * Start an integration and its tunnel dependency.
+ * Start an integration. Requires tunnel to be running.
  *
  * @param name - Integration name ("twilio" or "browser-call")
  */
 async function startIntegration(name: string): Promise<void> {
-  const envVars = await readEnv();
-  const tunnelPort = parseInt(envVars.TWILIO_PORT || "8080", 10);
-
-  // Start tunnel if not already running
   if (!isTunnelRunning()) {
-    await startTunnel(tunnelPort);
+    throw new Error("Tunnel is not enabled. Enable it in Settings > General first.");
   }
+
+  const envVars = await readEnv();
 
   if (name === "twilio") {
     if (!envVars.TWILIO_AUTH_TOKEN) {
@@ -127,7 +125,7 @@ async function startIntegration(name: string): Promise<void> {
 }
 
 /**
- * Stop an integration and tunnel if no other consumer needs it.
+ * Stop an integration. Tunnel lifecycle is managed independently.
  *
  * @param name - Integration name ("twilio" or "browser-call")
  */
@@ -136,10 +134,5 @@ function stopIntegration(name: string): void {
     stopTwilioServer();
   } else if (name === "browser-call") {
     stopBrowserCallServer();
-  }
-
-  // Stop tunnel if no integrations need it
-  if (!isTwilioRunning() && !isBrowserCallRunning()) {
-    stopTunnel();
   }
 }
