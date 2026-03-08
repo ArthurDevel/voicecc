@@ -10,6 +10,10 @@
 
 import "dotenv/config";
 
+import { writeFileSync, unlinkSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
+import { homedir } from "node:os";
+
 import { startDashboard } from "../dashboard/server.js";
 import { readEnv } from "./services/env.js";
 import { startTunnel, isTunnelRunning, getTunnelUrl } from "./services/tunnel.js";
@@ -17,6 +21,39 @@ import { startTwilioServer } from "./services/twilio-manager.js";
 import { startBrowserCallServer } from "./services/browser-call-manager.js";
 import { startHeartbeat } from "./services/heartbeat.js";
 import { startVoiceServer } from "./voice/voice-server.js";
+
+const STATUS_FILE = join(homedir(), ".voicecc", "status.json");
+
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+/**
+ * Write server status to ~/.voicecc/status.json so the CLI can display info.
+ *
+ * @param dashboardPort - the port the dashboard is running on
+ * @param tunnelUrl - the tunnel URL, or null if disabled
+ */
+function writeStatusFile(dashboardPort: number, tunnelUrl: string | null): void {
+  const status = {
+    dashboardPort,
+    tunnelUrl,
+    startedAt: new Date().toISOString(),
+  };
+  try {
+    mkdirSync(join(homedir(), ".voicecc"), { recursive: true });
+    writeFileSync(STATUS_FILE, JSON.stringify(status, null, 2));
+  } catch {
+    console.error("Failed to write status file");
+  }
+}
+
+/**
+ * Remove the status file on shutdown.
+ */
+function cleanupStatusFile(): void {
+  try { unlinkSync(STATUS_FILE); } catch { /* ignore */ }
+}
 
 // ============================================================================
 // MAIN ENTRYPOINT
@@ -67,8 +104,15 @@ async function main(): Promise<void> {
     }
   }
 
-  // Print startup banner
+  // Write status file so the CLI can display server info
   const tunnelUrl = getTunnelUrl();
+  writeStatusFile(dashboardPort, tunnelUrl);
+
+  // Clean up status file on shutdown
+  process.on("SIGTERM", () => { cleanupStatusFile(); process.exit(0); });
+  process.on("SIGINT", () => { cleanupStatusFile(); process.exit(0); });
+
+  // Print startup banner
   console.log("");
   console.log("========================================");
   console.log("             VOICECC RUNNING            ");
@@ -76,8 +120,6 @@ async function main(): Promise<void> {
   console.log("");
   console.log(`  Dashboard:  http://localhost:${dashboardPort}`);
   console.log(`  Tunnel:     ${tunnelUrl ?? "disabled"}`);
-  console.log("");
-  console.log("  Press Ctrl+C to stop.");
   console.log("");
 }
 
