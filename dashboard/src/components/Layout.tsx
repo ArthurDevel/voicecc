@@ -6,6 +6,7 @@ import { TwilioStatus, BrowserCallStatus } from "../pages/Home";
 
 export interface LayoutContext {
     authStatus: boolean | null;
+    setAuthStatus: (status: boolean | null) => void;
 }
 
 interface VersionInfo {
@@ -87,7 +88,7 @@ export function Layout() {
                         </button>
                     </div>
                 )}
-                <Outlet context={{ authStatus } satisfies LayoutContext} />
+                <Outlet context={{ authStatus, setAuthStatus } satisfies LayoutContext} />
             </div>
         </div>
     );
