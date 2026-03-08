@@ -3,14 +3,13 @@
  *
  * Manages the lifecycle of the browser-server (direct WebSocket audio):
  * - GET /status -- browser-server running state + tunnel URL
- * - POST /start -- start tunnel + browser-server (rejects if Twilio server holds the port)
- * - POST /stop -- stop browser-server + tunnel
+ * - POST /start -- start browser-server (requires tunnel)
+ * - POST /stop -- stop browser-server
  */
 
 import { Hono } from "hono";
 import { startBrowserCallServer, stopBrowserCallServer, getBrowserCallStatus, isBrowserCallRunning } from "../../server/services/browser-call-manager.js";
-import { startTunnel, stopTunnel, getTunnelUrl, isTunnelRunning } from "../../server/services/tunnel.js";
-import { readEnv } from "../../server/services/env.js";
+import { getTunnelUrl, isTunnelRunning } from "../../server/services/tunnel.js";
 
 // ============================================================================
 // STATE
@@ -47,14 +46,11 @@ export function browserCallRoutes(): Hono {
     return c.json({ ...status, tunnelUrl: getTunnelUrl() });
   });
 
-  /** Start tunnel + browser call integration */
+  /** Start browser call integration (requires tunnel) */
   app.post("/start", async (c) => {
     try {
-      const envVars = await readEnv();
-      const port = parseInt(envVars.TWILIO_PORT || "8080", 10);
-
       if (!isTunnelRunning()) {
-        await startTunnel(port);
+        return c.json({ error: "Tunnel is not enabled. Enable it in Settings > General first." }, 400);
       }
 
       if (!isBrowserCallRunning()) {
