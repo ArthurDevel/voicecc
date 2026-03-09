@@ -176,6 +176,25 @@ export function AgentDetail() {
           <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: "var(--text-primary)" }}>{agent.id}</h2>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
+          <a
+            href={`/api/agents/${id}/export`}
+            download={`${id}.zip`}
+            style={{
+              padding: "6px 14px",
+              background: "var(--bg-main)",
+              color: "var(--text-primary)",
+              border: "1px solid var(--border-color)",
+              borderRadius: 0,
+              fontWeight: 500,
+              fontSize: 13,
+              cursor: "pointer",
+              textDecoration: "none",
+              display: "inline-flex",
+              alignItems: "center",
+            }}
+          >
+            Export
+          </a>
           <button
             onClick={handleCall}
             disabled={calling}

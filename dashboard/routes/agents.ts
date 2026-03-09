@@ -17,6 +17,8 @@ import {
   createAgent,
   deleteAgent,
   updateAgentConfig,
+  exportAgent,
+  importAgent,
 } from "../../server/services/agent-store.js";
 import type { AgentConfig } from "../../server/services/agent-store.js";
 import { getHeartbeatStatus, initiateAgentCall } from "../../server/services/heartbeat.js";
@@ -33,17 +35,62 @@ import { getHeartbeatStatus, initiateAgentCall } from "../../server/services/hea
 export function agentsRoutes(): Hono {
   const app = new Hono();
 
-  // /heartbeat/status MUST be registered before /:id to avoid route conflict
+  // /heartbeat/status and /import MUST be registered before /:id to avoid route conflict
   /** Get last heartbeat result per agent */
   app.get("/heartbeat/status", (c) => {
     const status = getHeartbeatStatus();
     return c.json(status);
   });
 
+  /** Import an agent from a zip upload */
+  app.post("/import", async (c) => {
+    try {
+      console.log("[import] Parsing body...");
+      const body = await c.req.parseBody();
+      const file = body["file"];
+      const id = body["id"];
+      console.log("[import] file type:", typeof file, file instanceof File ? "File" : file?.constructor?.name);
+      console.log("[import] id:", id);
+
+      if (!file || !(file instanceof File)) {
+        return c.json({ error: "Missing 'file' field (zip archive)" }, 400);
+      }
+      if (!id || typeof id !== "string") {
+        return c.json({ error: "Missing 'id' field (new agent ID)" }, 400);
+      }
+
+      const arrayBuffer = await file.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      console.log("[import] Buffer size:", buffer.length);
+      await importAgent(id, buffer);
+      console.log("[import] Success, agent:", id);
+      return c.json({ success: true, id });
+    } catch (err) {
+      console.error("[import] Error:", err);
+      return c.json({ error: (err as Error).message }, 400);
+    }
+  });
+
   /** List all agents with summary info */
   app.get("/", async (c) => {
     const agents = await listAgents();
     return c.json(agents);
+  });
+
+  /** Export an agent as a zip download */
+  app.get("/:id/export", async (c) => {
+    const id = c.req.param("id");
+    try {
+      const zipBuffer = await exportAgent(id);
+      return new Response(new Uint8Array(zipBuffer), {
+        headers: {
+          "Content-Type": "application/zip",
+          "Content-Disposition": `attachment; filename="${id}.zip"`,
+        },
+      });
+    } catch (err) {
+      return c.json({ error: (err as Error).message }, 404);
+    }
   });
 
   /** Get full agent data by ID */

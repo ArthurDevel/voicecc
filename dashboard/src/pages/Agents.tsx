@@ -44,6 +44,7 @@ export function Agents() {
   const [form, setForm] = useState<CreateAgentForm>(INITIAL_FORM);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
 
   // ============================================================================
   // EVENT HANDLERS
@@ -84,6 +85,37 @@ export function Agents() {
     setError(null);
   };
 
+  /**
+   * Import an agent from a zip file.
+   * Prompts for a new agent ID, uploads the zip via FormData.
+   */
+  const handleImport = async (file: File) => {
+    const agentId = window.prompt("Enter an ID for the imported agent:", file.name.replace(/\.zip$/i, ""));
+    if (!agentId) return;
+
+    setImporting(true);
+    setError(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("id", agentId);
+
+      const res = await fetch("/api/agents/import", { method: "POST", body: formData });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({ error: "Import failed" }));
+        throw new Error(data.error || "Import failed");
+      }
+
+      const updated = await get<AgentSummary[]>("/api/agents");
+      setAgents(updated);
+    } catch (err: unknown) {
+      const message = (err as { message?: string })?.message || "Failed to import agent";
+      setError(message);
+    } finally {
+      setImporting(false);
+    }
+  };
+
   // ============================================================================
   // RENDER
   // ============================================================================
@@ -94,23 +126,58 @@ export function Agents() {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "24px 32px 16px", borderBottom: "1px solid var(--border-color)", flexShrink: 0 }}>
         <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: "var(--text-primary)" }}>Agents</h2>
         {!showForm && (
-          <button
-            onClick={() => setShowForm(true)}
-            style={{
-              padding: "6px 14px",
-              background: "var(--btn-primary-bg)",
-              color: "var(--btn-primary-text)",
-              border: "none",
-              borderRadius: 0,
-              fontWeight: 500,
-              fontSize: 13,
-              cursor: "pointer",
-            }}
-          >
-            Create Agent
-          </button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <label
+              style={{
+                padding: "6px 14px",
+                background: "var(--bg-main)",
+                color: "var(--text-primary)",
+                border: "1px solid var(--border-color)",
+                borderRadius: 0,
+                fontWeight: 500,
+                fontSize: 13,
+                cursor: importing ? "not-allowed" : "pointer",
+                opacity: importing ? 0.6 : 1,
+              }}
+            >
+              {importing ? "Importing..." : "Import"}
+              <input
+                type="file"
+                accept=".zip"
+                style={{ display: "none" }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleImport(file);
+                  e.target.value = "";
+                }}
+                disabled={importing}
+              />
+            </label>
+            <button
+              onClick={() => setShowForm(true)}
+              style={{
+                padding: "6px 14px",
+                background: "var(--btn-primary-bg)",
+                color: "var(--btn-primary-text)",
+                border: "none",
+                borderRadius: 0,
+                fontWeight: 500,
+                fontSize: 13,
+                cursor: "pointer",
+              }}
+            >
+              Create Agent
+            </button>
+          </div>
         )}
       </div>
+
+      {/* Import error banner (shown outside the create form) */}
+      {error && !showForm && (
+        <div style={{ margin: "16px 32px 0", padding: "8px 10px", fontSize: 12, color: "#d73a49", background: "var(--bg-tertiary)", borderRadius: 6, border: "1px solid #d73a49" }}>
+          {error}
+        </div>
+      )}
 
       {/* Scrollable Content */}
       <div style={{ flex: 1, overflowY: "auto", padding: "48px 64px" }}>
