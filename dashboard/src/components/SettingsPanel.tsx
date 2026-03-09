@@ -9,6 +9,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { get, post } from "../api";
 import type { TunnelStatus } from "../pages/Home";
+import { AuthTokenModal } from "./AuthTokenModal";
 
 // ============================================================================
 // TYPES
@@ -28,6 +29,12 @@ const POLL_INTERVAL_MS = 5000;
 // COMPONENT
 // ============================================================================
 
+interface AuthInfo {
+  authenticated: boolean;
+  authMethod: string;
+  email?: string;
+}
+
 export function SettingsPanel({ twilioRunning }: SettingsPanelProps) {
   const [maxSessions, setMaxSessions] = useState("");
   const [userPhoneNumber, setUserPhoneNumber] = useState("");
@@ -38,7 +45,14 @@ export function SettingsPanel({ twilioRunning }: SettingsPanelProps) {
   const [tunnelToggling, setTunnelToggling] = useState(false);
   const [tunnelError, setTunnelError] = useState("");
 
-  // Load settings on mount
+  const [authInfo, setAuthInfo] = useState<AuthInfo | null>(null);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+
+  const fetchAuth = useCallback(() => {
+    get<AuthInfo>("/api/auth").then(setAuthInfo).catch(() => setAuthInfo(null));
+  }, []);
+
+  // Load settings and auth on mount
   useEffect(() => {
     get<Record<string, string>>("/api/settings")
       .then((data) => {
@@ -46,7 +60,8 @@ export function SettingsPanel({ twilioRunning }: SettingsPanelProps) {
         setUserPhoneNumber(data.USER_PHONE_NUMBER || "");
       })
       .catch(() => setStatusText("Error loading settings"));
-  }, []);
+    fetchAuth();
+  }, [fetchAuth]);
 
   // Poll tunnel status
   useEffect(() => {
@@ -110,6 +125,110 @@ export function SettingsPanel({ twilioRunning }: SettingsPanelProps) {
           <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 4 }}>Manage your workspace settings and core behavior.</p>
         </div>
       </div>
+
+      {/* Authentication */}
+      <div className="settings-panel">
+        <h2 style={{ fontSize: 16, fontWeight: 600, color: "var(--text-primary)", marginBottom: 4 }}>Authentication</h2>
+        <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 20 }}>
+          Claude Code authentication status for this server.
+        </p>
+
+        {authInfo === null && (
+          <div style={{ fontSize: 13, color: "var(--text-secondary)" }}>Checking...</div>
+        )}
+
+        {authInfo && !authInfo.authenticated && (
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+              <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#d73a49", flexShrink: 0 }} />
+              <span style={{ fontSize: 14, fontWeight: 500, color: "var(--text-primary)" }}>Not authenticated</span>
+            </div>
+            <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 16 }}>
+              Claude Code is not logged in. Sign in to enable voice sessions.
+            </p>
+            <button onClick={() => setShowAuthModal(true)}>Sign in</button>
+          </div>
+        )}
+
+        {authInfo && authInfo.authenticated && (
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+              <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#22c55e", flexShrink: 0 }} />
+              <span style={{ fontSize: 14, fontWeight: 500, color: "var(--text-primary)" }}>
+                Authenticated
+                {authInfo.authMethod === "claude.ai" && (
+                  <span style={{
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: "var(--accent-color)",
+                    background: "color-mix(in srgb, var(--accent-color) 12%, transparent)",
+                    padding: "2px 6px",
+                    borderRadius: 4,
+                    marginLeft: 8,
+                  }}>
+                    Claude.ai OAuth
+                  </span>
+                )}
+                {authInfo.authMethod !== "claude.ai" && authInfo.authMethod !== "none" && (
+                  <span style={{
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: "var(--text-secondary)",
+                    background: "color-mix(in srgb, var(--text-secondary) 12%, transparent)",
+                    padding: "2px 6px",
+                    borderRadius: 4,
+                    marginLeft: 8,
+                  }}>
+                    {authInfo.authMethod}
+                  </span>
+                )}
+              </span>
+            </div>
+            {authInfo.email && (
+              <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 8 }}>
+                {authInfo.email}
+              </p>
+            )}
+            {authInfo.authMethod !== "claude.ai" && (
+              <div style={{
+                fontSize: 12,
+                color: "var(--text-secondary)",
+                background: "color-mix(in srgb, var(--warning-color, #f59e0b) 8%, transparent)",
+                border: "1px solid color-mix(in srgb, var(--warning-color, #f59e0b) 20%, transparent)",
+                padding: "8px 12px",
+                borderRadius: 6,
+                marginTop: 8,
+                lineHeight: 1.5,
+              }}>
+                Authenticated via token. Cloud MCP servers (Gmail, Google Calendar, Slack, etc.)
+                are not available with this method.{" "}
+                <button
+                  onClick={() => setShowAuthModal(true)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "var(--accent-color)",
+                    cursor: "pointer",
+                    padding: 0,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    textDecoration: "underline",
+                  }}
+                >
+                  Switch to Claude.ai login
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {showAuthModal && (
+        <AuthTokenModal
+          onClose={() => setShowAuthModal(false)}
+          onAuthenticated={() => { setShowAuthModal(false); fetchAuth(); }}
+        />
+      )}
 
       {/* Tunnel */}
       <div className="settings-panel">

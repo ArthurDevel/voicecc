@@ -1,17 +1,19 @@
 /**
- * Claude Code authentication probe route.
+ * Claude Code authentication routes.
  *
- * Runs `claude -p "hi" --output-format json` to check whether the user
- * is authenticated. When logged out this returns instantly (~30ms) with
- * exit code 1 and `is_error: true`. When logged in it starts an API call,
- * so we use a short timeout and kill the process -- if it's still running
- * after the deadline, the user is authenticated.
+ * Supports two auth flows:
+ * 1. OAuth PKCE flow via claude.ai (recommended — enables cloud MCP servers)
+ * 2. Manual token paste via `claude setup-token` (fallback)
  *
- * - GET /    -- probe and return { authenticated: boolean }
+ * - GET /              -- probe auth status
+ * - POST /token        -- save a manually pasted token
+ * - POST /oauth/start  -- generate PKCE params and return the OAuth URL
+ * - POST /oauth/callback -- exchange an auth code for tokens
  */
 
 import { Hono } from "hono";
-import { spawn } from "child_process";
+import { execFile } from "child_process";
+import { randomBytes, createHash } from "crypto";
 import { writeEnvKey } from "../../server/services/env.js";
 
 // ============================================================================
@@ -21,64 +23,91 @@ import { writeEnvKey } from "../../server/services/env.js";
 const CLAUDE_BIN = "claude";
 const PROBE_TIMEOUT_MS = 5_000;
 
+const OAUTH_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
+const OAUTH_AUTH_URL = "https://claude.ai/oauth/authorize";
+const OAUTH_TOKEN_URL = "https://claude.ai/oauth/token";
+const OAUTH_REDIRECT_URI = "https://platform.claude.com/oauth/code/callback";
+const OAUTH_SCOPES = "org:create_api_key user:profile user:inference user:sessions:claude_code user:mcp_servers";
+
+// ============================================================================
+// PKCE STATE (single-user dashboard — one pending flow at a time)
+// ============================================================================
+
+let pendingPkce: { codeVerifier: string; createdAt: number } | null = null;
+
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
 
+/** Base64url-encode a buffer (no padding). */
+function base64url(buf: Buffer): string {
+  return buf.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+/** Generate a PKCE code_verifier and code_challenge (S256). */
+function generatePkce(): { codeVerifier: string; codeChallenge: string } {
+  const codeVerifier = base64url(randomBytes(32));
+  const codeChallenge = base64url(createHash("sha256").update(codeVerifier).digest());
+  return { codeVerifier, codeChallenge };
+}
+
+/** Exchange an authorization code for tokens using the PKCE verifier. */
+async function exchangeCodeForTokens(code: string, codeVerifier: string): Promise<{
+  access_token: string;
+  refresh_token: string;
+  expires_in: number;
+  scope?: string;
+}> {
+  const body = new URLSearchParams({
+    grant_type: "authorization_code",
+    code,
+    code_verifier: codeVerifier,
+    client_id: OAUTH_CLIENT_ID,
+    redirect_uri: OAUTH_REDIRECT_URI,
+  });
+
+  const res = await fetch(OAUTH_TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: body.toString(),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Token exchange failed (${res.status}): ${text}`);
+  }
+
+  return res.json();
+}
+
+/** Auth status returned by `claude auth status`. */
+interface AuthStatus {
+  authenticated: boolean;
+  /** "claude.ai" = OAuth (cloud MCPs available), "api-key" | "setup-token" = token only, "none" = not logged in */
+  authMethod: string;
+  email?: string;
+}
+
 /**
- * Run `claude -p "hi" --output-format json` with stdin closed.
- *
- * - Logged out: exits 1 instantly (~30ms) with "Not logged in" in the JSON result.
- * - Logged in: completes the API call and exits 0 with a JSON response.
- * - Safety timeout at 5s: kills the process and assumes authenticated.
- *
- * @returns true if authenticated, false otherwise
+ * Get auth status via `claude auth status` JSON output.
+ * Tries stdout first, then stderr (some versions output there on non-zero exit).
+ * Falls back to unauthenticated if parsing fails entirely.
  */
-async function probeClaudeAuth(): Promise<boolean> {
+async function getAuthStatus(): Promise<AuthStatus> {
   return new Promise((resolve) => {
-    let resolved = false;
-    const done = (value: boolean) => {
-      if (resolved) return;
-      resolved = true;
-      resolve(value);
-    };
-
-    const child = spawn(CLAUDE_BIN, ["-p", "hi", "--output-format", "json"], {
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-
-    child.on("error", () => {
-      clearTimeout(timer);
-      done(false);
-    });
-
-    const timer = setTimeout(() => {
-      child.kill();
-      done(true);
-    }, PROBE_TIMEOUT_MS);
-
-    let stdout = "";
-    child.stdout.on("data", (chunk: Buffer) => { stdout += chunk.toString(); });
-
-    child.on("close", (code) => {
-      clearTimeout(timer);
-
-      if (code === 0) {
-        done(true);
-        return;
-      }
-
+    execFile(CLAUDE_BIN, ["auth", "status"], { timeout: PROBE_TIMEOUT_MS }, (err, stdout, stderr) => {
+      // Try parsing stdout first, then stderr (some versions write JSON to stderr on exit 1)
+      const output = stdout?.trim() || stderr?.trim() || "";
       try {
-        const json = JSON.parse(stdout);
-        if (json.is_error && typeof json.result === "string" && json.result.includes("Not logged in")) {
-          done(false);
-          return;
-        }
+        const json = JSON.parse(output);
+        resolve({
+          authenticated: json.loggedIn === true,
+          authMethod: json.authMethod || "none",
+          email: json.email || undefined,
+        });
       } catch {
-        // couldn't parse JSON
+        resolve({ authenticated: false, authMethod: "none" });
       }
-
-      done(false);
     });
   });
 }
@@ -87,25 +116,15 @@ async function probeClaudeAuth(): Promise<boolean> {
 // ROUTES
 // ============================================================================
 
-/**
- * Create Hono route group for Claude Code auth testing.
- *
- * @returns Hono instance with GET / route
- */
 export function authRoutes(): Hono {
   const app = new Hono();
 
+  /** Get authentication status including method. */
   app.get("/", async (c) => {
-    const authenticated = await probeClaudeAuth();
-    return c.json({ authenticated });
+    return c.json(await getAuthStatus());
   });
 
-  /**
-   * Save a Claude OAuth token to .env and re-probe authentication.
-   *
-   * @param token - The OAuth token from `claude setup-token`
-   * @returns { authenticated: boolean }
-   */
+  /** Save a manually pasted token to .env. */
   app.post("/token", async (c) => {
     const { token } = await c.req.json<{ token: string }>();
 
@@ -118,8 +137,71 @@ export function authRoutes(): Hono {
     await writeEnvKey("CLAUDE_CODE_OAUTH_TOKEN", cleanToken);
     process.env.CLAUDE_CODE_OAUTH_TOKEN = cleanToken;
 
-    const authenticated = await probeClaudeAuth();
-    return c.json({ authenticated });
+    return c.json(await getAuthStatus());
+  });
+
+  /** Start an OAuth PKCE flow — returns the authorization URL. */
+  app.post("/oauth/start", async (c) => {
+    const { codeVerifier, codeChallenge } = generatePkce();
+    pendingPkce = { codeVerifier, createdAt: Date.now() };
+
+    const params = new URLSearchParams({
+      code: "true",
+      client_id: OAUTH_CLIENT_ID,
+      response_type: "code",
+      redirect_uri: OAUTH_REDIRECT_URI,
+      scope: OAUTH_SCOPES,
+      code_challenge: codeChallenge,
+      code_challenge_method: "S256",
+    });
+
+    return c.json({ url: `${OAUTH_AUTH_URL}?${params.toString()}` });
+  });
+
+  /** Exchange an authorization code for tokens and save credentials. */
+  app.post("/oauth/callback", async (c) => {
+    const { code } = await c.req.json<{ code: string }>();
+
+    if (!code || typeof code !== "string") {
+      return c.json({ error: "Authorization code is required" }, 400);
+    }
+
+    if (!pendingPkce) {
+      return c.json({ error: "No pending OAuth flow. Please start the login again." }, 400);
+    }
+
+    // Expire stale flows (10 minutes)
+    if (Date.now() - pendingPkce.createdAt > 10 * 60 * 1000) {
+      pendingPkce = null;
+      return c.json({ error: "OAuth flow expired. Please start the login again." }, 400);
+    }
+
+    try {
+      const tokens = await exchangeCodeForTokens(code.trim(), pendingPkce.codeVerifier);
+      pendingPkce = null;
+
+      const scopes = tokens.scope
+        ? tokens.scope.split(" ")
+        : OAUTH_SCOPES.split(" ");
+
+      const credentialJson = JSON.stringify({
+        claudeAiOauth: {
+          accessToken: tokens.access_token,
+          refreshToken: tokens.refresh_token,
+          expiresAt: Date.now() + tokens.expires_in * 1000,
+          scopes,
+        },
+      });
+
+      await writeEnvKey("CLAUDE_CODE_OAUTH_TOKEN", credentialJson);
+      process.env.CLAUDE_CODE_OAUTH_TOKEN = credentialJson;
+
+      return c.json(await getAuthStatus());
+    } catch (err) {
+      console.error("[auth] OAuth token exchange error:", err);
+      const message = err instanceof Error ? err.message : "Token exchange failed";
+      return c.json({ error: message }, 500);
+    }
   });
 
   return app;
