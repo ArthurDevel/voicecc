@@ -16,6 +16,11 @@ import { readFile, writeFile, mkdir, readdir, rm, access } from "fs/promises";
 import { dirname, join } from "path";
 import { homedir } from "os";
 import { fileURLToPath } from "url";
+import { execFile } from "child_process";
+import { promisify } from "util";
+import { tmpdir } from "os";
+
+const execFileAsync = promisify(execFile);
 
 // ============================================================================
 // CONSTANTS
@@ -203,6 +208,72 @@ export async function updateAgentConfig(
   const updated: AgentConfig = { ...existing, ...patch };
   await writeFile(configPath, JSON.stringify(updated, null, 2), "utf-8");
   return updated;
+}
+
+// ============================================================================
+// IMPORT / EXPORT
+// ============================================================================
+
+/**
+ * Export an agent's entire directory as a zip buffer.
+ * Includes all files (SOUL.md, MEMORY.md, HEARTBEAT.md, config.json, and any
+ * additional files the agent may have created).
+ *
+ * @param id - Agent identifier
+ * @returns Buffer containing the zip archive
+ */
+export async function exportAgent(id: string): Promise<Buffer> {
+  const agentDir = join(AGENTS_DIR, id);
+  await assertAgentExists(agentDir, id);
+
+  const zipPath = join(tmpdir(), `agent-export-${id}-${Date.now()}.zip`);
+  try {
+    await execFileAsync("zip", ["-r", zipPath, "."], { cwd: agentDir });
+    const buf = await readFile(zipPath);
+    return buf;
+  } finally {
+    await rm(zipPath, { force: true }).catch(() => {});
+  }
+}
+
+/**
+ * Import an agent from a zip buffer. Creates a new agent directory and extracts
+ * the zip contents into it. The zip must contain a config.json at the root level.
+ *
+ * @param id - New agent identifier
+ * @param zipBuffer - Buffer containing the zip archive
+ */
+export async function importAgent(id: string, zipBuffer: Buffer): Promise<void> {
+  validateAgentId(id);
+
+  const agentDir = join(AGENTS_DIR, id);
+  const dirExists = await access(agentDir).then(() => true).catch(() => false);
+  if (dirExists) throw new Error(`Agent "${id}" already exists`);
+
+  // Write zip to temp file, extract to agent dir
+  const zipPath = join(tmpdir(), `agent-import-${id}-${Date.now()}.zip`);
+  try {
+    await writeFile(zipPath, zipBuffer);
+    await mkdir(agentDir, { recursive: true });
+    await execFileAsync("unzip", ["-o", zipPath, "-d", agentDir]);
+
+    // Validate the zip contained a config.json
+    const hasConfig = await access(join(agentDir, "config.json")).then(() => true).catch(() => false);
+    if (!hasConfig) {
+      await rm(agentDir, { recursive: true });
+      throw new Error("Invalid agent archive: missing config.json");
+    }
+  } catch (err) {
+    // Clean up on failure (if dir was created but extraction failed)
+    const exists = await access(agentDir).then(() => true).catch(() => false);
+    if (exists) {
+      const hasConfig = await access(join(agentDir, "config.json")).then(() => true).catch(() => false);
+      if (!hasConfig) await rm(agentDir, { recursive: true });
+    }
+    throw err;
+  } finally {
+    await rm(zipPath, { force: true }).catch(() => {});
+  }
 }
 
 // ============================================================================
