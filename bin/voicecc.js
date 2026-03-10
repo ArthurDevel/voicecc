@@ -120,6 +120,7 @@ function readStatus() {
  */
 function showInfo() {
   const status = readStatus();
+  const tunnelWanted = existsSync(ENV_PATH) && readFileSync(ENV_PATH, "utf-8").includes("TUNNEL_ENABLED=true");
 
   console.log("");
   console.log("========================================");
@@ -129,7 +130,8 @@ function showInfo() {
 
   if (status) {
     console.log(`  Dashboard:  http://localhost:${status.dashboardPort}`);
-    console.log(`  Tunnel:     ${status.tunnelUrl ?? "disabled"}`);
+    const tunnelLabel = status.tunnelUrl ?? (tunnelWanted ? "starting..." : "disabled");
+    console.log(`  Tunnel:     ${tunnelLabel}`);
   } else {
     console.log("  Server is starting up...");
     console.log("  Run 'voicecc' again in a few seconds to see details.");
@@ -574,15 +576,16 @@ if (isRunning()) {
 // Start the daemon
 startDaemon();
 
-// Poll for status.json until the server is ready
+// Poll for status.json until the server is ready (dashboard + tunnel if enabled)
 const tunnelEnabled = readFileSync(ENV_PATH, "utf-8").includes("TUNNEL_ENABLED=true");
-const MAX_WAIT_MS = tunnelEnabled ? 30000 : 10000;
+const MAX_WAIT_MS = tunnelEnabled ? 45000 : 10000;
 const POLL_INTERVAL_MS = 500;
 const startTime = Date.now();
 
 while (Date.now() - startTime < MAX_WAIT_MS) {
   await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
   const status = readStatus();
+  // Status file is written early (before tunnel). Wait for tunnelUrl if tunnel is enabled.
   if (status && (!tunnelEnabled || status.tunnelUrl)) break;
 }
 

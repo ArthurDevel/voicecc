@@ -50,12 +50,21 @@ export async function startTunnel(port: number): Promise<string> {
     throw new Error("Tunnel is already running");
   }
 
-  const tunnel = Tunnel.quick(`http://localhost:${port}`, { "--protocol": "http2" });
+  const tunnel = Tunnel.quick(`http://localhost:${port}`);
   activeTunnel = tunnel;
+
+  // Log cloudflared output for debugging
+  tunnel.on("stdout", (data: string) => {
+    console.log(`[cloudflared] ${data.trim()}`);
+  });
+  tunnel.on("stderr", (data: string) => {
+    console.log(`[cloudflared] ${data.trim()}`);
+  });
 
   const url = await new Promise<string>((resolve, reject) => {
     const timeout = setTimeout(() => {
-      reject(new Error("Timed out waiting for tunnel URL"));
+      activeTunnel = null;
+      reject(new Error("Timed out waiting for tunnel URL (30s)"));
     }, TUNNEL_URL_TIMEOUT_MS);
 
     tunnel.once("url", (url: string) => {
@@ -67,6 +76,12 @@ export async function startTunnel(port: number): Promise<string> {
       clearTimeout(timeout);
       activeTunnel = null;
       reject(new Error(`Failed to start cloudflared: ${err.message}`));
+    });
+
+    tunnel.once("exit", () => {
+      clearTimeout(timeout);
+      activeTunnel = null;
+      reject(new Error("cloudflared exited before emitting a URL"));
     });
   });
 
