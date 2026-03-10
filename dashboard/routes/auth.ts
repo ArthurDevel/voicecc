@@ -33,7 +33,7 @@ const OAUTH_SCOPES = "org:create_api_key user:profile user:inference user:sessio
 // PKCE STATE (single-user dashboard — one pending flow at a time)
 // ============================================================================
 
-let pendingPkce: { codeVerifier: string; createdAt: number } | null = null;
+let pendingPkce: { codeVerifier: string; state: string; createdAt: number } | null = null;
 
 // ============================================================================
 // HELPER FUNCTIONS
@@ -143,7 +143,8 @@ export function authRoutes(): Hono {
   /** Start an OAuth PKCE flow — returns the authorization URL. */
   app.post("/oauth/start", async (c) => {
     const { codeVerifier, codeChallenge } = generatePkce();
-    pendingPkce = { codeVerifier, createdAt: Date.now() };
+    const state = base64url(randomBytes(32));
+    pendingPkce = { codeVerifier, state, createdAt: Date.now() };
 
     const params = new URLSearchParams({
       code: "true",
@@ -153,14 +154,15 @@ export function authRoutes(): Hono {
       scope: OAUTH_SCOPES,
       code_challenge: codeChallenge,
       code_challenge_method: "S256",
+      state,
     });
 
-    return c.json({ url: `${OAUTH_AUTH_URL}?${params.toString()}` });
+    return c.json({ url: `${OAUTH_AUTH_URL}?${params.toString()}`, state });
   });
 
   /** Exchange an authorization code for tokens and save credentials. */
   app.post("/oauth/callback", async (c) => {
-    const { code } = await c.req.json<{ code: string }>();
+    const { code, state } = await c.req.json<{ code: string; state: string }>();
 
     if (!code || typeof code !== "string") {
       return c.json({ error: "Authorization code is required" }, 400);
@@ -168,6 +170,11 @@ export function authRoutes(): Hono {
 
     if (!pendingPkce) {
       return c.json({ error: "No pending OAuth flow. Please start the login again." }, 400);
+    }
+
+    if (!state || state !== pendingPkce.state) {
+      pendingPkce = null;
+      return c.json({ error: "Invalid OAuth state. Please start the login again." }, 400);
     }
 
     // Expire stale flows (10 minutes)
