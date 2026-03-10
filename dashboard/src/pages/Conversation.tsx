@@ -1,8 +1,10 @@
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { ConversationView } from "../components/ConversationView";
 
 export function Conversation() {
     const { id } = useParams<{ id: string }>();
+    const [searchParams] = useSearchParams();
+    const agentId = searchParams.get("agentId") ?? undefined;
 
     if (!id) {
         return (
@@ -21,7 +23,7 @@ export function Conversation() {
 
     return (
         <div className="page active">
-            <ConversationView sessionId={id} />
+            <ConversationView sessionId={id} agentId={agentId} />
         </div>
     );
 }
