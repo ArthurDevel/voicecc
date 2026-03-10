@@ -18,7 +18,7 @@ interface VersionInfo {
 
 export function Layout() {
     const [twilioStatus, setTwilioStatus] = useState<TwilioStatus>({ running: false, tunnelUrl: null });
-    const [browserCallStatus, setBrowserCallStatus] = useState<BrowserCallStatus>({ running: false, tunnelUrl: null });
+    const [browserCallStatus, setBrowserCallStatus] = useState<BrowserCallStatus>({ callBaseUrl: "" });
     const [authStatus, setAuthStatus] = useState<boolean | null>(null);
     const [versionInfo, setVersionInfo] = useState<VersionInfo | null>(null);
     const [bannerDismissed, setBannerDismissed] = useState(false);

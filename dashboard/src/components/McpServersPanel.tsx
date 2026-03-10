@@ -9,7 +9,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { get, del } from "../api";
 import { TwilioPanel } from "./TwilioPanel";
-import { BrowserCallSetupPanel } from "./BrowserCallSetupPanel";
 import { AddMcpServerModal } from "./AddMcpServerModal";
 import { Toast } from "./Toast";
 import type { ApiError } from "../api";
@@ -28,18 +27,16 @@ interface McpServerEntry {
 
 interface McpServersPanelProps {
   twilioRunning: boolean;
-  browserCallRunning: boolean;
 }
 
 // ============================================================================
 // COMPONENT
 // ============================================================================
 
-export function McpServersPanel({ twilioRunning, browserCallRunning }: McpServersPanelProps) {
+export function McpServersPanel({ twilioRunning }: McpServersPanelProps) {
   const [servers, setServers] = useState<McpServerEntry[] | null>(null);
   const [error, setError] = useState(false);
   const [showTwilioModal, setShowTwilioModal] = useState(false);
-  const [showBrowserCallModal, setShowBrowserCallModal] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -88,10 +85,6 @@ export function McpServersPanel({ twilioRunning, browserCallRunning }: McpServer
           <button className="btn-integration" onClick={() => setShowTwilioModal(true)}>
             <span className={`integration-dot${twilioRunning ? " running" : ""}`} />
             Twilio
-          </button>
-          <button className="btn-integration" onClick={() => setShowBrowserCallModal(true)}>
-            <span className={`integration-dot${browserCallRunning ? " running" : ""}`} />
-            Browser Call from Anywhere
           </button>
         </div>
       </div>
@@ -146,10 +139,6 @@ export function McpServersPanel({ twilioRunning, browserCallRunning }: McpServer
 
       {showTwilioModal && (
         <TwilioPanel onClose={() => setShowTwilioModal(false)} />
-      )}
-
-      {showBrowserCallModal && (
-        <BrowserCallSetupPanel onClose={() => setShowBrowserCallModal(false)} />
       )}
 
       {showAddModal && (

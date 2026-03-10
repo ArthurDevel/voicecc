@@ -4,8 +4,8 @@
  * Responsibilities:
  * - Start the dashboard HTTP server (editor UI, conversation viewer, voice launcher)
  * - Start the unified voice server (Twilio + browser audio + dashboard proxy)
- * - Auto-start tunnel if enabled (independent of integrations)
- * - Auto-start enabled integrations (Twilio, Browser Call) -- require tunnel
+ * - Auto-start tunnel if enabled
+ * - Auto-start Twilio if enabled (requires tunnel)
  */
 
 import "dotenv/config";
@@ -18,7 +18,6 @@ import { startDashboard } from "../dashboard/server.js";
 import { readEnv } from "./services/env.js";
 import { startTunnel, stopTunnel, isTunnelRunning, getTunnelUrl } from "./services/tunnel.js";
 import { startTwilioServer } from "./services/twilio-manager.js";
-import { startBrowserCallServer } from "./services/browser-call-manager.js";
 import { startHeartbeat } from "./services/heartbeat.js";
 import { startVoiceServer } from "./voice/voice-server.js";
 
@@ -37,10 +36,11 @@ const STATUS_FILE = join(VOICECC_DIR, "status.json");
  * @param dashboardPort - the port the dashboard is running on
  * @param tunnelUrl - the tunnel URL, or null if disabled
  */
-function writeStatusFile(dashboardPort: number, tunnelUrl: string | null): void {
+function writeStatusFile(dashboardPort: number, tunnelUrl: string | null, tunnelError: string | null = null): void {
   const status = {
     dashboardPort,
     tunnelUrl,
+    tunnelError,
     startedAt: new Date().toISOString(),
   };
   try {
@@ -79,8 +79,9 @@ async function main(): Promise<void> {
       await startTunnel(voicePort);
       writeStatusFile(dashboardPort, getTunnelUrl());
     } catch (err) {
-      console.error(`Tunnel auto-start failed: ${err}`);
-      writeStatusFile(dashboardPort, null);
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      console.error(`Tunnel auto-start failed: ${errorMsg}`);
+      writeStatusFile(dashboardPort, null, errorMsg);
     }
   }
 
@@ -94,20 +95,6 @@ async function main(): Promise<void> {
         await startTwilioServer(dashboardPort, getTunnelUrl() ?? undefined);
       } catch (err) {
         console.error(`Twilio auto-start failed: ${err}`);
-      }
-    }
-  }
-
-  // Auto-start Browser Call if enabled
-  if (envVars.BROWSER_CALL_ENABLED === "true") {
-    console.log("Browser Call integration enabled, starting...");
-    if (!isTunnelRunning()) {
-      console.error("Browser Call auto-start failed: Tunnel is not enabled. Enable it in Settings > General.");
-    } else {
-      try {
-        await startBrowserCallServer(dashboardPort);
-      } catch (err) {
-        console.error(`Browser Call auto-start failed: ${err}`);
       }
     }
   }

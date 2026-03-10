@@ -27,8 +27,7 @@ export interface TwilioStatus {
 }
 
 export interface BrowserCallStatus {
-  running: boolean;
-  tunnelUrl: string | null;
+  callBaseUrl: string;
 }
 
 interface McpServerEntry {
@@ -41,15 +40,10 @@ interface McpServerEntry {
 
 export function Home() {
   const { authStatus, setAuthStatus } = useOutletContext<LayoutContext>();
-  const [browserCallRunning, setBrowserCallRunning] = useState<boolean | null>(null);
   const [mcpServers, setMcpServers] = useState<McpServerEntry[] | null>(null);
   const [showTokenModal, setShowTokenModal] = useState(false);
 
   useEffect(() => {
-    get<BrowserCallStatus>("/api/browser-call/status")
-      .then((data) => setBrowserCallRunning(data.running))
-      .catch(() => setBrowserCallRunning(false));
-
     get<{ servers: McpServerEntry[] }>("/api/mcp-servers")
       .then((data) => setMcpServers(data.servers))
       .catch(() => setMcpServers([]));
@@ -109,7 +103,7 @@ export function Home() {
 
         <div className="settings-panel">
           <h2 style={{ fontSize: 16, fontWeight: 600, color: "var(--text-primary)", marginBottom: 4 }}>
-            Enable calling from anywhere
+            Call from anywhere
           </h2>
           <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 20 }}>
             Call your voice assistant from any device using a browser.
@@ -120,28 +114,13 @@ export function Home() {
               width: 8,
               height: 8,
               borderRadius: "50%",
-              background: browserCallRunning === null ? "#666" : browserCallRunning ? "var(--accent-color)" : "#d73a49",
+              background: "var(--accent-color)",
               flexShrink: 0,
             }} />
-            <span style={{
-              fontSize: 13,
-              color: browserCallRunning === null ? "var(--text-secondary)" : browserCallRunning ? "var(--accent-color)" : "#d73a49",
-            }}>
-              {browserCallRunning === null
-                ? "Checking status..."
-                : browserCallRunning
-                  ? "Browser calling is active"
-                  : "Browser calling is not enabled"}
+            <span style={{ fontSize: 13, color: "var(--accent-color)" }}>
+              Browser calling is always active
             </span>
           </div>
-
-          {browserCallRunning === false && (
-            <div className="settings-actions">
-              <Link to="/settings?tab=integrations" style={{ textDecoration: "none" }}>
-                <button>Set up in Settings</button>
-              </Link>
-            </div>
-          )}
         </div>
 
         <div className="settings-panel">

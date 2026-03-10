@@ -1,9 +1,8 @@
 /**
  * Integration enable/disable API routes.
  *
- * Manages the enabled state of integrations (Twilio, Browser Call).
- * Enabling an integration persists the flag to .env and immediately starts
- * the service. Requires tunnel to be running. Disabling stops it.
+ * Manages the enabled state of toggleable integrations (Twilio).
+ * Browser calling is always enabled and not toggleable.
  *
  * - GET / -- returns enabled state for each integration
  * - POST /:name -- sets enabled state and starts/stops the service
@@ -12,7 +11,6 @@
 import { Hono } from "hono";
 import { readEnv, writeEnvKey } from "../../server/services/env.js";
 import { startTwilioServer, stopTwilioServer, isRunning as isTwilioRunning } from "../../server/services/twilio-manager.js";
-import { startBrowserCallServer, stopBrowserCallServer, isBrowserCallRunning } from "../../server/services/browser-call-manager.js";
 import { isTunnelRunning, getTunnelUrl } from "../../server/services/tunnel.js";
 
 // ============================================================================
@@ -22,7 +20,6 @@ import { isTunnelRunning, getTunnelUrl } from "../../server/services/tunnel.js";
 /** Map of integration names to their .env key */
 const INTEGRATION_ENV_KEYS: Record<string, string> = {
   twilio: "TWILIO_ENABLED",
-  "browser-call": "BROWSER_CALL_ENABLED",
 };
 
 // ============================================================================
@@ -58,7 +55,6 @@ export function integrationsRoutes(): Hono {
     const envVars = await readEnv();
     return c.json({
       twilio: { enabled: envVars.TWILIO_ENABLED === "true" },
-      browserCall: { enabled: envVars.BROWSER_CALL_ENABLED === "true" },
     });
   });
 
@@ -99,40 +95,33 @@ export function integrationsRoutes(): Hono {
 // ============================================================================
 
 /**
- * Start an integration. Requires tunnel to be running.
+ * Start an integration. Twilio requires the tunnel.
  *
- * @param name - Integration name ("twilio" or "browser-call")
+ * @param name - Integration name ("twilio")
  */
 async function startIntegration(name: string): Promise<void> {
-  if (!isTunnelRunning()) {
-    throw new Error("Tunnel is not enabled. Enable it in Settings > General first.");
-  }
-
   const envVars = await readEnv();
 
   if (name === "twilio") {
+    if (!isTunnelRunning()) {
+      throw new Error("Tunnel is not enabled. Enable it in Settings > General first.");
+    }
     if (!envVars.TWILIO_AUTH_TOKEN) {
       throw new Error("TWILIO_AUTH_TOKEN is not configured. Set your Twilio credentials first.");
     }
     if (!isTwilioRunning()) {
       await startTwilioServer(dashboardPort, getTunnelUrl() ?? undefined);
     }
-  } else if (name === "browser-call") {
-    if (!isBrowserCallRunning()) {
-      await startBrowserCallServer(dashboardPort);
-    }
   }
 }
 
 /**
- * Stop an integration. Tunnel lifecycle is managed independently.
+ * Stop an integration.
  *
- * @param name - Integration name ("twilio" or "browser-call")
+ * @param name - Integration name ("twilio")
  */
 function stopIntegration(name: string): void {
   if (name === "twilio") {
     stopTwilioServer();
-  } else if (name === "browser-call") {
-    stopBrowserCallServer();
   }
 }

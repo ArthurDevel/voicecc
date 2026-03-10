@@ -82,8 +82,6 @@ export function AgentDetail() {
   const [savingVoice, setSavingVoice] = useState(false);
   const [showBrowserCallModal, setShowBrowserCallModal] = useState(false);
 
-  const browserCallEnabled = browserCallStatus.running && !!browserCallStatus.tunnelUrl;
-
   // ============================================================================
   // EVENT HANDLERS
   // ============================================================================
@@ -218,25 +216,21 @@ export function AgentDetail() {
           >
             {calling ? "Calling..." : "Call via Phone"}
           </button>
-          <span title={!browserCallEnabled ? "Enable browser calling in Settings" : undefined}>
-            <button
-              onClick={() => setShowBrowserCallModal(true)}
-              disabled={!browserCallEnabled}
-              style={{
-                padding: "6px 14px",
-                background: "var(--btn-primary-bg)",
-                color: "var(--btn-primary-text)",
-                border: "none",
-                borderRadius: 0,
-                fontWeight: 500,
-                fontSize: 13,
-                cursor: !browserCallEnabled ? "not-allowed" : "pointer",
-                opacity: !browserCallEnabled ? 0.6 : 1,
-              }}
-            >
-              Call via Browser
-            </button>
-          </span>
+          <button
+            onClick={() => setShowBrowserCallModal(true)}
+            style={{
+              padding: "6px 14px",
+              background: "var(--btn-primary-bg)",
+              color: "var(--btn-primary-text)",
+              border: "none",
+              borderRadius: 0,
+              fontWeight: 500,
+              fontSize: 13,
+              cursor: "pointer",
+            }}
+          >
+            Call via Browser
+          </button>
           <button
             onClick={handleDelete}
             disabled={deleting}
@@ -327,10 +321,10 @@ export function AgentDetail() {
         </div>
       </div>
 
-      {showBrowserCallModal && browserCallStatus.tunnelUrl && id && (
+      {showBrowserCallModal && browserCallStatus.callBaseUrl && id && (
         <BrowserCallModal
           agentId={id!}
-          tunnelUrl={browserCallStatus.tunnelUrl}
+          callBaseUrl={browserCallStatus.callBaseUrl}
           onClose={() => setShowBrowserCallModal(false)}
         />
       )}

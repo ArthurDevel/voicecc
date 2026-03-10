@@ -21,7 +21,7 @@ import { conversationRoutes } from "./routes/conversations.js";
 import { settingsRoutes } from "./routes/settings.js";
 import { tunnelRoutes } from "./routes/tunnel.js";
 import { twilioRoutes, setDashboardPort } from "./routes/twilio.js";
-import { browserCallRoutes, setDashboardPort as setBrowserCallDashboardPort } from "./routes/browser-call.js";
+import { browserCallRoutes } from "./routes/browser-call.js";
 import { webrtcRoutes } from "./routes/webrtc.js";
 import { mcpServersRoutes } from "./routes/mcp-servers.js";
 import { authRoutes } from "./routes/auth.js";
@@ -123,7 +123,6 @@ export async function startDashboard(): Promise<number> {
       });
 
       setDashboardPort(port);
-      setBrowserCallDashboardPort(port);
       setIntegrationsDashboardPort(port);
       console.log(`Dashboard running at http://localhost:${port}`);
       return port;
