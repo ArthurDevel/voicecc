@@ -147,7 +147,23 @@ export function SettingsPanel({ twilioRunning }: SettingsPanelProps) {
             <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 16 }}>
               Claude Code is not logged in. Sign in to enable voice sessions.
             </p>
-            <button onClick={() => setShowAuthModal(true)}>Sign in</button>
+            <button
+              onClick={() => setShowAuthModal(true)}
+              style={{
+                background: "var(--btn-primary-bg)",
+                color: "var(--btn-primary-text)",
+                border: "none",
+                borderRadius: 0,
+                padding: "8px 16px",
+                fontSize: 13,
+                fontWeight: 500,
+                fontFamily: "inherit",
+                cursor: "pointer",
+                transition: "all 0.2s",
+              }}
+            >
+              Sign in
+            </button>
           </div>
         )}
 
