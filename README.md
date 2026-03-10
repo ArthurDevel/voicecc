@@ -1,6 +1,6 @@
 # Voice CC
 
-A Claude Code plugin for hands-free voice interaction with ElevenLabs speech-to-text, text-to-speech, and voice activity detection.
+A Voice Agent Platform running on Claude Code. Create, manage, and deploy conversational voice agents powered by Claude, with real-time speech-to-text, text-to-speech, and voice activity detection via ElevenLabs.
 
 ## Project Structure
 
@@ -29,7 +29,7 @@ bin/                CLI entry point (voicecc command)
 # 1. Install Voice CC
 npm install -g voicecc
 
-# 2. Start the dashboard
+# 2. Start the platform
 voicecc
 ```
 
@@ -52,7 +52,7 @@ npm run dev:dashboard
 2. **Voice activity detection**: Silero VAD v5 detects speech segments
 3. **Speech-to-text**: ElevenLabs Scribe API transcribes audio
 4. **Endpointing**: VAD silence-based turn detection
-5. **Claude inference**: Transcript sent to Claude Code Agent SDK session with streaming response
+5. **Claude inference**: Transcript sent to Claude Agent SDK session with streaming response
 6. **Narration**: Claude's response stripped of markdown and split into sentences
 7. **Text-to-speech**: ElevenLabs streaming TTS API generates audio
 8. **Speaker playback**: Audio output through browser at 24kHz
