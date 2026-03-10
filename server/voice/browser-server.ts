@@ -16,6 +16,7 @@ import { WebSocketServer } from "ws";
 import { createBrowserAudioAdapter } from "./browser-audio.js";
 import { createVoiceSession } from "./voice-session.js";
 import { isValidDeviceToken } from "../services/device-pairing.js";
+import { readEnv } from "../services/env.js";
 
 import type { IncomingMessage } from "http";
 import type { Duplex } from "stream";
@@ -30,46 +31,14 @@ import type { TtsProviderConfig, SttProviderConfig } from "./types.js";
 /** Interruption threshold for browser calls (lower than Twilio's 2000ms because browser getUserMedia includes AEC) */
 const BROWSER_INTERRUPTION_THRESHOLD_MS = 1500;
 
-/** Read ElevenLabs config from environment */
-const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY ?? "";
-const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID ?? "WrjxnKxK0m1uiaH0uteU";
-const ELEVENLABS_MODEL_ID = process.env.ELEVENLABS_MODEL_ID ?? "eleven_turbo_v2_5";
-const ELEVENLABS_STT_MODEL_ID = process.env.ELEVENLABS_STT_MODEL_ID ?? "scribe_v1";
+/** Default ElevenLabs voice ID (used when not set in .env) */
+const DEFAULT_ELEVENLABS_VOICE_ID = "WrjxnKxK0m1uiaH0uteU";
 
-/** TTS provider configuration built from env vars */
-const ttsProvider: TtsProviderConfig = {
-  provider: "elevenlabs",
-  elevenlabs: { apiKey: ELEVENLABS_API_KEY, voiceId: ELEVENLABS_VOICE_ID, modelId: ELEVENLABS_MODEL_ID },
-};
+/** Default ElevenLabs TTS model ID (used when not set in .env) */
+const DEFAULT_ELEVENLABS_MODEL_ID = "eleven_turbo_v2_5";
 
-/** STT provider configuration built from env vars */
-const sttProvider: SttProviderConfig = {
-  provider: "elevenlabs",
-  elevenlabs: { apiKey: ELEVENLABS_API_KEY, modelId: ELEVENLABS_STT_MODEL_ID },
-};
-
-/** Default voice session config for browser calls */
-const DEFAULT_CONFIG = {
-  stopPhrase: "stop listening",
-  ttsProvider,
-  sttProvider,
-  interruptionThresholdMs: BROWSER_INTERRUPTION_THRESHOLD_MS,
-  endpointing: {
-    silenceThresholdMs: 700,
-    maxSilenceBeforeTimeoutMs: 1200,
-    minWordCountForFastPath: 2,
-    enableHaikuFallback: false,
-  },
-  narration: {
-    summaryIntervalMs: 12000,
-  },
-  claudeSession: {
-    allowedTools: [] as string[],
-    permissionMode: "bypassPermissions",
-    systemPrompt:
-      "Respond concisely. You are in voice mode -- your responses will be spoken aloud. Keep answers conversational and brief.",
-  },
-};
+/** Default ElevenLabs STT model ID (used when not set in .env) */
+const DEFAULT_ELEVENLABS_STT_MODEL_ID = "scribe_v1";
 
 // ============================================================================
 // TYPES
@@ -219,6 +188,27 @@ function handleBrowserSession(ws: WebSocket, deviceToken: string): void {
 // ============================================================================
 
 /**
+ * Build provider config by reading the latest values from .env.
+ * Called per-session so changes to API keys, voice IDs, or model IDs
+ * take effect without a server restart.
+ *
+ * @returns TTS and STT provider configs with current .env values
+ */
+async function buildProviderConfig(): Promise<{ ttsProvider: TtsProviderConfig; sttProvider: SttProviderConfig }> {
+  const env = await readEnv();
+
+  const apiKey = env.ELEVENLABS_API_KEY ?? "";
+  const voiceId = env.ELEVENLABS_VOICE_ID ?? DEFAULT_ELEVENLABS_VOICE_ID;
+  const modelId = env.ELEVENLABS_MODEL_ID ?? DEFAULT_ELEVENLABS_MODEL_ID;
+  const sttModelId = env.ELEVENLABS_STT_MODEL_ID ?? DEFAULT_ELEVENLABS_STT_MODEL_ID;
+
+  return {
+    ttsProvider: { provider: "elevenlabs", elevenlabs: { apiKey, voiceId, modelId } },
+    sttProvider: { provider: "elevenlabs", elevenlabs: { apiKey, modelId: sttModelId } },
+  };
+}
+
+/**
  * Create the BrowserAudioAdapter and VoiceSession for a connected WebSocket.
  *
  * @param ws - Connected WebSocket for browser audio
@@ -227,8 +217,28 @@ function handleBrowserSession(ws: WebSocket, deviceToken: string): void {
 async function createSession(ws: WebSocket, entry: ActiveBrowserSession): Promise<void> {
   const adapter = createBrowserAudioAdapter({ ws });
 
+  const { ttsProvider, sttProvider } = await buildProviderConfig();
+
   const session = await createVoiceSession(adapter, {
-    ...DEFAULT_CONFIG,
+    stopPhrase: "stop listening",
+    ttsProvider,
+    sttProvider,
+    interruptionThresholdMs: BROWSER_INTERRUPTION_THRESHOLD_MS,
+    endpointing: {
+      silenceThresholdMs: 700,
+      maxSilenceBeforeTimeoutMs: 1200,
+      minWordCountForFastPath: 2,
+      enableHaikuFallback: false,
+    },
+    narration: {
+      summaryIntervalMs: 12000,
+    },
+    claudeSession: {
+      allowedTools: [] as string[],
+      permissionMode: "bypassPermissions",
+      systemPrompt:
+        "Respond concisely. You are in voice mode -- your responses will be spoken aloud. Keep answers conversational and brief.",
+    },
     onSessionEnd: () => ws.close(),
   });
 
