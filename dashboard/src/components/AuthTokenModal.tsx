@@ -1,11 +1,9 @@
 /**
  * Authentication modal with two methods:
  *
- * Tab 1: "Login with Claude" (recommended) -- OAuth PKCE flow via claude.ai.
- *         Enables cloud MCP servers (Gmail, Calendar, Slack, etc.).
- *
+ * Tab 1: "Login with Claude" -- spawns `claude auth login` on the server,
+ *         shows the OAuth URL, and lets the user paste the auth code.
  * Tab 2: "Setup Token" -- manual paste of a `claude setup-token` token.
- *         Quick but cloud MCP servers won't be available.
  */
 
 import { useState } from "react";
@@ -22,7 +20,18 @@ interface AuthTokenModalProps {
 }
 
 type Tab = "oauth" | "token";
-type OAuthStep = "idle" | "waiting" | "exchanging";
+
+/** Response from POST /api/auth/oauth/start */
+interface OAuthStartResponse {
+  url: string;
+}
+
+/** Response from POST /api/auth/oauth/code */
+interface OAuthCodeResponse {
+  authenticated: boolean;
+  authMethod: string;
+  email?: string;
+}
 
 // ============================================================================
 // STYLES
@@ -46,17 +55,6 @@ const tabStyle = (active: boolean): React.CSSProperties => ({
   cursor: "pointer",
   marginBottom: -1,
 });
-
-const badgeStyle: React.CSSProperties = {
-  fontSize: 10,
-  fontWeight: 600,
-  color: "var(--accent-color)",
-  background: "color-mix(in srgb, var(--accent-color) 12%, transparent)",
-  padding: "2px 6px",
-  borderRadius: 4,
-  marginLeft: 6,
-  verticalAlign: "middle",
-};
 
 const noteStyle: React.CSSProperties = {
   fontSize: 12,
@@ -93,6 +91,17 @@ const cancelBtnStyle: React.CSSProperties = {
   border: "1px solid var(--btn-secondary-border)",
 };
 
+const recommendedBadgeStyle: React.CSSProperties = {
+  fontSize: 10,
+  fontWeight: 600,
+  color: "var(--accent-color)",
+  background: "color-mix(in srgb, var(--accent-color) 12%, transparent)",
+  padding: "2px 6px",
+  borderRadius: 4,
+  marginLeft: 6,
+  verticalAlign: "middle",
+};
+
 // ============================================================================
 // COMPONENT
 // ============================================================================
@@ -101,9 +110,10 @@ export function AuthTokenModal({ onClose, onAuthenticated }: AuthTokenModalProps
   const [activeTab, setActiveTab] = useState<Tab>("oauth");
 
   // --- OAuth tab state ---
-  const [oauthStep, setOauthStep] = useState<OAuthStep>("idle");
+  const [oauthUrl, setOauthUrl] = useState<string | null>(null);
   const [oauthCode, setOauthCode] = useState("");
-  const [oauthState, setOauthState] = useState<string | null>(null);
+  const [oauthLoading, setOauthLoading] = useState(false);
+  const [oauthSubmitting, setOauthSubmitting] = useState(false);
   const [oauthError, setOauthError] = useState<string | null>(null);
 
   // --- Token tab state ---
@@ -117,43 +127,49 @@ export function AuthTokenModal({ onClose, onAuthenticated }: AuthTokenModalProps
 
   // ---- OAuth flow handlers ----
 
-  const handleOAuthStart = async () => {
+  /** Start the login flow: spawns `claude auth login` on the server. */
+  const handleStartLogin = async () => {
+    setOauthLoading(true);
     setOauthError(null);
+    setOauthUrl(null);
+    setOauthCode("");
+
     try {
-      const { url, state } = await post<{ url: string; state: string }>("/api/auth/oauth/start");
-      setOauthState(state);
-      window.open(url, "_blank");
-      setOauthStep("waiting");
+      const result = await post<OAuthStartResponse>("/api/auth/oauth/start");
+      setOauthUrl(result.url);
     } catch (err) {
       setOauthError((err as ApiError)?.message || "Failed to start login");
     }
+
+    setOauthLoading(false);
   };
 
-  const handleOAuthSubmitCode = async () => {
-    // The callback page shows "code#state" -- strip the #state suffix if present
-    const trimmed = oauthCode.trim().split("#")[0];
+  /** Send the auth code to complete the login. */
+  const handleSubmitCode = async () => {
+    const trimmed = oauthCode.trim();
     if (!trimmed) return;
 
-    setOauthStep("exchanging");
+    setOauthSubmitting(true);
     setOauthError(null);
 
     try {
-      const result = await post<{ authenticated: boolean }>("/api/auth/oauth/callback", { code: trimmed, state: oauthState });
+      const result = await post<OAuthCodeResponse>("/api/auth/oauth/code", { code: trimmed });
       if (result.authenticated) {
         onAuthenticated();
         onClose();
       } else {
-        setOauthError("Authentication could not be verified. Please try again.");
-        setOauthStep("waiting");
+        setOauthError("Login completed but authentication check failed. Try again.");
       }
     } catch (err) {
-      setOauthError((err as ApiError)?.message || "Failed to exchange code");
-      setOauthStep("waiting");
+      setOauthError((err as ApiError)?.message || "Failed to complete login");
     }
+
+    setOauthSubmitting(false);
   };
 
   // ---- Token flow handlers ----
 
+  /** Save a manually pasted token. */
   const handleSaveToken = async () => {
     const trimmed = token.trim();
     if (!trimmed) return;
@@ -185,71 +201,87 @@ export function AuthTokenModal({ onClose, onAuthenticated }: AuthTokenModalProps
         {/* Tab bar */}
         <div style={tabBarStyle}>
           <button style={tabStyle(activeTab === "oauth")} onClick={() => setActiveTab("oauth")}>
-            Login with Claude<span style={badgeStyle}>recommended</span>
+            Login with Claude<span style={recommendedBadgeStyle}>recommended</span>
           </button>
           <button style={tabStyle(activeTab === "token")} onClick={() => setActiveTab("token")}>
             Setup Token
           </button>
         </div>
 
-        {/* Tab 1: OAuth PKCE */}
+        {/* Tab 1: OAuth via CLI */}
         {activeTab === "oauth" && (
           <div>
-            {oauthStep === "idle" && (
-              <div style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.6 }}>
-                <p style={{ marginBottom: 12 }}>
-                  Sign in with your Claude account to authenticate. This enables all features
-                  including cloud integrations like Gmail, Google Calendar, and Slack.
-                </p>
-                <p style={{ marginBottom: 16 }}>
-                  A new tab will open for you to authorize access.
-                </p>
-                {oauthError && (
-                  <p style={{ fontSize: 12, color: "#d73a49", marginBottom: 8 }}>{oauthError}</p>
-                )}
+            {/* Step 1: Start the login flow */}
+            {!oauthUrl && (
+              <div>
+                <div style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.6 }}>
+                  <p style={{ marginBottom: 12 }}>
+                    Sign in with your Claude account. This authenticates the CLI directly,
+                    enabling all features including cloud integrations like Gmail, Google Calendar,
+                    and Slack.
+                  </p>
+                </div>
                 <div style={footerStyle}>
                   <button style={cancelBtnStyle} onClick={onClose}>Cancel</button>
-                  <button onClick={handleOAuthStart}>Login with Claude</button>
+                  <button onClick={handleStartLogin} disabled={oauthLoading}>
+                    {oauthLoading ? "Starting..." : "Start login"}
+                  </button>
                 </div>
               </div>
             )}
 
-            {oauthStep === "waiting" && (
-              <div style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.6 }}>
-                <p style={{ marginBottom: 12 }}>
-                  Complete the sign-in in the new tab. Once authorized, you'll see
-                  a page with an authorization code.
-                </p>
-                <p style={{ marginBottom: 16 }}>
-                  Copy that code and paste it below:
-                </p>
+            {/* Step 2: Show URL and code input */}
+            {oauthUrl && (
+              <div>
+                <div style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.6 }}>
+                  <p style={{ marginBottom: 12 }}>
+                    Open this URL in your browser and sign in:
+                  </p>
+                  <a
+                    href={oauthUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: "block",
+                      background: "var(--bg-main)",
+                      border: "1px solid var(--border-color)",
+                      padding: "8px 12px",
+                      fontFamily: '"SF Mono", "Fira Code", monospace',
+                      fontSize: 11,
+                      color: "var(--accent-color)",
+                      marginBottom: 12,
+                      wordBreak: "break-all",
+                      textDecoration: "none",
+                    }}
+                  >
+                    {oauthUrl}
+                  </a>
+                  <p style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 16 }}>
+                    Click the link to open it in your browser. After signing in, paste the code below.
+                  </p>
+                </div>
+
                 <input
                   type="text"
-                  placeholder="Paste authorization code here..."
+                  placeholder="Paste the code here..."
                   value={oauthCode}
                   onChange={(e) => setOauthCode(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") handleOAuthSubmitCode(); }}
-                  autoFocus
+                  onKeyDown={(e) => { if (e.key === "Enter") handleSubmitCode(); }}
                   style={inputStyle}
+                  autoFocus
                 />
-                {oauthError && (
-                  <p style={{ fontSize: 12, color: "#d73a49", marginTop: 8 }}>{oauthError}</p>
-                )}
+
                 <div style={footerStyle}>
-                  <button style={cancelBtnStyle} onClick={() => { setOauthStep("idle"); setOauthCode(""); setOauthError(null); }}>
-                    Back
-                  </button>
-                  <button onClick={handleOAuthSubmitCode} disabled={!oauthCode.trim()}>
-                    Submit code
+                  <button style={cancelBtnStyle} onClick={onClose}>Cancel</button>
+                  <button onClick={handleSubmitCode} disabled={oauthSubmitting || !oauthCode.trim()}>
+                    {oauthSubmitting ? "Authenticating..." : "Submit code"}
                   </button>
                 </div>
               </div>
             )}
 
-            {oauthStep === "exchanging" && (
-              <div style={{ fontSize: 13, color: "var(--text-secondary)", textAlign: "center", padding: "24px 0" }}>
-                Authenticating...
-              </div>
+            {oauthError && (
+              <p style={{ fontSize: 12, color: "#d73a49", marginTop: 8 }}>{oauthError}</p>
             )}
           </div>
         )}
