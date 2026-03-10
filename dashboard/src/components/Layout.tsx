@@ -7,6 +7,7 @@ import { TwilioStatus, BrowserCallStatus } from "../pages/Home";
 export interface LayoutContext {
     authStatus: boolean | null;
     setAuthStatus: (status: boolean | null) => void;
+    browserCallStatus: BrowserCallStatus;
 }
 
 interface VersionInfo {
@@ -48,7 +49,7 @@ export function Layout() {
 
     return (
         <div style={{ display: "flex", height: "100vh" }}>
-            <Sidebar twilioStatus={twilioStatus} browserCallStatus={browserCallStatus} authStatus={authStatus} />
+            <Sidebar twilioStatus={twilioStatus} authStatus={authStatus} />
             <div className="main" style={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}>
                 {showBanner && (
                     <div style={{
@@ -88,7 +89,7 @@ export function Layout() {
                         </button>
                     </div>
                 )}
-                <Outlet context={{ authStatus, setAuthStatus } satisfies LayoutContext} />
+                <Outlet context={{ authStatus, setAuthStatus, browserCallStatus } satisfies LayoutContext} />
             </div>
         </div>
     );

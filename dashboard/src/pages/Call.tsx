@@ -31,6 +31,9 @@ type CallState = "pairing" | "ready" | "connecting" | "active";
 const PIN_LENGTH = 6;
 const DEVICE_TOKEN_KEY = "claude-voice-device-token";
 
+/** localStorage key prefix for storing agentId per device token */
+const AGENT_ID_KEY_PREFIX = "claude-voice-agent-";
+
 /** Server expects mic audio at this sample rate */
 const MIC_TARGET_RATE = 16000;
 
@@ -106,6 +109,7 @@ export function Call() {
   const [pin, setPin] = useState<string[]>(Array(PIN_LENGTH).fill(""));
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const deviceTokenRef = useRef(localStorage.getItem(DEVICE_TOKEN_KEY) || "");
+  const agentIdRef = useRef("");
 
   // WebSocket + Audio refs (replaces Twilio refs)
   const wsRef = useRef<WebSocket | null>(null);
@@ -142,6 +146,12 @@ export function Call() {
       console.log("[Call] Pairing success, got token");
       deviceTokenRef.current = data.token;
       localStorage.setItem(DEVICE_TOKEN_KEY, data.token);
+
+      // Persist agentId keyed by token so returning devices reconnect to the same agent
+      if (agentIdRef.current) {
+        localStorage.setItem(`${AGENT_ID_KEY_PREFIX}${data.token}`, agentIdRef.current);
+      }
+
       setCallState("ready");
     } catch (err) {
       const message = (err as { message?: string })?.message || "Pairing failed";
@@ -154,8 +164,15 @@ export function Call() {
   // Check existing token or auto-pair from URL code on mount
   useEffect(() => {
     const token = deviceTokenRef.current;
-    const urlCode = new URLSearchParams(window.location.search).get("code");
-    console.log("[Call] mount: token=%s, urlCode=%s", token ? "present" : "none", urlCode ?? "none");
+    const params = new URLSearchParams(window.location.search);
+    const urlCode = params.get("code");
+    const urlAgentId = params.get("agentId");
+    console.log("[Call] mount: token=%s, urlCode=%s, agentId=%s", token ? "present" : "none", urlCode ?? "none", urlAgentId ?? "none");
+
+    // Store agentId from URL if present
+    if (urlAgentId) {
+      agentIdRef.current = urlAgentId;
+    }
 
     // If a pairing code was passed as a URL parameter, auto-submit it
     if (urlCode && urlCode.length === PIN_LENGTH && !token) {
@@ -168,6 +185,15 @@ export function Call() {
       console.log("[Call] no token, showing PIN input");
       inputRefs.current[0]?.focus();
       return;
+    }
+
+    // Returning device: read agentId from localStorage if not in URL
+    if (!urlAgentId) {
+      const storedAgentId = localStorage.getItem(`${AGENT_ID_KEY_PREFIX}${token}`);
+      if (storedAgentId) {
+        agentIdRef.current = storedAgentId;
+        console.log("[Call] restored agentId from localStorage:", storedAgentId);
+      }
     }
 
     // Validate existing token
@@ -314,9 +340,10 @@ export function Call() {
       source.connect(workletNode);
       workletNode.connect(audioContext.destination);
 
-      // Open WebSocket
+      // Open WebSocket (append agentId if set)
       const wsProtocol = window.location.protocol === "http:" ? "ws:" : "wss:";
-      const wsUrl = `${wsProtocol}//${window.location.host}/audio?token=${deviceTokenRef.current}`;
+      const agentParam = agentIdRef.current ? `&agentId=${encodeURIComponent(agentIdRef.current)}` : "";
+      const wsUrl = `${wsProtocol}//${window.location.host}/audio?token=${deviceTokenRef.current}${agentParam}`;
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
