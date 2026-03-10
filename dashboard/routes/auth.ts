@@ -118,23 +118,18 @@ function spawnLoginProcess(): Promise<string> {
 
     let output = "";
     let resolved = false;
-    let step = 0;
-
-    let loginSent = false;
-    let enterDebounce: ReturnType<typeof setTimeout> | null = null;
 
     child.onData((data: string) => {
       output += data;
       const clean = data.replace(/\x1b\[[^m]*m/g, "").replace(/\r/g, "").trim();
-      if (clean) console.debug(`[auth/login] step=${step} loginSent=${loginSent} data: ${clean.slice(0, 200)}`);
+      if (clean) console.debug(`[auth/login] data: ${clean.slice(0, 200)}`);
 
       if (resolved) return;
 
-      // ---- Always check for OAuth URL (can appear during setup or after /login) ----
+      // Check for OAuth URL on every data event
       const urlMatch = output.match(/(https:\/\/claude\.ai\/oauth\/authorize\S+)/);
       if (urlMatch) {
         resolved = true;
-        step = 4;
         console.debug("[auth/login] URL captured");
         pendingLogin = {
           pty: child,
@@ -142,29 +137,21 @@ function spawnLoginProcess(): Promise<string> {
           createdAt: Date.now(),
         };
         resolve(urlMatch[1]);
-        return;
-      }
-
-      // ---- Dismiss any selection prompt (❯) by pressing Enter ----
-      // Handles: trust, theme picker, login method, or any other setup prompt.
-      if (/❯/.test(data)) {
-        if (enterDebounce) clearTimeout(enterDebounce);
-        enterDebounce = setTimeout(() => {
-          console.debug("[auth/login] pressing Enter on selection prompt");
-          child.write("\r");
-        }, 800);
-      }
-
-      // ---- Detect the main REPL prompt and send /login ----
-      // Sparkle animation means we're in the main REPL, not setup.
-      if (!loginSent && /[✻✽✶✢]/.test(data)) {
-        loginSent = true;
-        console.debug("[auth/login] main prompt ready, sending /login");
-        setTimeout(() => child.write("/login\r"), 1000);
       }
     });
 
+    // Press Enter every 2s to advance through setup prompts
+    // (trust, theme, login method, etc.) until the OAuth URL appears.
+    // Some prompts render ❯ via ANSI cursor positioning which is
+    // impossible to detect reliably, so periodic Enter is simplest.
+    const enterInterval = setInterval(() => {
+      if (resolved) { clearInterval(enterInterval); return; }
+      console.debug("[auth/login] pressing Enter (periodic)");
+      child.write("\r");
+    }, 2000);
+
     child.onExit(({ exitCode }: { exitCode: number }) => {
+      clearInterval(enterInterval);
       console.debug("[auth/login] PTY exited with code", exitCode);
       if (!resolved) {
         resolved = true;
@@ -178,10 +165,11 @@ function spawnLoginProcess(): Promise<string> {
     // Timeout
     setTimeout(() => {
       if (!resolved) {
+        clearInterval(enterInterval);
         resolved = true;
         child.kill();
         const clean = output.replace(/\x1b\[[^m]*m/g, "").slice(-500);
-        reject(new Error(`Login timed out at step ${step}. Last output: ${clean}`));
+        reject(new Error(`Login timed out. Last output: ${clean}`));
       }
     }, LOGIN_TIMEOUT_MS);
   });
