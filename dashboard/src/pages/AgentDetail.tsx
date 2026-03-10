@@ -216,7 +216,7 @@ export function AgentDetail() {
               opacity: calling ? 0.6 : 1,
             }}
           >
-            {calling ? "Calling..." : "Call Me"}
+            {calling ? "Calling..." : "Call via Phone"}
           </button>
           <span title={!browserCallEnabled ? "Enable browser calling in Settings" : undefined}>
             <button
