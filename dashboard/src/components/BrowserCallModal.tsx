@@ -15,7 +15,7 @@ import { get, post } from "../api";
 // ============================================================================
 
 interface BrowserCallModalProps {
-  tunnelUrl: string;
+  callBaseUrl: string;
   agentId: string;
   onClose: () => void;
 }
@@ -29,7 +29,7 @@ interface PairingCodeResponse {
 // COMPONENT
 // ============================================================================
 
-export function BrowserCallModal({ tunnelUrl, agentId, onClose }: BrowserCallModalProps) {
+export function BrowserCallModal({ callBaseUrl, agentId, onClose }: BrowserCallModalProps) {
   const [code, setCode] = useState<string | null>(null);
   const [expiresAt, setExpiresAt] = useState<number>(0);
   const [countdown, setCountdown] = useState("");
@@ -40,9 +40,11 @@ export function BrowserCallModal({ tunnelUrl, agentId, onClose }: BrowserCallMod
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const warmupRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const isLocalhost = callBaseUrl.includes("localhost") || callBaseUrl.includes("127.0.0.1");
+
   const callPageUrl = code
-    ? `${tunnelUrl}/call?code=${code}&agentId=${agentId}`
-    : `${tunnelUrl}/call`;
+    ? `${callBaseUrl}/call?code=${code}&agentId=${agentId}`
+    : `${callBaseUrl}/call`;
 
   /** Generate a new pairing code */
   const generateCode = useCallback(async () => {
@@ -61,19 +63,21 @@ export function BrowserCallModal({ tunnelUrl, agentId, onClose }: BrowserCallMod
     }
   }, [agentId]);
 
-  // Generate code on mount + check tunnel warmup
+  // Generate code on mount + check tunnel warmup (only when using tunnel)
   useEffect(() => {
     generateCode();
 
-    get<{ startedAt: number | null }>("/api/tunnel/status").then((data) => {
-      if (data.startedAt) {
-        const elapsed = Date.now() - data.startedAt;
-        if (elapsed < 60_000) {
-          setWarmingUp(true);
-          warmupRef.current = setTimeout(() => setWarmingUp(false), 60_000 - elapsed);
+    if (!isLocalhost) {
+      get<{ startedAt: number | null }>("/api/tunnel/status").then((data) => {
+        if (data.startedAt) {
+          const elapsed = Date.now() - data.startedAt;
+          if (elapsed < 60_000) {
+            setWarmingUp(true);
+            warmupRef.current = setTimeout(() => setWarmingUp(false), 60_000 - elapsed);
+          }
         }
-      }
-    }).catch(() => {});
+      }).catch(() => {});
+    }
 
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
@@ -164,7 +168,13 @@ export function BrowserCallModal({ tunnelUrl, agentId, onClose }: BrowserCallMod
 
         {warmingUp && (
           <div style={{ fontSize: 11, color: "#d29922", marginBottom: 8 }}>
-            Tunnel is warming up — link may take a moment to become reachable
+            Tunnel is warming up -- link may take a moment to become reachable
+          </div>
+        )}
+
+        {isLocalhost && (
+          <div style={{ fontSize: 11, color: "#d29922", marginBottom: 8 }}>
+            No tunnel active -- this link only works on this machine. Enable the tunnel in Settings to call from other devices.
           </div>
         )}
 
