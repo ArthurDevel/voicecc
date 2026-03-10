@@ -118,6 +118,7 @@ function spawnLoginProcess(): Promise<string> {
 
     let output = "";
     let resolved = false;
+    let enterCount = 0;
 
     child.onData((data: string) => {
       output += data;
@@ -126,8 +127,12 @@ function spawnLoginProcess(): Promise<string> {
 
       if (resolved) return;
 
-      // Check for OAuth URL on every data event
-      const urlMatch = output.match(/(https:\/\/claude\.ai\/oauth\/authorize\S+)/);
+      // Strip ANSI escape codes for pattern matching
+      const stripped = output.replace(/\x1b\[[^m]*m/g, "");
+
+      // Check for OAuth URL on every data event (match against stripped output
+      // so ANSI codes like \x1b[39m don't get appended to the URL)
+      const urlMatch = stripped.match(/(https:\/\/claude\.ai\/oauth\/authorize\S+)/);
       if (urlMatch) {
         resolved = true;
         console.debug("[auth/login] URL captured");
@@ -137,6 +142,27 @@ function spawnLoginProcess(): Promise<string> {
           createdAt: Date.now(),
         };
         resolve(urlMatch[1]);
+        return;
+      }
+
+      // Detect REPL prompt — means user is already authenticated.
+      // The REPL shows "◐ medium · /effort" or similar model/effort indicator.
+      if (enterCount >= 1 && !resolved) {
+        const replIndicators = [
+          /\/effort/,             // effort command shown in REPL status
+          /◐.*medium/,           // model indicator in REPL
+          /\$\d+\.\d+/,           // cost like $0.00
+          /what can i help/i,
+        ];
+        for (const pattern of replIndicators) {
+          if (pattern.test(stripped)) {
+            resolved = true;
+            console.debug("[auth/login] REPL detected — already authenticated");
+            child.kill();
+            reject(new Error("ALREADY_AUTHENTICATED"));
+            return;
+          }
+        }
       }
     });
 
@@ -146,7 +172,8 @@ function spawnLoginProcess(): Promise<string> {
     // impossible to detect reliably, so periodic Enter is simplest.
     const enterInterval = setInterval(() => {
       if (resolved) { clearInterval(enterInterval); return; }
-      console.debug("[auth/login] pressing Enter (periodic)");
+      enterCount++;
+      console.debug(`[auth/login] pressing Enter (periodic #${enterCount})`);
       child.write("\r");
     }, 2000);
 
@@ -277,11 +304,21 @@ export function authRoutes(): Hono {
    * Spawns interactive claude via PTY, navigates to /login, returns URL.
    */
   app.post("/oauth/start", async (c) => {
+    // Pre-check: if already authenticated, don't spawn PTY
+    const status = await getAuthStatus();
+    if (status.authenticated) {
+      return c.json({ error: "Already authenticated", alreadyAuthenticated: true }, 400);
+    }
+
     try {
       const url = await spawnLoginProcess();
       return c.json({ url });
     } catch (err) {
-      return c.json({ error: (err as Error).message }, 500);
+      const msg = (err as Error).message;
+      if (msg === "ALREADY_AUTHENTICATED") {
+        return c.json({ error: "Already authenticated", alreadyAuthenticated: true }, 400);
+      }
+      return c.json({ error: msg }, 500);
     }
   });
 
