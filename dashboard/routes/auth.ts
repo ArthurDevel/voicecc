@@ -1,19 +1,16 @@
 /**
  * Claude Code authentication routes.
  *
- * Supports two auth flows:
- * 1. OAuth PKCE flow via claude.ai (recommended -- enables cloud MCP servers)
- * 2. Manual token paste via `claude setup-token` (fallback)
+ * Handles auth status checks, manual token auth, and CLI OAuth login flow.
  *
- * - GET /              -- probe auth status
- * - POST /token        -- save a manually pasted token
- * - POST /oauth/start  -- generate PKCE params and return the OAuth URL
- * - POST /oauth/callback -- exchange an auth code for tokens
+ * - GET /              -- probe auth status via `claude auth status`
+ * - POST /token        -- save a manually pasted token to .env
+ * - POST /oauth/start  -- spawn `claude auth login`, return the OAuth URL
+ * - POST /oauth/code   -- send the auth code to the spawned login process
  */
 
 import { Hono } from "hono";
-import { execFile } from "child_process";
-import { randomBytes, createHash } from "crypto";
+import { execFile, spawn, type ChildProcess } from "child_process";
 import { writeEnvKey } from "../../server/services/env.js";
 
 // ============================================================================
@@ -22,85 +19,48 @@ import { writeEnvKey } from "../../server/services/env.js";
 
 const CLAUDE_BIN = "claude";
 const PROBE_TIMEOUT_MS = 5_000;
-
-const OAUTH_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
-const OAUTH_AUTH_URL = "https://claude.ai/oauth/authorize";
-const OAUTH_TOKEN_URL = "https://platform.claude.com/v1/oauth/token";
-const OAUTH_REDIRECT_URI = "https://platform.claude.com/oauth/code/callback";
-const OAUTH_SCOPES = "org:create_api_key user:profile user:inference user:sessions:claude_code user:mcp_servers";
+const LOGIN_TIMEOUT_MS = 120_000;
 
 // ============================================================================
-// PKCE STATE (single-user dashboard -- one pending flow at a time)
+// TYPES
 // ============================================================================
 
-let pendingPkce: { codeVerifier: string; state: string; createdAt: number } | null = null;
+/** Auth status returned by `claude auth status`. */
+interface AuthStatus {
+  authenticated: boolean;
+  authMethod: string;
+  email?: string;
+}
+
+/** Tracks the running `claude auth login` process. */
+interface PendingLogin {
+  process: ChildProcess;
+  url: string;
+  createdAt: number;
+}
+
+// ============================================================================
+// STATE
+// ============================================================================
+
+/** The currently running login process (only one at a time). */
+let pendingLogin: PendingLogin | null = null;
 
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
 
-/** Base64url-encode a buffer (no padding). */
-function base64url(buf: Buffer): string {
-  return buf.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-/** Generate a PKCE code_verifier and code_challenge (S256). */
-function generatePkce(): { codeVerifier: string; codeChallenge: string } {
-  const codeVerifier = base64url(randomBytes(32));
-  const codeChallenge = base64url(createHash("sha256").update(codeVerifier).digest());
-  return { codeVerifier, codeChallenge };
-}
-
-/**
- * Exchange an authorization code for tokens using the PKCE verifier.
- * @param code - The authorization code from the OAuth callback
- * @param codeVerifier - The PKCE code_verifier generated at flow start
- * @param state - The OAuth state parameter (required by the token endpoint)
- * @returns Token response with access_token, refresh_token, expires_in
- */
-async function exchangeCodeForTokens(code: string, codeVerifier: string, state: string): Promise<{
-  access_token: string;
-  refresh_token: string;
-  expires_in: number;
-  scope?: string;
-}> {
-  const res = await fetch(OAUTH_TOKEN_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      grant_type: "authorization_code",
-      code,
-      state,
-      code_verifier: codeVerifier,
-      client_id: OAUTH_CLIENT_ID,
-      redirect_uri: OAUTH_REDIRECT_URI,
-    }),
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Token exchange failed (${res.status}): ${text}`);
-  }
-
-  return res.json();
-}
-
-/** Auth status returned by `claude auth status`. */
-interface AuthStatus {
-  authenticated: boolean;
-  /** "claude.ai" = OAuth (cloud MCPs available), "api-key" | "setup-token" = token only, "none" = not logged in */
-  authMethod: string;
-  email?: string;
-}
-
 /**
  * Get auth status via `claude auth status` JSON output.
+ *
  * Tries stdout first, then stderr (some versions output there on non-zero exit).
  * Falls back to unauthenticated if parsing fails entirely.
+ *
+ * @returns Current authentication status
  */
 async function getAuthStatus(): Promise<AuthStatus> {
   return new Promise((resolve) => {
-    execFile(CLAUDE_BIN, ["auth", "status"], { timeout: PROBE_TIMEOUT_MS }, (err, stdout, stderr) => {
+    execFile(CLAUDE_BIN, ["auth", "status"], { timeout: PROBE_TIMEOUT_MS }, (_err, stdout, stderr) => {
       const output = stdout?.trim() || stderr?.trim() || "";
       try {
         const json = JSON.parse(output);
@@ -113,6 +73,142 @@ async function getAuthStatus(): Promise<AuthStatus> {
         resolve({ authenticated: false, authMethod: "none" });
       }
     });
+  });
+}
+
+/**
+ * Spawn `claude auth login` and extract the OAuth URL from its output.
+ *
+ * The CLI prints a URL like `https://claude.ai/oauth/authorize?...` to stdout/stderr.
+ * We capture it and keep the process alive so we can later write the auth code to stdin.
+ *
+ * @returns The OAuth URL to show the user
+ */
+function spawnLoginProcess(): Promise<string> {
+  return new Promise((resolve, reject) => {
+    // Kill any existing login process
+    if (pendingLogin) {
+      pendingLogin.process.kill();
+      pendingLogin = null;
+    }
+
+    const child = spawn(CLAUDE_BIN, ["auth", "login"], {
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+
+    let output = "";
+    let resolved = false;
+
+    const onData = (chunk: Buffer) => {
+      const text = chunk.toString();
+      output += text;
+      console.debug("[auth/login] stdout/stderr:", text.trim());
+
+      // Look for the OAuth URL in the output
+      const urlMatch = output.match(/(https:\/\/claude\.ai\/oauth\/authorize\S+)/);
+      if (urlMatch && !resolved) {
+        resolved = true;
+        pendingLogin = {
+          process: child,
+          url: urlMatch[1],
+          createdAt: Date.now(),
+        };
+        resolve(urlMatch[1]);
+      }
+    };
+
+    child.stdout?.on("data", onData);
+    child.stderr?.on("data", onData);
+
+    child.on("error", (err) => {
+      if (!resolved) {
+        resolved = true;
+        reject(new Error(`Failed to start login: ${err.message}`));
+      }
+    });
+
+    child.on("exit", (code) => {
+      if (!resolved) {
+        resolved = true;
+        reject(new Error(`Login process exited (code ${code}) before producing a URL. Output: ${output}`));
+      }
+      // Clean up if the process exits after URL was captured
+      if (pendingLogin?.process === child) {
+        pendingLogin = null;
+      }
+    });
+
+    // Timeout: if no URL appears within the timeout, kill the process
+    setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        child.kill();
+        reject(new Error(`Login process did not produce a URL within ${LOGIN_TIMEOUT_MS / 1000}s. Output: ${output}`));
+      }
+    }, LOGIN_TIMEOUT_MS);
+  });
+}
+
+/**
+ * Send the auth code to the pending login process's stdin.
+ *
+ * After the user authenticates in their browser, the callback page shows a code.
+ * We write that code to the CLI process's stdin so it can complete the login.
+ *
+ * @param code - The auth code from the OAuth callback
+ * @returns Whether login completed successfully
+ */
+function sendCodeToLogin(code: string): Promise<{ success: boolean; error?: string }> {
+  return new Promise((resolve) => {
+    if (!pendingLogin) {
+      resolve({ success: false, error: "No pending login process. Start the login flow first." });
+      return;
+    }
+
+    const child = pendingLogin.process;
+    pendingLogin = null;
+
+    let output = "";
+    let resolved = false;
+
+    const collectOutput = (chunk: Buffer) => {
+      const text = chunk.toString();
+      output += text;
+      console.debug("[auth/login] after code:", text.trim());
+
+      // Handle "Press Enter to continue" prompt
+      if (/press enter/i.test(text)) {
+        console.debug("[auth/login] detected 'Press Enter' prompt, sending newline");
+        child.stdin?.write("\n");
+        child.stdin?.end();
+      }
+    };
+
+    child.stdout?.on("data", collectOutput);
+    child.stderr?.on("data", collectOutput);
+
+    child.on("exit", (exitCode) => {
+      if (resolved) return;
+      resolved = true;
+      console.debug("[auth/login] process exited with code", exitCode);
+      if (exitCode === 0) {
+        resolve({ success: true });
+      } else {
+        resolve({ success: false, error: `Login process exited with code ${exitCode}. Output: ${output}` });
+      }
+    });
+
+    // Write the code to stdin (don't close yet -- CLI may prompt "Press Enter")
+    console.debug("[auth/login] writing code to stdin");
+    child.stdin?.write(code + "\n");
+
+    // Timeout for the code exchange
+    setTimeout(() => {
+      if (!child.killed) {
+        child.kill();
+        resolve({ success: false, error: `Login process timed out after sending code. Output: ${output}` });
+      }
+    }, 30_000);
   });
 }
 
@@ -144,75 +240,41 @@ export function authRoutes(): Hono {
     return c.json(await getAuthStatus());
   });
 
-  /** Start an OAuth PKCE flow -- returns the authorization URL. */
+  /**
+   * Start the OAuth login flow by spawning `claude auth login`.
+   *
+   * @returns The OAuth URL the user should open in their browser
+   */
   app.post("/oauth/start", async (c) => {
-    const { codeVerifier, codeChallenge } = generatePkce();
-    const state = base64url(randomBytes(32));
-    pendingPkce = { codeVerifier, state, createdAt: Date.now() };
-
-    const params = new URLSearchParams({
-      code: "true",
-      client_id: OAUTH_CLIENT_ID,
-      response_type: "code",
-      redirect_uri: OAUTH_REDIRECT_URI,
-      scope: OAUTH_SCOPES,
-      code_challenge: codeChallenge,
-      code_challenge_method: "S256",
-      state,
-    });
-
-    return c.json({ url: `${OAUTH_AUTH_URL}?${params.toString()}`, state });
+    try {
+      const url = await spawnLoginProcess();
+      return c.json({ url });
+    } catch (err) {
+      return c.json({ error: (err as Error).message }, 500);
+    }
   });
 
-  /** Exchange an authorization code for tokens and save credentials. */
-  app.post("/oauth/callback", async (c) => {
-    const { code, state } = await c.req.json<{ code: string; state: string }>();
+  /**
+   * Complete the OAuth login by sending the auth code to the CLI process.
+   *
+   * @returns Auth status after login attempt
+   */
+  app.post("/oauth/code", async (c) => {
+    const { code } = await c.req.json<{ code: string }>();
 
     if (!code || typeof code !== "string") {
-      return c.json({ error: "Authorization code is required" }, 400);
+      return c.json({ error: "Code is required" }, 400);
     }
 
-    if (!pendingPkce) {
-      return c.json({ error: "No pending OAuth flow. Please start the login again." }, 400);
+    const result = await sendCodeToLogin(code.trim());
+
+    if (!result.success) {
+      return c.json({ error: result.error }, 400);
     }
 
-    if (!state || state !== pendingPkce.state) {
-      pendingPkce = null;
-      return c.json({ error: "Invalid OAuth state. Please start the login again." }, 400);
-    }
-
-    // Expire stale flows (10 minutes)
-    if (Date.now() - pendingPkce.createdAt > 10 * 60 * 1000) {
-      pendingPkce = null;
-      return c.json({ error: "OAuth flow expired. Please start the login again." }, 400);
-    }
-
-    try {
-      const tokens = await exchangeCodeForTokens(code.trim(), pendingPkce.codeVerifier, pendingPkce.state);
-      pendingPkce = null;
-
-      const scopes = tokens.scope
-        ? tokens.scope.split(" ")
-        : OAUTH_SCOPES.split(" ");
-
-      const credentialJson = JSON.stringify({
-        claudeAiOauth: {
-          accessToken: tokens.access_token,
-          refreshToken: tokens.refresh_token,
-          expiresAt: Date.now() + tokens.expires_in * 1000,
-          scopes,
-        },
-      });
-
-      await writeEnvKey("CLAUDE_CODE_OAUTH_TOKEN", credentialJson);
-      process.env.CLAUDE_CODE_OAUTH_TOKEN = credentialJson;
-
-      return c.json(await getAuthStatus());
-    } catch (err) {
-      console.error("[auth] OAuth token exchange error:", err);
-      const message = err instanceof Error ? err.message : "Token exchange failed";
-      return c.json({ error: message }, 500);
-    }
+    // Verify auth status after successful login
+    const status = await getAuthStatus();
+    return c.json(status);
   });
 
   return app;
