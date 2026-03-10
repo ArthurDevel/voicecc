@@ -21,8 +21,8 @@ interface McpServerEntry {
   name: string;
   url: string;
   type: "http" | "stdio";
-  status: "connected" | "failed" | "needs_auth";
-  scope: "project" | "user" | "local";
+  status: "connected" | "failed" | "needs_auth" | "pending" | "disabled";
+  scope: "project" | "user" | "local" | "claudeai" | "managed";
 }
 
 interface McpServersPanelProps {
@@ -66,7 +66,18 @@ export function McpServersPanel({ twilioRunning }: McpServersPanelProps) {
   const statusLabel = (status: McpServerEntry["status"]): string => {
     if (status === "connected") return "Connected";
     if (status === "needs_auth") return "Needs auth";
+    if (status === "pending") return "Pending";
+    if (status === "disabled") return "Disabled";
     return "Failed";
+  };
+
+  /** Map scope to display label and CSS class */
+  const scopeBadge = (scope: McpServerEntry["scope"]): { label: string; className: string } => {
+    if (scope === "claudeai") return { label: "claude.ai", className: "scope-claudeai" };
+    if (scope === "managed") return { label: "Managed", className: "scope-managed" };
+    if (scope === "user") return { label: "Local (user)", className: "scope-local" };
+    if (scope === "project") return { label: "Local (project)", className: "scope-local" };
+    return { label: "Local (local)", className: "scope-local" };
   };
 
   return (
@@ -106,21 +117,28 @@ export function McpServersPanel({ twilioRunning }: McpServersPanelProps) {
             <div className="mcp-loading" style={{ color: "var(--text-secondary)", fontSize: 13 }}>No MCP servers configured.</div>
           )}
           {servers?.map((server) => {
-            const isGlobal = server.scope === "user";
+            const isManaged = server.scope === "claudeai" || server.scope === "managed" || server.scope === "user";
+            const badge = scopeBadge(server.scope);
+            const deleteTooltip = server.scope === "claudeai"
+              ? "Managed by claude.ai"
+              : server.scope === "user"
+                ? "Globally installed, please delete through Claude Code"
+                : `Remove ${server.name}`;
             return (
               <div key={server.name} className="mcp-server-row">
                 <span className={`mcp-dot ${dotClass(server.status)}`} />
                 <span className="mcp-server-name">{server.name}</span>
                 <span className="mcp-server-url" title={server.url}>{server.url}</span>
+                <span className={`mcp-scope-badge ${badge.className}`}>{badge.label}</span>
                 <span className="mcp-server-badge">{server.type.toUpperCase()}</span>
                 <span className={`mcp-server-status ${dotClass(server.status)}`}>
                   {statusLabel(server.status)}
                 </span>
                 <span className="mcp-delete-wrap">
                   <button
-                    className={`mcp-delete-btn${isGlobal ? " disabled" : ""}`}
+                    className={`mcp-delete-btn${isManaged ? " disabled" : ""}`}
                     onClick={() => {
-                      if (!isGlobal) del(`/api/mcp-servers/${server.name}`).then(fetchServers).catch((err) => {
+                      if (!isManaged) del(`/api/mcp-servers/${server.name}`).then(fetchServers).catch((err) => {
                       setToast((err as ApiError)?.message || "Failed to remove server");
                     });
                     }}
@@ -128,7 +146,7 @@ export function McpServersPanel({ twilioRunning }: McpServersPanelProps) {
                     &times;
                   </button>
                   <span className="mcp-delete-tooltip">
-                    {isGlobal ? "Globally installed, please delete through Claude Code" : `Remove ${server.name}`}
+                    {deleteTooltip}
                   </span>
                 </span>
               </div>
