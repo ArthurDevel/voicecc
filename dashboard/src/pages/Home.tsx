@@ -30,6 +30,11 @@ export interface BrowserCallStatus {
   callBaseUrl: string;
 }
 
+interface AgentSummary {
+  id: string;
+  enabled: boolean;
+}
+
 interface McpServerEntry {
   name: string;
   url: string;
@@ -40,10 +45,18 @@ interface McpServerEntry {
 
 export function Home() {
   const { authStatus, setAuthStatus } = useOutletContext<LayoutContext>();
+  const [agents, setAgents] = useState<AgentSummary[] | null>(null);
+  const [twilioStatus, setTwilioStatus] = useState<TwilioStatus | null>(null);
   const [mcpServers, setMcpServers] = useState<McpServerEntry[] | null>(null);
   const [showTokenModal, setShowTokenModal] = useState(false);
 
   useEffect(() => {
+    get<AgentSummary[]>("/api/agents")
+      .then(setAgents)
+      .catch(() => setAgents([]));
+    get<TwilioStatus>("/api/twilio/status")
+      .then(setTwilioStatus)
+      .catch(() => setTwilioStatus({ running: false, tunnelUrl: null }));
     get<{ servers: McpServerEntry[] }>("/api/mcp-servers")
       .then((data) => setMcpServers(data.servers))
       .catch(() => setMcpServers([]));
@@ -103,25 +116,69 @@ export function Home() {
 
         <div className="settings-panel">
           <h2 style={{ fontSize: 16, fontWeight: 600, color: "var(--text-primary)", marginBottom: 4 }}>
-            Call from anywhere
+            Your Voice Agents
           </h2>
           <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 20 }}>
-            Call your voice assistant from any device using a browser.
+            Create and manage your voice agents.
           </p>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{
-              width: 8,
-              height: 8,
-              borderRadius: "50%",
-              background: "var(--accent-color)",
-              flexShrink: 0,
-            }} />
-            <span style={{ fontSize: 13, color: "var(--accent-color)" }}>
-              Browser calling is always active
-            </span>
-          </div>
+          {agents === null && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#666", flexShrink: 0 }} />
+              <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>Checking...</span>
+            </div>
+          )}
+
+          {agents !== null && agents.length === 0 && (
+            <div className="settings-actions">
+              <Link to="/agents" style={{ textDecoration: "none" }}>
+                <button>Create Agent</button>
+              </Link>
+            </div>
+          )}
+
+          {agents !== null && agents.length > 0 && (
+            <>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {agents.map((agent) => (
+                  <div key={agent.id} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: "50%",
+                      background: agent.enabled ? "var(--accent-color)" : "#666",
+                      flexShrink: 0,
+                    }} />
+                    <Link to={`/agents/${agent.id}`} style={{ fontSize: 13, color: "var(--text-primary)", textDecoration: "none" }}>
+                      {agent.id}
+                    </Link>
+                  </div>
+                ))}
+              </div>
+              <div className="settings-actions">
+                <Link to="/agents" style={{ textDecoration: "none" }}>
+                  <button>Manage Agents</button>
+                </Link>
+              </div>
+            </>
+          )}
         </div>
+
+        {twilioStatus !== null && !twilioStatus.running && (
+          <div className="settings-panel">
+            <h2 style={{ fontSize: 16, fontWeight: 600, color: "var(--text-primary)", marginBottom: 4 }}>
+              Call your agents over the phone
+            </h2>
+            <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 20 }}>
+              Connect a Twilio phone number to call your voice agents from any phone. Requires a Twilio account and a purchased phone number.
+            </p>
+            <div className="settings-actions">
+              <Link to="/settings?tab=integrations" style={{ textDecoration: "none" }}>
+                <button>Set up Twilio</button>
+              </Link>
+            </div>
+          </div>
+        )}
 
         <div className="settings-panel">
           <h2 style={{ fontSize: 16, fontWeight: 600, color: "var(--text-primary)", marginBottom: 4 }}>
