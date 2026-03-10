@@ -70,12 +70,17 @@ async function main(): Promise<void> {
 
   const envVars = await readEnv();
 
+  // Write status file early so the CLI can show dashboard info while tunnel starts
+  writeStatusFile(dashboardPort, null);
+
   // Auto-start tunnel if enabled (independent of integrations)
   if (envVars.TUNNEL_ENABLED === "true") {
     try {
       await startTunnel(voicePort);
+      writeStatusFile(dashboardPort, getTunnelUrl());
     } catch (err) {
       console.error(`Tunnel auto-start failed: ${err}`);
+      writeStatusFile(dashboardPort, null);
     }
   }
 
@@ -107,10 +112,6 @@ async function main(): Promise<void> {
     }
   }
 
-  // Write status file so the CLI can display server info
-  const tunnelUrl = getTunnelUrl();
-  writeStatusFile(dashboardPort, tunnelUrl);
-
   // Graceful shutdown: stop tunnel subprocess, then clean up status file
   const shutdown = () => {
     stopTunnel();
@@ -121,13 +122,14 @@ async function main(): Promise<void> {
   process.on("SIGINT", shutdown);
 
   // Print startup banner
+  const finalTunnelUrl = getTunnelUrl();
   console.log("");
   console.log("========================================");
   console.log("             VOICECC RUNNING            ");
   console.log("========================================");
   console.log("");
   console.log(`  Dashboard:  http://localhost:${dashboardPort}`);
-  console.log(`  Tunnel:     ${tunnelUrl ?? "disabled"}`);
+  console.log(`  Tunnel:     ${finalTunnelUrl ?? "disabled"}`);
   console.log("");
 }
 
