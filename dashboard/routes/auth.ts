@@ -25,6 +25,30 @@ const CLAUDE_BIN = "claude";
 const PROBE_TIMEOUT_MS = 5_000;
 const LOGIN_TIMEOUT_MS = 60_000;
 
+/** Strip ANSI escape codes from PTY output. */
+export function stripAnsi(text: string): string {
+  return text.replace(/\x1b\[[^m]*m/g, "");
+}
+
+/** Extract OAuth URL from (already stripped) PTY output. Returns null if not found. */
+export function extractOAuthUrl(stripped: string): string | null {
+  const match = stripped.match(/(https:\/\/claude\.ai\/oauth\/authorize\S+)/);
+  return match ? match[1] : null;
+}
+
+/** REPL indicators that signal the user is already authenticated. */
+export const REPL_INDICATORS = [
+  /\/effort/,             // effort command shown in REPL status
+  /◐.*medium/,           // model indicator in REPL
+  /\$\d+\.\d+/,           // cost like $0.00
+  /what can i help/i,
+];
+
+/** Check if stripped PTY output contains REPL indicators. */
+export function detectRepl(stripped: string): boolean {
+  return REPL_INDICATORS.some((pattern) => pattern.test(stripped));
+}
+
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -122,47 +146,35 @@ function spawnLoginProcess(): Promise<string> {
 
     child.onData((data: string) => {
       output += data;
-      const clean = data.replace(/\x1b\[[^m]*m/g, "").replace(/\r/g, "").trim();
+      const clean = stripAnsi(data).replace(/\r/g, "").trim();
       if (clean) console.debug(`[auth/login] data: ${clean.slice(0, 200)}`);
 
       if (resolved) return;
 
-      // Strip ANSI escape codes for pattern matching
-      const stripped = output.replace(/\x1b\[[^m]*m/g, "");
+      const stripped = stripAnsi(output);
 
-      // Check for OAuth URL on every data event (match against stripped output
-      // so ANSI codes like \x1b[39m don't get appended to the URL)
-      const urlMatch = stripped.match(/(https:\/\/claude\.ai\/oauth\/authorize\S+)/);
-      if (urlMatch) {
+      // Check for OAuth URL (match against stripped output so ANSI codes
+      // like \x1b[39m don't get appended to the URL)
+      const url = extractOAuthUrl(stripped);
+      if (url) {
         resolved = true;
         console.debug("[auth/login] URL captured");
         pendingLogin = {
           pty: child,
-          url: urlMatch[1],
+          url,
           createdAt: Date.now(),
         };
-        resolve(urlMatch[1]);
+        resolve(url);
         return;
       }
 
       // Detect REPL prompt — means user is already authenticated.
-      // The REPL shows "◐ medium · /effort" or similar model/effort indicator.
-      if (enterCount >= 1 && !resolved) {
-        const replIndicators = [
-          /\/effort/,             // effort command shown in REPL status
-          /◐.*medium/,           // model indicator in REPL
-          /\$\d+\.\d+/,           // cost like $0.00
-          /what can i help/i,
-        ];
-        for (const pattern of replIndicators) {
-          if (pattern.test(stripped)) {
-            resolved = true;
-            console.debug("[auth/login] REPL detected — already authenticated");
-            child.kill();
-            reject(new Error("ALREADY_AUTHENTICATED"));
-            return;
-          }
-        }
+      if (enterCount >= 1 && !resolved && detectRepl(stripped)) {
+        resolved = true;
+        console.debug("[auth/login] REPL detected — already authenticated");
+        child.kill();
+        reject(new Error("ALREADY_AUTHENTICATED"));
+        return;
       }
     });
 
