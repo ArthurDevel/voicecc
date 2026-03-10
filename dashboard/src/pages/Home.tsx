@@ -39,8 +39,8 @@ interface McpServerEntry {
   name: string;
   url: string;
   type: "http" | "stdio";
-  status: "connected" | "failed" | "needs_auth";
-  scope: "project" | "user" | "local";
+  status: "connected" | "failed" | "needs_auth" | "pending" | "disabled";
+  scope: "project" | "user" | "local" | "claudeai" | "managed";
 }
 
 export function Home() {

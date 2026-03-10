@@ -614,6 +614,31 @@ body {
   flex-shrink: 0;
 }
 
+.mcp-scope-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 0;
+  flex-shrink: 0;
+}
+
+.mcp-scope-badge.scope-claudeai {
+  background: rgba(99, 102, 241, 0.15);
+  color: #818cf8;
+  border: 1px solid rgba(99, 102, 241, 0.3);
+}
+
+.mcp-scope-badge.scope-managed {
+  background: rgba(168, 85, 247, 0.15);
+  color: #c084fc;
+  border: 1px solid rgba(168, 85, 247, 0.3);
+}
+
+.mcp-scope-badge.scope-local {
+  background: rgba(107, 114, 128, 0.15);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+}
+
 .mcp-server-status {
   font-size: 11px;
   flex-shrink: 0;
