@@ -37,10 +37,11 @@ const STATUS_FILE = join(VOICECC_DIR, "status.json");
  * @param dashboardPort - the port the dashboard is running on
  * @param tunnelUrl - the tunnel URL, or null if disabled
  */
-function writeStatusFile(dashboardPort: number, tunnelUrl: string | null): void {
+function writeStatusFile(dashboardPort: number, tunnelUrl: string | null, tunnelError: string | null = null): void {
   const status = {
     dashboardPort,
     tunnelUrl,
+    tunnelError,
     startedAt: new Date().toISOString(),
   };
   try {
@@ -79,8 +80,9 @@ async function main(): Promise<void> {
       await startTunnel(voicePort);
       writeStatusFile(dashboardPort, getTunnelUrl());
     } catch (err) {
-      console.error(`Tunnel auto-start failed: ${err}`);
-      writeStatusFile(dashboardPort, null);
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      console.error(`Tunnel auto-start failed: ${errorMsg}`);
+      writeStatusFile(dashboardPort, null, errorMsg);
     }
   }
 
