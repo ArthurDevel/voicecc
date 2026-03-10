@@ -1,7 +1,7 @@
 {
   "name": "voicecc",
   "version": "1.1.24",
-  "description": "Voice mode plugin for Claude Code -- hands-free interaction via ElevenLabs STT/TTS and VAD",
+  "description": "Voice Agent Platform running on Claude Code -- create and deploy conversational voice agents with ElevenLabs STT/TTS and VAD",
   "type": "module",
   "bin": {
     "voicecc": "bin/voicecc.js"
