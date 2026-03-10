@@ -30,7 +30,7 @@ interface ConversationSummary {
 
 /** A single conversation turn */
 interface ConversationMessage {
-  role: "user" | "assistant" | "tool_use";
+  role: "user" | "assistant" | "tool_use" | "subagent";
   content: string;
   timestamp: string;
   /** Tool name (only for role=tool_use) */
@@ -41,6 +41,14 @@ interface ConversationMessage {
   toolResult?: string;
   /** Whether the tool call errored (only for role=tool_use) */
   toolIsError?: boolean;
+  /** Subagent description (only for role=subagent) */
+  subagentDescription?: string;
+  /** Subagent type e.g. "Explore", "Plan" (only for role=subagent) */
+  subagentType?: string;
+  /** Subagent prompt (only for role=subagent) */
+  subagentPrompt?: string;
+  /** Subagent response text (only for role=subagent) */
+  subagentResult?: string;
 }
 
 // ============================================================================
@@ -255,15 +263,29 @@ async function parseSessionMessages(filePath: string): Promise<ConversationMessa
                   ? block.content
                   : JSON.stringify(block.content, null, 2);
 
-                messages.push({
-                  role: "tool_use",
-                  content: pending.name,
-                  timestamp: pending.timestamp,
-                  toolName: pending.name,
-                  toolInput: pending.input,
-                  toolResult: resultContent,
-                  toolIsError: block.is_error === true,
-                });
+                // Emit Agent tool calls as subagent role
+                if (pending.name === "Agent") {
+                  const parsedInput = JSON.parse(pending.input);
+                  messages.push({
+                    role: "subagent",
+                    content: parsedInput.description || "Subagent",
+                    timestamp: pending.timestamp,
+                    subagentDescription: parsedInput.description,
+                    subagentType: parsedInput.subagent_type,
+                    subagentPrompt: parsedInput.prompt,
+                    subagentResult: extractSubagentResultText(resultContent),
+                  });
+                } else {
+                  messages.push({
+                    role: "tool_use",
+                    content: pending.name,
+                    timestamp: pending.timestamp,
+                    toolName: pending.name,
+                    toolInput: pending.input,
+                    toolResult: resultContent,
+                    toolIsError: block.is_error === true,
+                  });
+                }
                 pendingTools.delete(block.tool_use_id);
               }
             }
@@ -322,13 +344,25 @@ async function parseSessionMessages(filePath: string): Promise<ConversationMessa
 
   // Add any remaining tool_use calls that never got a result
   for (const [, pending] of pendingTools) {
-    messages.push({
-      role: "tool_use",
-      content: pending.name,
-      timestamp: pending.timestamp,
-      toolName: pending.name,
-      toolInput: pending.input,
-    });
+    if (pending.name === "Agent") {
+      const parsedInput = JSON.parse(pending.input);
+      messages.push({
+        role: "subagent",
+        content: parsedInput.description || "Subagent",
+        timestamp: pending.timestamp,
+        subagentDescription: parsedInput.description,
+        subagentType: parsedInput.subagent_type,
+        subagentPrompt: parsedInput.prompt,
+      });
+    } else {
+      messages.push({
+        role: "tool_use",
+        content: pending.name,
+        timestamp: pending.timestamp,
+        toolName: pending.name,
+        toolInput: pending.input,
+      });
+    }
   }
 
   for (const [, { text, timestamp }] of assistantTexts) {
@@ -337,4 +371,26 @@ async function parseSessionMessages(filePath: string): Promise<ConversationMessa
 
   messages.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
   return messages;
+}
+
+/**
+ * Extract plain text from a subagent tool result.
+ * The result may be a JSON array of text blocks or a plain string.
+ *
+ * @param raw - Raw result content string
+ * @returns Extracted text
+ */
+function extractSubagentResultText(raw: string): string {
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return parsed
+        .filter((b: { type: string; text?: string }) => b.type === "text" && b.text)
+        .map((b: { text: string }) => b.text)
+        .join("\n");
+    }
+  } catch {
+    // Not JSON, return as-is
+  }
+  return raw;
 }
