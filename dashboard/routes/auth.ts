@@ -120,53 +120,62 @@ function spawnLoginProcess(): Promise<string> {
     let resolved = false;
     let step = 0;
 
+    let loginSent = false;
+    let enterDebounce: ReturnType<typeof setTimeout> | null = null;
+
     child.onData((data: string) => {
       output += data;
       const clean = data.replace(/\x1b\[[^m]*m/g, "").replace(/\r/g, "").trim();
       if (clean) console.debug(`[auth/login] step=${step} data: ${clean.slice(0, 200)}`);
 
-      // Step 0 → 1: Accept trust prompt
-      if (step === 0 && /enter to confirm/i.test(output)) {
-        step = 1;
-        console.debug("[auth/login] step 1: accepting trust prompt");
-        setTimeout(() => child.write("\r"), 500);
-      }
-
-      // Step 0 alternative: no trust prompt, already trusted — look for version string
-      if (step === 0 && /v\d+\.\d+\.\d+/.test(output)) {
-        step = 2;
-        console.debug("[auth/login] step 2: no trust prompt, sending /login");
-        setTimeout(() => child.write("/login\r"), 1000);
-      }
-
-      // Step 1 → 2: Wait for main prompt after trust, send /login
-      if (step === 1 && /v\d+\.\d+\.\d+/.test(output.slice(-2000))) {
-        step = 2;
-        console.debug("[auth/login] step 2: sending /login");
-        setTimeout(() => child.write("/login\r"), 1000);
-      }
-
-      // Step 2 → 3: Select Claude Pro (first option)
-      if (step === 2 && /claude.*pro|login.*method/i.test(output.slice(-500))) {
-        step = 3;
-        console.debug("[auth/login] step 3: selecting Claude Pro");
-        setTimeout(() => child.write("\r"), 1000);
-      }
-
-      // Capture OAuth URL (can happen at step 2 or 3)
-      if (step >= 2) {
+      // ---- Check for OAuth URL first (can appear at any point after /login) ----
+      if (loginSent) {
         const urlMatch = output.match(/(https:\/\/claude\.ai\/oauth\/authorize\S+)/);
         if (urlMatch && !resolved) {
           resolved = true;
           step = 4;
-          console.debug("[auth/login] step 4: URL captured");
+          console.debug("[auth/login] URL captured");
           pendingLogin = {
             pty: child,
             url: urlMatch[1],
             createdAt: Date.now(),
           };
           resolve(urlMatch[1]);
+          return;
         }
+      }
+
+      if (resolved) return;
+
+      // ---- Before /login: dismiss any setup prompt by pressing Enter ----
+      // The CLI may show trust, theme picker, or other selection prompts.
+      // They all show ❯ with numbered options. We debounce to avoid spamming.
+      if (!loginSent) {
+        // Detect the main input prompt: sparkle animation = CLI is ready
+        if (/[✻✽✶✢]/.test(data)) {
+          loginSent = true;
+          console.debug("[auth/login] main prompt ready, sending /login");
+          setTimeout(() => child.write("/login\r"), 1000);
+          return;
+        }
+
+        // Any selection prompt (❯ followed by numbered items): press Enter
+        if (/❯/.test(data)) {
+          if (enterDebounce) clearTimeout(enterDebounce);
+          enterDebounce = setTimeout(() => {
+            console.debug("[auth/login] dismissing selection prompt");
+            child.write("\r");
+          }, 800);
+        }
+      }
+
+      // ---- After /login: dismiss the login method picker ----
+      if (loginSent && step < 4 && /❯/.test(data)) {
+        if (enterDebounce) clearTimeout(enterDebounce);
+        enterDebounce = setTimeout(() => {
+          console.debug("[auth/login] selecting first option in login picker");
+          child.write("\r");
+        }, 800);
       }
     });
 
