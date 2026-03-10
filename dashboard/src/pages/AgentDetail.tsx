@@ -8,8 +8,10 @@
  */
 
 import { useState, useEffect } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
+import { useParams, useNavigate, Link, useOutletContext } from "react-router-dom";
 import { get, post, del, patch } from "../api";
+import type { LayoutContext } from "../components/Layout";
+import { BrowserCallModal } from "../components/BrowserCallModal";
 
 // ============================================================================
 // TYPES
@@ -69,6 +71,7 @@ const SECTION_LABEL_STYLE: React.CSSProperties = {
 export function AgentDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { browserCallStatus } = useOutletContext<LayoutContext>();
   const [agent, setAgent] = useState<Agent | null>(null);
   const [calling, setCalling] = useState(false);
   const [callError, setCallError] = useState<string | null>(null);
@@ -77,6 +80,9 @@ export function AgentDetail() {
   const [voices, setVoices] = useState<Array<{ id: string; name: string }>>([]);
   const [voicesError, setVoicesError] = useState<string | null>(null);
   const [savingVoice, setSavingVoice] = useState(false);
+  const [showBrowserCallModal, setShowBrowserCallModal] = useState(false);
+
+  const browserCallEnabled = browserCallStatus.running && !!browserCallStatus.tunnelUrl;
 
   // ============================================================================
   // EVENT HANDLERS
@@ -212,6 +218,25 @@ export function AgentDetail() {
           >
             {calling ? "Calling..." : "Call Me"}
           </button>
+          <span title={!browserCallEnabled ? "Enable browser calling in Settings" : undefined}>
+            <button
+              onClick={() => setShowBrowserCallModal(true)}
+              disabled={!browserCallEnabled}
+              style={{
+                padding: "6px 14px",
+                background: "var(--btn-primary-bg)",
+                color: "var(--btn-primary-text)",
+                border: "none",
+                borderRadius: 0,
+                fontWeight: 500,
+                fontSize: 13,
+                cursor: !browserCallEnabled ? "not-allowed" : "pointer",
+                opacity: !browserCallEnabled ? 0.6 : 1,
+              }}
+            >
+              Call via Browser
+            </button>
+          </span>
           <button
             onClick={handleDelete}
             disabled={deleting}
@@ -301,6 +326,14 @@ export function AgentDetail() {
           <pre style={PRE_STYLE}>{JSON.stringify(agent.config, null, 2)}</pre>
         </div>
       </div>
+
+      {showBrowserCallModal && browserCallStatus.tunnelUrl && id && (
+        <BrowserCallModal
+          agentId={id!}
+          tunnelUrl={browserCallStatus.tunnelUrl}
+          onClose={() => setShowBrowserCallModal(false)}
+        />
+      )}
     </div>
   );
 }

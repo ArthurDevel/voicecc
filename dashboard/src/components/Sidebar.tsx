@@ -1,8 +1,7 @@
 /**
- * Dashboard sidebar with navigation, browser call button, and conversation list.
+ * Dashboard sidebar with navigation and conversation list.
  *
  * Renders:
- * - New Browser Session button (enabled when browser call server is running)
  * - Conversation list fetched from API
  * - Settings nav item in footer
  */
@@ -10,8 +9,7 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { get } from "../api";
-import { BrowserCallModal } from "./BrowserCallModal";
-import type { TwilioStatus, BrowserCallStatus } from "../pages/Home";
+import type { TwilioStatus } from "../pages/Home";
 
 // ============================================================================
 // TYPES
@@ -19,7 +17,6 @@ import type { TwilioStatus, BrowserCallStatus } from "../pages/Home";
 
 interface SidebarProps {
   twilioStatus: TwilioStatus;
-  browserCallStatus: BrowserCallStatus;
   authStatus: boolean | null;
 }
 
@@ -34,13 +31,10 @@ interface ConversationSummary {
 // COMPONENT
 // ============================================================================
 
-export function Sidebar({ twilioStatus, browserCallStatus, authStatus }: SidebarProps) {
+export function Sidebar({ twilioStatus, authStatus }: SidebarProps) {
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
-  const [showBrowserCallModal, setShowBrowserCallModal] = useState(false);
 
   const location = useLocation();
-
-  const browserCallEnabled = browserCallStatus.running && !!browserCallStatus.tunnelUrl;
 
   const [isDark, setIsDark] = useState(() => {
     return localStorage.getItem("theme") === "dark" ||
@@ -89,22 +83,6 @@ export function Sidebar({ twilioStatus, browserCallStatus, authStatus }: Sidebar
           color: "var(--text-primary)",
         }}>
           VoiceCC
-        </span>
-      </div>
-
-      {/* Top action button */}
-      <div style={{ padding: "16px 12px 0" }}>
-        <span style={{ position: "relative" }} className="browser-call-wrap">
-          <button
-            className="btn-browser-call"
-            disabled={!browserCallEnabled}
-            onClick={() => setShowBrowserCallModal(true)}
-          >
-            New Browser Session
-          </button>
-          {!browserCallEnabled && (
-            <span className="browser-call-tooltip">Enable in Settings!</span>
-          )}
         </span>
       </div>
 
@@ -184,12 +162,6 @@ export function Sidebar({ twilioStatus, browserCallStatus, authStatus }: Sidebar
         </button>
       </div>
 
-      {showBrowserCallModal && browserCallStatus.tunnelUrl && (
-        <BrowserCallModal
-          tunnelUrl={browserCallStatus.tunnelUrl}
-          onClose={() => setShowBrowserCallModal(false)}
-        />
-      )}
     </div>
   );
 }
