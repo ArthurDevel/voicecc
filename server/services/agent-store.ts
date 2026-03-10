@@ -166,6 +166,12 @@ export async function createAgent(
   const finalConfig: AgentConfig = {
     heartbeatIntervalMinutes: config?.heartbeatIntervalMinutes ?? 10,
     enabled: config?.enabled ?? true,
+    voice: config?.voice ?? {
+      elevenlabs: {
+        id: "IKne3meq5aSn9XLyUdCD",
+        name: "Charlie - Deep, Confident, Energetic",
+      },
+    },
   };
 
   await Promise.all([
