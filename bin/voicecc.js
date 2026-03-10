@@ -297,11 +297,32 @@ function stopDaemon() {
   const pid = parseInt(readFileSync(PID_FILE, "utf-8").trim(), 10);
   console.log(`Stopping VoiceCC (PID ${pid})...`);
 
+  // Kill the entire process group (negative PID) so child processes
+  // like cloudflared and tsx's Node subprocess are also terminated.
   try {
-    process.kill(pid, "SIGTERM");
+    process.kill(-pid, "SIGTERM");
   } catch {
-    // Already dead
+    // Fall back to killing just the main PID
+    try { process.kill(pid, "SIGTERM"); } catch { /* already dead */ }
   }
+
+  // Wait for the process to actually die (up to 5 seconds)
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline) {
+    try {
+      process.kill(pid, 0);
+    } catch {
+      break; // Process is gone
+    }
+    // Busy-wait in small increments
+    const waitUntil = Date.now() + 100;
+    while (Date.now() < waitUntil) { /* spin */ }
+  }
+
+  // Force kill if still alive
+  try {
+    process.kill(-pid, "SIGKILL");
+  } catch { /* already dead */ }
 
   // Clean up
   try { unlinkSync(PID_FILE); } catch { /* ignore */ }
@@ -479,10 +500,20 @@ function startDaemon() {
     ensureNonRootUser();
     chownPkgRoot();
     console.log(`Dropping root privileges, running as '${VOICECC_USER}'...`);
-    child = spawn("su", ["-", VOICECC_USER, "-c", `cd ${PKG_ROOT} && ${TSX_BIN} server/index.ts`], {
+
+    // Resolve uid/gid for the voicecc user so we can drop privileges
+    // via spawn options instead of `su`, which can leak stdio and
+    // cause PID tracking issues.
+    const uid = parseInt(execSync(`id -u ${VOICECC_USER}`, { encoding: "utf-8" }).trim(), 10);
+    const gid = parseInt(execSync(`id -g ${VOICECC_USER}`, { encoding: "utf-8" }).trim(), 10);
+
+    child = spawn(TSX_BIN, ["server/index.ts"], {
       cwd: PKG_ROOT,
       detached: true,
       stdio: ["ignore", logFd, logFd],
+      uid,
+      gid,
+      env: { ...process.env, HOME: `/home/${VOICECC_USER}`, USER: VOICECC_USER, VOICECC_DIR },
     });
   } else {
     child = spawn(TSX_BIN, ["server/index.ts"], {
