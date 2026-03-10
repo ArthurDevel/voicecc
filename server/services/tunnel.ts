@@ -134,10 +134,8 @@ async function createTunnel(port: number): Promise<string> {
   const tunnel = Tunnel.quick(`http://localhost:${port}`);
   activeTunnel = tunnel;
 
-  // Log cloudflared output for debugging
-  tunnel.on("stdout", (data: string) => {
-    console.log(`[cloudflared] ${data.trim()}`);
-  });
+  // Log cloudflared output for debugging (stderr only -- cloudflared writes
+  // its logs to both stdout and stderr, so listening to both causes duplicates)
   tunnel.on("stderr", (data: string) => {
     console.log(`[cloudflared] ${data.trim()}`);
   });
