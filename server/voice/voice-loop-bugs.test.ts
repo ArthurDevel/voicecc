@@ -249,3 +249,100 @@ test("BUG: narration summaries should emit immediately, not queue and burst at e
 
   narrator.reset();
 });
+
+// ============================================================================
+// BUG: "Thinking" is spoken at the end of thinking, not the beginning
+// ============================================================================
+
+/**
+ * When the model uses extended thinking, the user should hear "Thinking..."
+ * BEFORE the thinking completes -- not after. The SDK delivers the thinking
+ * content_block_start event only once thinking tokens start streaming, which
+ * can be seconds into the turn. The "Thinking..." announcement should arrive
+ * early in the turn, before the bulk of thinking finishes.
+ *
+ * This test simulates a thinking block that takes 2 seconds, followed by text.
+ * "Thinking..." must appear within the first second -- not after the 2s delay.
+ *
+ * STATUS: No fix yet. The SDK provides no early signal that thinking has started.
+ * The content_block_start type="thinking" event only arrives after ~1.7s+ of API
+ * latency (on top of any actual thinking time). See timing investigation in:
+ *   testscripts/2026.03.10-thinking-timing/test-sdk-event-timing.mjs
+ *   testscripts/2026.03.10-thinking-timing/timing.log
+ */
+test.skip("BUG: 'Thinking' should be announced early, not after thinking completes", { timeout: 10_000 }, async () => {
+  // Simulate realistic SDK behaviour: the thinking content_block_start arrives
+  // late (after ~2s of thinking), then text follows shortly after.
+  function makeThinkingBlockStart(index = 0): Record<string, unknown> {
+    return {
+      type: "stream_event",
+      event: {
+        type: "content_block_start",
+        index,
+        content_block: { type: "thinking", thinking: "" },
+      },
+    };
+  }
+
+  function makeThinkingBlockStop(index = 0): Record<string, unknown> {
+    return {
+      type: "stream_event",
+      event: { type: "content_block_stop", index },
+    };
+  }
+
+  const mockQueryFn = createMockQueryFn([
+    {
+      steps: [
+        { event: makeSystemEvent("test-session") },
+        // Thinking block arrives after 2s (simulates SDK buffering)
+        { event: makeThinkingBlockStart(0), delayMs: 2000 },
+        { event: makeThinkingBlockStop(0) },
+        // Then the actual text response
+        { event: makeBlockStart(1) },
+        { event: makeTextDelta("Here is my answer.", 1) },
+        { event: makeBlockStop(1) },
+        { event: makeAssistant("Here is my answer.") },
+        { event: makeResult() },
+      ],
+    },
+  ]);
+
+  const config: ClaudeSessionConfig = {
+    allowedTools: [],
+    permissionMode: "bypassPermissions",
+    systemPrompt: "test",
+  };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const session = await createClaudeSession(config, mockQueryFn as any);
+
+  try {
+    const events: Array<{ event: ClaudeStreamEvent; elapsedMs: number }> = [];
+    const t0 = Date.now();
+
+    for await (const event of session.sendMessage("complex question")) {
+      events.push({ event, elapsedMs: Date.now() - t0 });
+    }
+
+    // Find the "Thinking" announcement
+    const thinkingEvent = events.find(
+      (e) => e.event.type === "text_delta" && e.event.content.toLowerCase().includes("thinking")
+    );
+
+    assert.ok(
+      thinkingEvent,
+      `Expected a "Thinking..." text delta, but none was found. Events: ${JSON.stringify(events.map(e => e.event))}`
+    );
+
+    // The "Thinking..." must arrive within the first second, NOT after the 2s delay
+    assert.ok(
+      thinkingEvent!.elapsedMs < 1000,
+      `"Thinking..." was announced at ${thinkingEvent!.elapsedMs}ms, but should arrive within 1000ms. ` +
+      `It's being announced when the SDK delivers the thinking event (after thinking completes), ` +
+      `not proactively at the start of the turn.`
+    );
+  } finally {
+    await session.close();
+  }
+});
