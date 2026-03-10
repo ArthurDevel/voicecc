@@ -1059,7 +1059,8 @@ button.mcp-server-status.needs-auth:hover {
 }
 
 .msg {
-  margin-bottom: 24px;
+  margin-top: 12px;
+  margin-bottom: 12px;
   max-width: 100%;
 }
 
@@ -1100,6 +1101,131 @@ button.mcp-server-status.needs-auth:hover {
   color: var(--text-secondary);
   font-size: 13px;
   padding: 20px;
+}
+
+/* Tool call inline lines */
+.tool-call-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 16px;
+  margin: 2px 0;
+  font-size: 12px;
+  font-family: monospace;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: 0;
+  transition: background 0.1s;
+}
+
+.tool-call-line:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.tool-call-icon {
+  color: var(--text-secondary);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.tool-call-summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tool-call-error-badge {
+  font-size: 10px;
+  color: #e55;
+  border: 1px solid #e55;
+  padding: 0 4px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+/* Tool detail modal */
+.tool-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.tool-modal {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  width: 640px;
+  max-width: 90vw;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.tool-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.tool-modal-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.tool-modal-close {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 2px 6px;
+}
+
+.tool-modal-close:hover {
+  color: var(--text-primary);
+}
+
+.tool-modal-section {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color);
+  overflow: auto;
+}
+
+.tool-modal-section:last-child {
+  border-bottom: none;
+}
+
+.tool-modal-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.tool-modal-code {
+  font-family: monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 300px;
+  overflow: auto;
+  margin: 0;
+}
+
+.tool-modal-error {
+  color: #e55;
 }
 
 /* ============================================================================
