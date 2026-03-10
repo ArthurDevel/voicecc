@@ -19,13 +19,17 @@ interface ConversationViewProps {
 }
 
 interface ConversationMessage {
-  role: "user" | "assistant" | "tool_use";
+  role: "user" | "assistant" | "tool_use" | "subagent";
   content: string;
   timestamp: string;
   toolName?: string;
   toolInput?: string;
   toolResult?: string;
   toolIsError?: boolean;
+  subagentDescription?: string;
+  subagentType?: string;
+  subagentPrompt?: string;
+  subagentResult?: string;
 }
 
 interface ToolModalData {
@@ -33,6 +37,13 @@ interface ToolModalData {
   toolInput: string;
   toolResult?: string;
   toolIsError?: boolean;
+}
+
+interface SubagentModalData {
+  description: string;
+  type?: string;
+  prompt?: string;
+  result?: string;
 }
 
 // ============================================================================
@@ -47,7 +58,6 @@ const TOOL_LABELS: Record<string, string> = {
   Bash: "Bash",
   Glob: "Glob",
   Grep: "Grep",
-  Agent: "Agent",
   WebSearch: "WebSearch",
   WebFetch: "WebFetch",
 };
@@ -89,9 +99,6 @@ function buildToolSummary(toolName: string, toolInput: string): string {
     if (toolName === "Glob" && input.pattern) {
       return `${label}: ${input.pattern}`;
     }
-    if (toolName === "Agent" && input.description) {
-      return `${label}: ${input.description}`;
-    }
   } catch {
     // Fall through to default
   }
@@ -126,11 +133,40 @@ function ToolModal({ data, onClose }: { data: ToolModalData; onClose: () => void
   );
 }
 
+/** Modal overlay showing subagent prompt and response */
+function SubagentModal({ data, onClose }: { data: SubagentModalData; onClose: () => void }) {
+  return (
+    <div className="tool-modal-overlay" onClick={onClose}>
+      <div className="tool-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="tool-modal-header">
+          <span className="tool-modal-title">
+            Subagent{data.type ? ` (${data.type})` : ""}
+          </span>
+          <button className="tool-modal-close" onClick={onClose}>x</button>
+        </div>
+        {data.prompt && (
+          <div className="tool-modal-section">
+            <div className="tool-modal-label">Prompt</div>
+            <pre className="tool-modal-code">{data.prompt}</pre>
+          </div>
+        )}
+        {data.result && (
+          <div className="tool-modal-section">
+            <div className="tool-modal-label">Response</div>
+            <pre className="tool-modal-code">{data.result}</pre>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function ConversationView({ sessionId, agentId }: ConversationViewProps) {
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [title, setTitle] = useState("Loading...");
   const [error, setError] = useState<string | null>(null);
   const [modalData, setModalData] = useState<ToolModalData | null>(null);
+  const [subagentModalData, setSubagentModalData] = useState<SubagentModalData | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Fetch messages when sessionId or agentId changes
@@ -175,6 +211,16 @@ export function ConversationView({ sessionId, agentId }: ConversationViewProps) 
     }
   }
 
+  /** Open the subagent detail modal */
+  function handleSubagentClick(msg: ConversationMessage) {
+    setSubagentModalData({
+      description: msg.subagentDescription || "Subagent",
+      type: msg.subagentType,
+      prompt: msg.subagentPrompt,
+      result: msg.subagentResult,
+    });
+  }
+
   // ============================================================================
   // RENDER
   // ============================================================================
@@ -209,6 +255,23 @@ export function ConversationView({ sessionId, agentId }: ConversationViewProps) 
             );
           }
 
+          if (msg.role === "subagent") {
+            return (
+              <div
+                key={i}
+                className="subagent-line"
+                onClick={() => handleSubagentClick(msg)}
+                title="Click to view subagent details"
+              >
+                <span className="subagent-icon">&lt;/&gt;</span>
+                <span className="subagent-summary">
+                  {msg.subagentType ? `${msg.subagentType}: ` : ""}{msg.subagentDescription || "Subagent"}
+                </span>
+                {!msg.subagentResult && <span className="subagent-pending-badge">pending</span>}
+              </div>
+            );
+          }
+
           return (
             <div key={i} className={`msg msg-${msg.role}`}>
               <div className="msg-header">
@@ -224,6 +287,7 @@ export function ConversationView({ sessionId, agentId }: ConversationViewProps) 
       </div>
 
       {modalData && <ToolModal data={modalData} onClose={() => setModalData(null)} />}
+      {subagentModalData && <SubagentModal data={subagentModalData} onClose={() => setSubagentModalData(null)} />}
     </>
   );
 }

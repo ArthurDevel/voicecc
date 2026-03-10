@@ -1144,6 +1144,48 @@ button.mcp-server-status.needs-auth:hover {
   flex-shrink: 0;
 }
 
+/* Subagent inline lines */
+.subagent-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 16px;
+  margin: 2px 0;
+  font-size: 12px;
+  font-family: monospace;
+  color: #7b93db;
+  cursor: pointer;
+  border-radius: 0;
+  transition: background 0.1s;
+}
+
+.subagent-line:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.subagent-icon {
+  color: #7b93db;
+  font-weight: 600;
+  flex-shrink: 0;
+  font-size: 10px;
+}
+
+.subagent-summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subagent-pending-badge {
+  font-size: 10px;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  padding: 0 4px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
 /* Tool detail modal */
 .tool-modal-overlay {
   position: fixed;
