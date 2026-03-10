@@ -25,6 +25,8 @@ bin/                CLI entry point (voicecc command)
 
 ### Install
 
+Sets up Cloudflared Quicktunnel (optional), protects installation with password (optional), and sets up your Elevenlabs API key.
+
 ```bash
 # 1. Install Voice CC
 npm install -g voicecc
