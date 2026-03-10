@@ -313,7 +313,7 @@ export function authRoutes(): Hono {
 
   /** Log out of Claude Code. */
   app.post("/logout", async (c) => {
-    return new Promise((resolve) => {
+    return new Promise<Response>((resolve) => {
       execFile(CLAUDE_BIN, ["auth", "logout"], { timeout: PROBE_TIMEOUT_MS }, (_err, _stdout, _stderr) => {
         // Also clear any env token
         delete process.env.CLAUDE_CODE_OAUTH_TOKEN;

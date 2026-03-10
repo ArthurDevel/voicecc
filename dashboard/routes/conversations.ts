@@ -30,9 +30,17 @@ interface ConversationSummary {
 
 /** A single conversation turn */
 interface ConversationMessage {
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "tool_use";
   content: string;
   timestamp: string;
+  /** Tool name (only for role=tool_use) */
+  toolName?: string;
+  /** Stringified tool input (only for role=tool_use) */
+  toolInput?: string;
+  /** Stringified tool result (only for role=tool_use) */
+  toolResult?: string;
+  /** Whether the tool call errored (only for role=tool_use) */
+  toolIsError?: boolean;
 }
 
 // ============================================================================
@@ -220,6 +228,10 @@ async function parseSessionMessages(filePath: string): Promise<ConversationMessa
   const seenUserUuids = new Set<string>();
   const assistantTexts = new Map<string, { text: string; timestamp: string }>();
 
+  /** Pending tool_use blocks waiting for their results */
+  const pendingTools = new Map<string, { name: string; input: string; timestamp: string }>();
+  const seenToolIds = new Set<string>();
+
   const rl = createInterface({ input: createReadStream(filePath, "utf-8"), crlfDelay: Infinity });
 
   for await (const line of rl) {
@@ -232,7 +244,39 @@ async function parseSessionMessages(filePath: string): Promise<ConversationMessa
         seenUserUuids.add(entry.uuid);
 
         const content = entry.message.content;
-        if (typeof content === "string" && content.trim()) {
+
+        // Match tool_result blocks to pending tool_use calls
+        if (Array.isArray(content)) {
+          for (const block of content) {
+            if (block.type === "tool_result" && block.tool_use_id) {
+              const pending = pendingTools.get(block.tool_use_id);
+              if (pending) {
+                const resultContent = typeof block.content === "string"
+                  ? block.content
+                  : JSON.stringify(block.content, null, 2);
+
+                messages.push({
+                  role: "tool_use",
+                  content: pending.name,
+                  timestamp: pending.timestamp,
+                  toolName: pending.name,
+                  toolInput: pending.input,
+                  toolResult: resultContent,
+                  toolIsError: block.is_error === true,
+                });
+                pendingTools.delete(block.tool_use_id);
+              }
+            }
+          }
+
+          // Also extract user text from array content
+          const textParts = content
+            .filter((b: { type: string; text?: string }) => b.type === "text" && b.text?.trim())
+            .map((b: { text: string }) => b.text);
+          if (textParts.length > 0) {
+            messages.push({ role: "user", content: textParts.join(""), timestamp: entry.timestamp });
+          }
+        } else if (typeof content === "string" && content.trim()) {
           messages.push({ role: "user", content, timestamp: entry.timestamp });
         }
         continue;
@@ -250,6 +294,16 @@ async function parseSessionMessages(filePath: string): Promise<ConversationMessa
           if (block.type === "text" && block.text?.trim()) {
             textParts.push(block.text);
           }
+
+          // Collect tool_use blocks, keyed by their id
+          if (block.type === "tool_use" && block.id && !seenToolIds.has(block.id)) {
+            seenToolIds.add(block.id);
+            pendingTools.set(block.id, {
+              name: block.name,
+              input: JSON.stringify(block.input, null, 2),
+              timestamp: entry.timestamp,
+            });
+          }
         }
 
         if (textParts.length > 0) {
@@ -264,6 +318,17 @@ async function parseSessionMessages(filePath: string): Promise<ConversationMessa
     } catch {
       // Skip malformed lines
     }
+  }
+
+  // Add any remaining tool_use calls that never got a result
+  for (const [, pending] of pendingTools) {
+    messages.push({
+      role: "tool_use",
+      content: pending.name,
+      timestamp: pending.timestamp,
+      toolName: pending.name,
+      toolInput: pending.input,
+    });
   }
 
   for (const [, { text, timestamp }] of assistantTexts) {
