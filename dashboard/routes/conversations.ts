@@ -1,9 +1,11 @@
 /**
  * Conversation session API routes.
  *
- * Lists and reads Claude Code conversation sessions from JSONL log files:
- * - GET / -- list all sessions with summaries
- * - GET /:sessionId -- get all messages for a specific session
+ * Lists and reads Claude Code conversation sessions from JSONL log files.
+ * Aggregates sessions from the main project dir and all active agent dirs.
+ *
+ * - GET / -- list all sessions with summaries (includes agent conversations)
+ * - GET /:sessionId -- get all messages for a specific session (?agentId= for agent sessions)
  */
 
 import { Hono } from "hono";
@@ -23,6 +25,7 @@ interface ConversationSummary {
   firstMessage: string;
   timestamp: string;
   messageCount: number;
+  agentId?: string;
 }
 
 /** A single conversation turn */
@@ -36,9 +39,10 @@ interface ConversationMessage {
 // CONSTANTS
 // ============================================================================
 
-/** Claude Code encodes the project path by replacing "/" with "-" */
-const PROJECT_DIR_NAME = process.cwd().replace(/\//g, "-");
-const SESSIONS_DIR = join(homedir(), ".claude", "projects", PROJECT_DIR_NAME);
+/** Root directory where agent data is stored */
+const AGENTS_DIR = join(homedir(), ".claude-voice-agents");
+
+/** Claude Code encodes the project path by replacing "/" and "." with "-" */
 
 // ============================================================================
 // ROUTES
@@ -54,29 +58,12 @@ export function conversationRoutes(): Hono {
 
   /** List all conversation sessions with summaries */
   app.get("/", async (c) => {
-    let files: string[];
-    try {
-      files = await readdir(SESSIONS_DIR);
-    } catch {
-      return c.json([]);
-    }
-    const jsonlFiles = files.filter((f) => f.endsWith(".jsonl"));
-
+    const sessionDirs = await collectSessionDirs();
     const summaries: ConversationSummary[] = [];
 
-    for (const file of jsonlFiles) {
-      const filePath = join(SESSIONS_DIR, file);
-      const fileStat = await stat(filePath);
-      const sessionId = basename(file, ".jsonl");
-
-      const { firstUserMessage, messageCount } = await extractSessionSummary(filePath);
-
-      summaries.push({
-        sessionId,
-        firstMessage: firstUserMessage,
-        timestamp: fileStat.mtime.toISOString(),
-        messageCount,
-      });
+    for (const { dir, agentId } of sessionDirs) {
+      const dirSummaries = await listSessionsInDir(dir, agentId);
+      summaries.push(...dirSummaries);
     }
 
     summaries.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
@@ -86,7 +73,15 @@ export function conversationRoutes(): Hono {
   /** Get all messages for a specific session */
   app.get("/:sessionId", async (c) => {
     const sessionId = c.req.param("sessionId");
-    const filePath = join(SESSIONS_DIR, `${sessionId}.jsonl`);
+    const agentId = c.req.query("agentId");
+
+    if (!agentId) {
+      return c.json({ error: "agentId query parameter is required" }, 400);
+    }
+
+    const sessionsDir = getAgentSessionsDir(agentId);
+
+    const filePath = join(sessionsDir, `${sessionId}.jsonl`);
 
     try {
       await access(filePath);
@@ -104,6 +99,78 @@ export function conversationRoutes(): Hono {
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
+
+/**
+ * Build the list of session directories to scan: main project dir + each active agent dir.
+ *
+ * @returns Array of { dir, agentId } where agentId is undefined for the main project
+ */
+async function collectSessionDirs(): Promise<Array<{ dir: string; agentId: string }>> {
+  const dirs: Array<{ dir: string; agentId: string }> = [];
+
+  let entries: string[];
+  try {
+    entries = await readdir(AGENTS_DIR);
+  } catch {
+    return dirs;
+  }
+
+  // Only include actual agent directories, skip hidden files like .DS_Store
+  for (const entry of entries) {
+    if (entry.startsWith(".")) continue;
+    dirs.push({ dir: getAgentSessionsDir(entry), agentId: entry });
+  }
+
+  return dirs;
+}
+
+/**
+ * Get the Claude project sessions directory for a given agent.
+ *
+ * @param agentId - The agent identifier
+ * @returns Absolute path to the agent's JSONL sessions directory
+ */
+function getAgentSessionsDir(agentId: string): string {
+  const agentCwd = join(AGENTS_DIR, agentId);
+  const projectDirName = agentCwd.replace(/[/.]/g, "-");
+  return join(homedir(), ".claude", "projects", projectDirName);
+}
+
+/**
+ * List all sessions in a single directory, tagging each with an optional agentId.
+ *
+ * @param dir - Absolute path to a Claude project sessions directory
+ * @param agentId - Optional agent identifier to tag summaries with
+ * @returns Array of ConversationSummary for all JSONL files in the directory
+ */
+async function listSessionsInDir(dir: string, agentId?: string): Promise<ConversationSummary[]> {
+  let files: string[];
+  try {
+    files = await readdir(dir);
+  } catch {
+    return [];
+  }
+
+  const jsonlFiles = files.filter((f) => f.endsWith(".jsonl"));
+  const summaries: ConversationSummary[] = [];
+
+  for (const file of jsonlFiles) {
+    const filePath = join(dir, file);
+    const fileStat = await stat(filePath);
+    const sessionId = basename(file, ".jsonl");
+    const { firstUserMessage, messageCount } = await extractSessionSummary(filePath);
+
+    summaries.push({
+      sessionId,
+      firstMessage: firstUserMessage,
+      timestamp: fileStat.mtime.toISOString(),
+      messageCount,
+      ...(agentId ? { agentId } : {}),
+    });
+  }
+
+  return summaries;
+}
 
 /**
  * Read the first user message and count total messages in a session file.
