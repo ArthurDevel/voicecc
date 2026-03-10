@@ -128,6 +128,7 @@ async function createClaudeSession(
       : { systemPrompt: { type: "preset" as const, preset: "claude_code" as const, append: systemPrompt } }),
     permissionMode: config.permissionMode as Options["permissionMode"],
     allowDangerouslySkipPermissions: config.permissionMode === "bypassPermissions",
+    settingSources: ["user", "project", "local"],
     ...(config.cwd && { cwd: config.cwd }),
     stderr: (data: string) => {
       const msg = data.trim();
