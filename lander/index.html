@@ -203,6 +203,111 @@
       padding: 0;
       color: inherit;
     }
+
+    /* ============================================================================
+     * COMMUNITY AGENTS
+     * ============================================================================ */
+
+    #community-agents {
+      display: none;
+    }
+
+    .search-input {
+      width: 100%;
+      padding: 10px 14px;
+      font-size: 14px;
+      font-family: inherit;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      color: var(--text-primary);
+      margin-bottom: 16px;
+      outline: none;
+    }
+
+    .search-input::placeholder {
+      color: var(--text-secondary);
+    }
+
+    .search-input:focus {
+      border-color: var(--text-secondary);
+    }
+
+    .agent-cards {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .agent-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      padding: 20px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    }
+
+    .agent-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+
+    .agent-name {
+      font-size: 15px;
+      font-weight: 600;
+    }
+
+    .agent-author {
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-top: 2px;
+    }
+
+    .agent-description {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 12px;
+      line-height: 1.5;
+    }
+
+    .agent-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+
+    .agent-tag {
+      font-size: 11px;
+      padding: 2px 8px;
+      background: var(--code-bg);
+      border: 1px solid var(--border-color);
+      color: var(--text-secondary);
+    }
+
+    .download-btn {
+      display: inline-block;
+      padding: 6px 16px;
+      font-size: 13px;
+      font-weight: 500;
+      font-family: inherit;
+      background: var(--btn-primary-bg);
+      color: var(--btn-primary-text);
+      border: none;
+      cursor: pointer;
+      text-decoration: none;
+    }
+
+    .download-btn:hover {
+      opacity: 0.85;
+    }
+
+    .no-results {
+      font-size: 13px;
+      color: var(--text-secondary);
+      padding: 16px 0;
+    }
   </style>
 </head>
 <body>
@@ -252,8 +357,33 @@ brew install espeak-ng</code></pre>
         </div>
       </div>
     </div>
+
+    <div class="section" id="community-agents">
+      <h2>Community Agents</h2>
+      <input
+        type="text"
+        class="search-input"
+        id="agent-search"
+        placeholder="Search agents by name, description, or tags..."
+        oninput="filterAgents()"
+      />
+      <div class="agent-cards" id="agent-cards"></div>
+    </div>
   </div>
   <script>
+    // ============================================================================
+    // CONSTANTS
+    // ============================================================================
+
+    var API_BASE = "";
+
+    // All fetched agents, kept in memory for client-side filtering
+    var allAgents = [];
+
+    // ============================================================================
+    // MAIN ENTRYPOINT
+    // ============================================================================
+
     function copyCode(btn) {
       var code = btn.parentElement.querySelector("code").textContent;
       navigator.clipboard.writeText(code).then(function () {
@@ -261,6 +391,104 @@ brew install espeak-ng</code></pre>
         setTimeout(function () { btn.textContent = "Copy"; }, 1500);
       });
     }
+
+    /** Fetch agents from the marketplace API and render cards. Hides section on failure. */
+    function loadAgents() {
+      fetch(API_BASE + "/api/marketplace")
+        .then(function (res) {
+          if (!res.ok) throw new Error("Failed to fetch agents");
+          return res.json();
+        })
+        .then(function (agents) {
+          if (!agents || agents.length === 0) return;
+          allAgents = agents;
+          renderAgents(allAgents);
+          document.getElementById("community-agents").style.display = "block";
+        })
+        .catch(function () {
+          // Graceful degradation: hide section silently
+        });
+    }
+
+    // ============================================================================
+    // EVENT HANDLERS
+    // ============================================================================
+
+    /** Filter displayed agents based on the search input value. */
+    function filterAgents() {
+      var query = document.getElementById("agent-search").value.toLowerCase().trim();
+      if (!query) {
+        renderAgents(allAgents);
+        return;
+      }
+
+      var filtered = allAgents.filter(function (agent) {
+        var nameMatch = agent.name.toLowerCase().indexOf(query) !== -1;
+        var descMatch = agent.description.toLowerCase().indexOf(query) !== -1;
+        var tagMatch = agent.tags && agent.tags.some(function (tag) {
+          return tag.toLowerCase().indexOf(query) !== -1;
+        });
+        return nameMatch || descMatch || tagMatch;
+      });
+
+      renderAgents(filtered);
+    }
+
+    // ============================================================================
+    // RENDER
+    // ============================================================================
+
+    /** Render an array of agent objects as cards into the #agent-cards container. */
+    function renderAgents(agents) {
+      var container = document.getElementById("agent-cards");
+
+      if (agents.length === 0) {
+        container.innerHTML = '<div class="no-results">No agents found.</div>';
+        return;
+      }
+
+      var html = "";
+      for (var i = 0; i < agents.length; i++) {
+        var agent = agents[i];
+        var downloadUrl = API_BASE + "/api/marketplace/" + agent.id + "/download";
+
+        html += '<div class="agent-card">';
+        html += '  <div class="agent-card-header">';
+        html += '    <div>';
+        html += '      <div class="agent-name">' + escapeHtml(agent.name) + '</div>';
+        html += '      <div class="agent-author">by ' + escapeHtml(agent.author) + '</div>';
+        html += '    </div>';
+        html += '    <a class="download-btn" href="' + escapeHtml(downloadUrl) + '" download>Download</a>';
+        html += '  </div>';
+        html += '  <div class="agent-description">' + escapeHtml(agent.description) + '</div>';
+
+        if (agent.tags && agent.tags.length > 0) {
+          html += '  <div class="agent-tags">';
+          for (var j = 0; j < agent.tags.length; j++) {
+            html += '    <span class="agent-tag">' + escapeHtml(agent.tags[j]) + '</span>';
+          }
+          html += '  </div>';
+        }
+
+        html += '</div>';
+      }
+
+      container.innerHTML = html;
+    }
+
+    // ============================================================================
+    // HELPER FUNCTIONS
+    // ============================================================================
+
+    /** Escape HTML special characters to prevent XSS. */
+    function escapeHtml(str) {
+      var div = document.createElement("div");
+      div.appendChild(document.createTextNode(str));
+      return div.innerHTML;
+    }
+
+    // Load agents on page load
+    loadAgents();
   </script>
 </body>
 </html>

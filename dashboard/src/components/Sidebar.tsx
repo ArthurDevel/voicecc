@@ -137,6 +137,15 @@ export function Sidebar({ twilioStatus, browserCallStatus, authStatus }: Sidebar
           Agents
         </Link>
 
+        <Link
+          to="/marketplace"
+          className={`sidebar-item ${location.pathname.startsWith("/marketplace") ? "active" : ""}`}
+          style={{ textDecoration: "none", display: "flex", alignItems: "center" }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l2-7h14l2 7"></path><path d="M3 9v11a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1V9"></path><path d="M9 21V13h6v8"></path></svg>
+          Marketplace
+        </Link>
+
         <div className="sidebar-section-label" style={{ marginTop: 16, flexShrink: 0 }}>History</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1, overflowY: "auto" }}>
           {conversations.length === 0 && (
