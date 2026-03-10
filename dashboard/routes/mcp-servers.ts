@@ -17,7 +17,7 @@ import { query as claudeQuery, type McpServerStatus, type SDKUserMessage } from 
 // ============================================================================
 
 /** MCP server entry returned to the frontend */
-interface McpServerEntry {
+export interface McpServerEntry {
   name: string;
   url: string;
   type: "http" | "stdio";
@@ -206,7 +206,7 @@ async function fetchMcpServersViaSdk(): Promise<McpServerEntry[]> {
  * @param s - SDK MCP server status object
  * @returns Mapped McpServerEntry for the frontend
  */
-function mapSdkStatusToEntry(s: McpServerStatus): McpServerEntry {
+export function mapSdkStatusToEntry(s: McpServerStatus): McpServerEntry {
   const scope = mapScope(s.scope);
   const url = extractUrl(s);
   const type = inferType(s, url);
@@ -221,7 +221,7 @@ function mapSdkStatusToEntry(s: McpServerStatus): McpServerEntry {
  * @param sdkScope - Scope string from the SDK (e.g. "claudeai", "user", "project")
  * @returns Normalized scope value
  */
-function mapScope(sdkScope: string | undefined): McpServerEntry["scope"] {
+export function mapScope(sdkScope: string | undefined): McpServerEntry["scope"] {
   if (!sdkScope) return "local";
   const s = sdkScope.toLowerCase();
   if (s === "claudeai" || s === "claude_ai" || s === "claude.ai") return "claudeai";
@@ -237,7 +237,7 @@ function mapScope(sdkScope: string | undefined): McpServerEntry["scope"] {
  * @param sdkStatus - Status string from the SDK
  * @returns Normalized status value
  */
-function mapStatus(sdkStatus: string): McpServerEntry["status"] {
+export function mapStatus(sdkStatus: string): McpServerEntry["status"] {
   if (sdkStatus === "connected") return "connected";
   if (sdkStatus === "needs-auth") return "needs_auth";
   if (sdkStatus === "pending") return "pending";
@@ -251,7 +251,7 @@ function mapStatus(sdkStatus: string): McpServerEntry["status"] {
  * @param s - SDK MCP server status
  * @returns URL string or command string
  */
-function extractUrl(s: McpServerStatus): string {
+export function extractUrl(s: McpServerStatus): string {
   const config = s.config as Record<string, unknown> | undefined;
   if (!config) return "";
   if (typeof config.url === "string") return config.url;
@@ -269,7 +269,7 @@ function extractUrl(s: McpServerStatus): string {
  * @param url - Extracted URL string
  * @returns "http" or "stdio"
  */
-function inferType(s: McpServerStatus, url: string): "http" | "stdio" {
+export function inferType(s: McpServerStatus, url: string): "http" | "stdio" {
   const config = s.config as Record<string, unknown> | undefined;
   if (config && typeof config.command === "string") return "stdio";
   if (url.startsWith("http")) return "http";
