@@ -16,13 +16,16 @@ import { homedir } from "node:os";
 
 import { startDashboard } from "../dashboard/server.js";
 import { readEnv } from "./services/env.js";
-import { startTunnel, isTunnelRunning, getTunnelUrl } from "./services/tunnel.js";
+import { startTunnel, stopTunnel, isTunnelRunning, getTunnelUrl } from "./services/tunnel.js";
 import { startTwilioServer } from "./services/twilio-manager.js";
 import { startBrowserCallServer } from "./services/browser-call-manager.js";
 import { startHeartbeat } from "./services/heartbeat.js";
 import { startVoiceServer } from "./voice/voice-server.js";
 
-const STATUS_FILE = join(homedir(), ".voicecc", "status.json");
+// Use VOICECC_DIR env var if set (passed by CLI when dropping root privileges),
+// otherwise fall back to ~/.voicecc.
+const VOICECC_DIR = process.env.VOICECC_DIR ?? join(homedir(), ".voicecc");
+const STATUS_FILE = join(VOICECC_DIR, "status.json");
 
 // ============================================================================
 // HELPER FUNCTIONS
@@ -41,7 +44,7 @@ function writeStatusFile(dashboardPort: number, tunnelUrl: string | null): void 
     startedAt: new Date().toISOString(),
   };
   try {
-    mkdirSync(join(homedir(), ".voicecc"), { recursive: true });
+    mkdirSync(VOICECC_DIR, { recursive: true });
     writeFileSync(STATUS_FILE, JSON.stringify(status, null, 2));
   } catch {
     console.error("Failed to write status file");
@@ -108,9 +111,14 @@ async function main(): Promise<void> {
   const tunnelUrl = getTunnelUrl();
   writeStatusFile(dashboardPort, tunnelUrl);
 
-  // Clean up status file on shutdown
-  process.on("SIGTERM", () => { cleanupStatusFile(); process.exit(0); });
-  process.on("SIGINT", () => { cleanupStatusFile(); process.exit(0); });
+  // Graceful shutdown: stop tunnel subprocess, then clean up status file
+  const shutdown = () => {
+    stopTunnel();
+    cleanupStatusFile();
+    process.exit(0);
+  };
+  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
 
   // Print startup banner
   console.log("");
