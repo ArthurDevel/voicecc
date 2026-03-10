@@ -4,14 +4,14 @@ import { get } from "../api";
 import { SettingsPanel } from "../components/SettingsPanel";
 import { VoiceProvidersPanel } from "../components/VoiceProvidersPanel";
 import { McpServersPanel } from "../components/McpServersPanel";
-import { ClaudeMdEditor } from "../components/ClaudeMdEditor";
+
 import type { TunnelStatus, TwilioStatus } from "../pages/Home";
 
 export function Settings() {
     const [searchParams] = useSearchParams();
-    const initialTab = searchParams.get("tab") as "general" | "voice" | "integrations" | "system" | null;
-    const [activeTab, setActiveTab] = useState<"general" | "voice" | "integrations" | "system">(
-        initialTab === "voice" || initialTab === "integrations" || initialTab === "system" ? initialTab : "general"
+    const initialTab = searchParams.get("tab") as "general" | "voice" | "integrations" | null;
+    const [activeTab, setActiveTab] = useState<"general" | "voice" | "integrations">(
+        initialTab === "voice" || initialTab === "integrations" ? initialTab : "general"
     );
     const [tunnelStatus, setTunnelStatus] = useState<TunnelStatus>({ running: false, url: null });
     const [twilioStatus, setTwilioStatus] = useState<TwilioStatus>({ running: false, tunnelUrl: null });
@@ -45,7 +45,6 @@ export function Settings() {
                 <button style={tabStyle("general")} onClick={() => setActiveTab("general")}>General</button>
                 <button style={tabStyle("voice")} onClick={() => setActiveTab("voice")}>Voice</button>
                 <button style={tabStyle("integrations")} onClick={() => setActiveTab("integrations")}>Integrations & MCP</button>
-                <button style={tabStyle("system")} onClick={() => setActiveTab("system")}>System Prompt</button>
             </div>
 
             {/* Scrollable Content Area */}
@@ -58,9 +57,6 @@ export function Settings() {
                 )}
                 {activeTab === "integrations" && (
                     <McpServersPanel twilioRunning={twilioStatus.running} />
-                )}
-                {activeTab === "system" && (
-                    <ClaudeMdEditor />
                 )}
             </div>
         </div>
