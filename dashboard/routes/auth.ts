@@ -2,7 +2,7 @@
  * Claude Code authentication routes.
  *
  * Supports two auth flows:
- * 1. OAuth PKCE flow via claude.ai (recommended — enables cloud MCP servers)
+ * 1. OAuth PKCE flow via claude.ai (recommended -- enables cloud MCP servers)
  * 2. Manual token paste via `claude setup-token` (fallback)
  *
  * - GET /              -- probe auth status
@@ -25,12 +25,12 @@ const PROBE_TIMEOUT_MS = 5_000;
 
 const OAUTH_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
 const OAUTH_AUTH_URL = "https://claude.ai/oauth/authorize";
-const OAUTH_TOKEN_URL = "https://claude.ai/oauth/token";
+const OAUTH_TOKEN_URL = "https://platform.claude.com/v1/oauth/token";
 const OAUTH_REDIRECT_URI = "https://platform.claude.com/oauth/code/callback";
 const OAUTH_SCOPES = "org:create_api_key user:profile user:inference user:sessions:claude_code user:mcp_servers";
 
 // ============================================================================
-// PKCE STATE (single-user dashboard — one pending flow at a time)
+// PKCE STATE (single-user dashboard -- one pending flow at a time)
 // ============================================================================
 
 let pendingPkce: { codeVerifier: string; state: string; createdAt: number } | null = null;
@@ -51,25 +51,30 @@ function generatePkce(): { codeVerifier: string; codeChallenge: string } {
   return { codeVerifier, codeChallenge };
 }
 
-/** Exchange an authorization code for tokens using the PKCE verifier. */
-async function exchangeCodeForTokens(code: string, codeVerifier: string): Promise<{
+/**
+ * Exchange an authorization code for tokens using the PKCE verifier.
+ * @param code - The authorization code from the OAuth callback
+ * @param codeVerifier - The PKCE code_verifier generated at flow start
+ * @param state - The OAuth state parameter (required by the token endpoint)
+ * @returns Token response with access_token, refresh_token, expires_in
+ */
+async function exchangeCodeForTokens(code: string, codeVerifier: string, state: string): Promise<{
   access_token: string;
   refresh_token: string;
   expires_in: number;
   scope?: string;
 }> {
-  const body = new URLSearchParams({
-    grant_type: "authorization_code",
-    code,
-    code_verifier: codeVerifier,
-    client_id: OAUTH_CLIENT_ID,
-    redirect_uri: OAUTH_REDIRECT_URI,
-  });
-
   const res = await fetch(OAUTH_TOKEN_URL, {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: body.toString(),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      grant_type: "authorization_code",
+      code,
+      state,
+      code_verifier: codeVerifier,
+      client_id: OAUTH_CLIENT_ID,
+      redirect_uri: OAUTH_REDIRECT_URI,
+    }),
   });
 
   if (!res.ok) {
@@ -96,7 +101,6 @@ interface AuthStatus {
 async function getAuthStatus(): Promise<AuthStatus> {
   return new Promise((resolve) => {
     execFile(CLAUDE_BIN, ["auth", "status"], { timeout: PROBE_TIMEOUT_MS }, (err, stdout, stderr) => {
-      // Try parsing stdout first, then stderr (some versions write JSON to stderr on exit 1)
       const output = stdout?.trim() || stderr?.trim() || "";
       try {
         const json = JSON.parse(output);
@@ -140,7 +144,7 @@ export function authRoutes(): Hono {
     return c.json(await getAuthStatus());
   });
 
-  /** Start an OAuth PKCE flow — returns the authorization URL. */
+  /** Start an OAuth PKCE flow -- returns the authorization URL. */
   app.post("/oauth/start", async (c) => {
     const { codeVerifier, codeChallenge } = generatePkce();
     const state = base64url(randomBytes(32));
@@ -184,7 +188,7 @@ export function authRoutes(): Hono {
     }
 
     try {
-      const tokens = await exchangeCodeForTokens(code.trim(), pendingPkce.codeVerifier);
+      const tokens = await exchangeCodeForTokens(code.trim(), pendingPkce.codeVerifier, pendingPkce.state);
       pendingPkce = null;
 
       const scopes = tokens.scope

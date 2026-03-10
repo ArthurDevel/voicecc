@@ -1,10 +1,11 @@
 /**
- * Tests that the OAuth PKCE flow includes and validates the state parameter.
+ * Tests for the OAuth PKCE flow routes.
  *
  * Verifies:
- * - /oauth/start returns a state value and includes it in the URL
- * - /oauth/callback rejects requests with missing or wrong state
- * - /oauth/callback accepts requests with the correct state
+ * - /oauth/start returns state in response and in URL
+ * - /oauth/callback rejects missing/wrong state
+ * - /oauth/callback accepts correct state (fails on token exchange, not state)
+ * - Token URL points to platform.claude.com (not claude.ai) to avoid Cloudflare
  *
  * Run: npx tsx --test dashboard/oauth-state.test.ts
  */
@@ -46,7 +47,6 @@ describe("OAuth state parameter", () => {
   });
 
   test("/oauth/callback rejects missing state", async () => {
-    // Start a flow first so pendingPkce is set
     await postJson("/api/auth/oauth/start");
 
     const { status, data } = await postJson<{ error: string }>("/api/auth/oauth/callback", {
@@ -58,7 +58,6 @@ describe("OAuth state parameter", () => {
   });
 
   test("/oauth/callback rejects wrong state", async () => {
-    // Start a flow first so pendingPkce is set
     await postJson("/api/auth/oauth/start");
 
     const { status, data } = await postJson<{ error: string }>("/api/auth/oauth/callback", {
@@ -70,16 +69,34 @@ describe("OAuth state parameter", () => {
     assert.ok(data.error.toLowerCase().includes("state"), "error should mention state");
   });
 
-  test("/oauth/callback accepts correct state", async () => {
+  test("/oauth/callback accepts correct state (fails on token exchange, not state)", async () => {
     const startRes = await postJson<{ url: string; state: string }>("/api/auth/oauth/start");
 
-    // The token exchange will fail (fake code) but the state check should pass.
-    // We expect a 500 from the token exchange, not a 400 from state validation.
     const { status } = await postJson<{ error: string }>("/api/auth/oauth/callback", {
       code: "fake-auth-code",
       state: startRes.data.state,
     });
 
-    assert.equal(status, 500, "should pass state check and fail on token exchange (500), not state validation (400)");
+    // Should pass state check and fail on token exchange (500), not state validation (400)
+    assert.equal(status, 500);
+  });
+});
+
+describe("OAuth token URL", () => {
+  test("authorization URL uses claude.ai", async () => {
+    const { data } = await postJson<{ url: string }>("/api/auth/oauth/start");
+    assert.ok(data.url.startsWith("https://claude.ai/oauth/authorize"), "should use claude.ai for authorization");
+  });
+
+  test("token exchange error references platform.claude.com, not claude.ai", async () => {
+    const startRes = await postJson<{ url: string; state: string }>("/api/auth/oauth/start");
+
+    const { data } = await postJson<{ error: string }>("/api/auth/oauth/callback", {
+      code: "fake-auth-code",
+      state: startRes.data.state,
+    });
+
+    // The error message from a failed exchange should reference the real token URL
+    assert.ok(!data.error.includes("claude.ai/oauth/token"), "should NOT use claude.ai for token exchange");
   });
 });

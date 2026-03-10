@@ -1,10 +1,10 @@
 /**
  * Authentication modal with two methods:
  *
- * Tab 1: "Login with Claude" (recommended) — OAuth PKCE flow via claude.ai.
+ * Tab 1: "Login with Claude" (recommended) -- OAuth PKCE flow via claude.ai.
  *         Enables cloud MCP servers (Gmail, Calendar, Slack, etc.).
  *
- * Tab 2: "Setup Token" — manual paste of a `claude setup-token` token.
+ * Tab 2: "Setup Token" -- manual paste of a `claude setup-token` token.
  *         Quick but cloud MCP servers won't be available.
  */
 
