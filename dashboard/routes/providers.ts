@@ -6,6 +6,7 @@
  * - GET /tts/status/:type -- check a specific TTS provider
  * - GET /stt -- list STT providers with status
  * - GET /stt/status/:type -- check a specific STT provider
+ * - GET /elevenlabs/validate -- validate the stored ElevenLabs API key
  */
 
 import { Hono } from "hono";
@@ -88,6 +89,20 @@ export function providersRoutes(): Hono {
     const type = c.req.param("type") as SttProviderType;
     const status = await getSttProviderStatus(type);
     return c.json(status);
+  });
+
+  // ---- ElevenLabs validation ----
+
+  /** Check whether an ElevenLabs API key is configured in .env */
+  app.get("/elevenlabs/validate", async (c) => {
+    const env = await readEnv();
+    const apiKey = env.ELEVENLABS_API_KEY;
+
+    if (!apiKey) {
+      return c.json({ status: "missing" as const });
+    }
+
+    return c.json({ status: "valid" as const });
   });
 
   return app;
