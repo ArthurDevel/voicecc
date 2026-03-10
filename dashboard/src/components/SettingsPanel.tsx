@@ -47,6 +47,7 @@ export function SettingsPanel({ twilioRunning }: SettingsPanelProps) {
 
   const [authInfo, setAuthInfo] = useState<AuthInfo | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   const fetchAuth = useCallback(() => {
     get<AuthInfo>("/api/auth").then(setAuthInfo).catch(() => setAuthInfo(null));
@@ -219,6 +220,31 @@ export function SettingsPanel({ twilioRunning }: SettingsPanelProps) {
                 </button>
               </div>
             )}
+            <button
+              disabled={loggingOut}
+              onClick={async () => {
+                setLoggingOut(true);
+                try {
+                  const status = await post<AuthInfo>("/api/auth/logout");
+                  setAuthInfo(status);
+                } catch {
+                  fetchAuth();
+                } finally {
+                  setLoggingOut(false);
+                }
+              }}
+              style={{
+                marginTop: 16,
+                background: "none",
+                border: "1px solid var(--border-color)",
+                color: "var(--text-secondary)",
+                cursor: loggingOut ? "wait" : "pointer",
+                padding: "6px 14px",
+                fontSize: 13,
+              }}
+            >
+              {loggingOut ? "Logging out..." : "Log out"}
+            </button>
           </div>
         )}
       </div>
