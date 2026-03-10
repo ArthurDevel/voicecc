@@ -130,7 +130,16 @@ function showInfo() {
 
   if (status) {
     console.log(`  Dashboard:  http://localhost:${status.dashboardPort}`);
-    const tunnelLabel = status.tunnelUrl ?? (tunnelWanted ? "starting..." : "disabled");
+    let tunnelLabel;
+    if (status.tunnelUrl) {
+      tunnelLabel = status.tunnelUrl;
+    } else if (status.tunnelError) {
+      tunnelLabel = `FAILED - ${status.tunnelError}`;
+    } else if (tunnelWanted) {
+      tunnelLabel = "starting...";
+    } else {
+      tunnelLabel = "disabled";
+    }
     console.log(`  Tunnel:     ${tunnelLabel}`);
   } else {
     console.log("  Server is starting up...");
@@ -342,7 +351,7 @@ function showLogs() {
     process.exit(1);
   }
 
-  const child = spawn("tail", ["-f", LOG_FILE], { stdio: "inherit" });
+  const child = spawn("tail", ["-n", "100", "-f", LOG_FILE], { stdio: "inherit" });
   process.on("SIGINT", () => child.kill("SIGINT"));
   child.on("exit", (code) => process.exit(code ?? 0));
 }
@@ -501,6 +510,8 @@ function startDaemon() {
   if (isRoot) {
     ensureNonRootUser();
     chownPkgRoot();
+    // Ensure the voicecc user can write to the status/log directory
+    execSync(`chown -R ${VOICECC_USER}:${VOICECC_USER} ${VOICECC_DIR}`, { stdio: "inherit" });
     console.log(`Dropping root privileges, running as '${VOICECC_USER}'...`);
 
     // Resolve uid/gid for the voicecc user so we can drop privileges
@@ -578,15 +589,15 @@ startDaemon();
 
 // Poll for status.json until the server is ready (dashboard + tunnel if enabled)
 const tunnelEnabled = readFileSync(ENV_PATH, "utf-8").includes("TUNNEL_ENABLED=true");
-const MAX_WAIT_MS = tunnelEnabled ? 45000 : 10000;
+const MAX_WAIT_MS = tunnelEnabled ? 30000 : 10000;
 const POLL_INTERVAL_MS = 500;
 const startTime = Date.now();
 
 while (Date.now() - startTime < MAX_WAIT_MS) {
   await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
   const status = readStatus();
-  // Status file is written early (before tunnel). Wait for tunnelUrl if tunnel is enabled.
-  if (status && (!tunnelEnabled || status.tunnelUrl)) break;
+  // Status file is written early (before tunnel). Wait for tunnelUrl or tunnelError if tunnel is enabled.
+  if (status && (!tunnelEnabled || status.tunnelUrl || status.tunnelError)) break;
 }
 
 showInfo();
