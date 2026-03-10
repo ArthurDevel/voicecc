@@ -28,7 +28,6 @@
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.70",
     "@anthropic-ai/sdk": "^0.39.0",
-    "@aws-sdk/client-s3": "^3.1005.0",
     "@hono/node-server": "^1.19.9",
     "avr-vad": "^1.0.0",
     "cloudflared": "^0.7.1",

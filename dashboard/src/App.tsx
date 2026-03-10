@@ -14,7 +14,6 @@ import { Agents } from "./pages/Agents";
 import { AgentDetail } from "./pages/AgentDetail";
 import { Conversation } from "./pages/Conversation";
 import { Call } from "./pages/Call";
-import { Marketplace } from "./pages/Marketplace";
 
 // ============================================================================
 // COMPONENT
@@ -29,7 +28,6 @@ export function App() {
           <Route path="/settings" element={<Settings />} />
           <Route path="/agents" element={<Agents />} />
           <Route path="/agents/:id" element={<AgentDetail />} />
-          <Route path="/marketplace" element={<Marketplace />} />
           <Route path="/c/:id" element={<Conversation />} />
         </Route>
         <Route path="/call" element={<Call />} />

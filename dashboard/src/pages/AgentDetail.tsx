@@ -77,10 +77,6 @@ export function AgentDetail() {
   const [voices, setVoices] = useState<Array<{ id: string; name: string }>>([]);
   const [voicesError, setVoicesError] = useState<string | null>(null);
   const [savingVoice, setSavingVoice] = useState(false);
-  const [publishing, setPublishing] = useState(false);
-  const [showPublishForm, setShowPublishForm] = useState(false);
-  const [publishForm, setPublishForm] = useState({ name: id || "", description: "", author: "", version: "1.0.0", tags: "" });
-  const [publishMessage, setPublishMessage] = useState<string | null>(null);
 
   // ============================================================================
   // EVENT HANDLERS
@@ -156,34 +152,6 @@ export function AgentDetail() {
     }
   };
 
-  /**
-   * Publish this agent to the marketplace.
-   * POSTs JSON to /api/marketplace/publish with form data.
-   */
-  const handlePublish = async () => {
-    if (!id) return;
-    setPublishing(true);
-    setPublishMessage(null);
-    try {
-      const tags = publishForm.tags.split(",").map((t) => t.trim()).filter(Boolean);
-      await post("/api/marketplace/publish", {
-        agentId: id,
-        name: publishForm.name,
-        description: publishForm.description,
-        author: publishForm.author,
-        version: publishForm.version,
-        tags,
-      });
-      setPublishMessage("Published successfully");
-      setShowPublishForm(false);
-    } catch (err: unknown) {
-      const message = (err as { message?: string })?.message || "Failed to publish agent";
-      setPublishMessage(message);
-    } finally {
-      setPublishing(false);
-    }
-  };
-
   // ============================================================================
   // RENDER
   // ============================================================================
@@ -228,21 +196,6 @@ export function AgentDetail() {
             Export
           </a>
           <button
-            onClick={() => setShowPublishForm(!showPublishForm)}
-            style={{
-              padding: "6px 14px",
-              background: "var(--bg-main)",
-              color: "var(--text-primary)",
-              border: "1px solid var(--border-color)",
-              borderRadius: 0,
-              fontWeight: 500,
-              fontSize: 13,
-              cursor: "pointer",
-            }}
-          >
-            Publish
-          </button>
-          <button
             onClick={handleCall}
             disabled={calling}
             style={{
@@ -283,80 +236,6 @@ export function AgentDetail() {
       {callError && (
         <div style={{ margin: "16px 32px 0", padding: "8px 10px", fontSize: 12, color: "#d73a49", background: "var(--bg-tertiary)", borderRadius: 6, border: "1px solid #d73a49" }}>
           {callError}
-        </div>
-      )}
-
-      {/* Publish message */}
-      {publishMessage && (
-        <div style={{ margin: "16px 32px 0", padding: "8px 10px", fontSize: 12, color: publishMessage === "Published successfully" ? "#2ea043" : "#d73a49", background: "var(--bg-tertiary)", borderRadius: 6, border: `1px solid ${publishMessage === "Published successfully" ? "#2ea043" : "#d73a49"}` }}>
-          {publishMessage}
-        </div>
-      )}
-
-      {/* Publish form */}
-      {showPublishForm && (
-        <div style={{ margin: "16px 32px 0", padding: 20 }} className="settings-panel">
-          <h3 style={{ margin: "0 0 16px", fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}>Publish to Marketplace</h3>
-
-          <div style={{ marginBottom: 12 }}>
-            <label style={{ display: "block", marginBottom: 4, fontSize: 13, fontWeight: 500, color: "var(--text-primary)" }}>Name</label>
-            <input type="text" value={publishForm.name} onChange={(e) => setPublishForm({ ...publishForm, name: e.target.value })} style={{ width: "100%", padding: "6px 10px", fontSize: 13, background: "var(--bg-main)", color: "var(--text-primary)", border: "1px solid var(--border-color)", borderRadius: 0, boxSizing: "border-box" }} />
-          </div>
-
-          <div style={{ marginBottom: 12 }}>
-            <label style={{ display: "block", marginBottom: 4, fontSize: 13, fontWeight: 500, color: "var(--text-primary)" }}>Description</label>
-            <input type="text" value={publishForm.description} onChange={(e) => setPublishForm({ ...publishForm, description: e.target.value })} placeholder="Short description" style={{ width: "100%", padding: "6px 10px", fontSize: 13, background: "var(--bg-main)", color: "var(--text-primary)", border: "1px solid var(--border-color)", borderRadius: 0, boxSizing: "border-box" }} />
-          </div>
-
-          <div style={{ marginBottom: 12 }}>
-            <label style={{ display: "block", marginBottom: 4, fontSize: 13, fontWeight: 500, color: "var(--text-primary)" }}>Author</label>
-            <input type="text" value={publishForm.author} onChange={(e) => setPublishForm({ ...publishForm, author: e.target.value })} placeholder="Your name" style={{ width: "100%", padding: "6px 10px", fontSize: 13, background: "var(--bg-main)", color: "var(--text-primary)", border: "1px solid var(--border-color)", borderRadius: 0, boxSizing: "border-box" }} />
-          </div>
-
-          <div style={{ marginBottom: 12 }}>
-            <label style={{ display: "block", marginBottom: 4, fontSize: 13, fontWeight: 500, color: "var(--text-primary)" }}>Version</label>
-            <input type="text" value={publishForm.version} onChange={(e) => setPublishForm({ ...publishForm, version: e.target.value })} style={{ width: "100%", padding: "6px 10px", fontSize: 13, background: "var(--bg-main)", color: "var(--text-primary)", border: "1px solid var(--border-color)", borderRadius: 0, boxSizing: "border-box" }} />
-          </div>
-
-          <div style={{ marginBottom: 16 }}>
-            <label style={{ display: "block", marginBottom: 4, fontSize: 13, fontWeight: 500, color: "var(--text-primary)" }}>Tags (comma-separated)</label>
-            <input type="text" value={publishForm.tags} onChange={(e) => setPublishForm({ ...publishForm, tags: e.target.value })} placeholder="voice, assistant, support" style={{ width: "100%", padding: "6px 10px", fontSize: 13, background: "var(--bg-main)", color: "var(--text-primary)", border: "1px solid var(--border-color)", borderRadius: 0, boxSizing: "border-box" }} />
-          </div>
-
-          <div style={{ display: "flex", gap: 8 }}>
-            <button
-              onClick={handlePublish}
-              disabled={publishing || !publishForm.name.trim() || !publishForm.author.trim()}
-              style={{
-                padding: "6px 14px",
-                background: "var(--btn-primary-bg)",
-                color: "var(--btn-primary-text)",
-                border: "none",
-                borderRadius: 0,
-                fontWeight: 500,
-                fontSize: 13,
-                cursor: publishing ? "not-allowed" : "pointer",
-                opacity: publishing || !publishForm.name.trim() || !publishForm.author.trim() ? 0.6 : 1,
-              }}
-            >
-              {publishing ? "Publishing..." : "Publish"}
-            </button>
-            <button
-              onClick={() => { setShowPublishForm(false); setPublishMessage(null); }}
-              style={{
-                padding: "6px 14px",
-                background: "var(--bg-main)",
-                color: "var(--text-primary)",
-                border: "1px solid var(--border-color)",
-                borderRadius: 0,
-                fontWeight: 500,
-                fontSize: 13,
-                cursor: "pointer",
-              }}
-            >
-              Cancel
-            </button>
-          </div>
         </div>
       )}
 
