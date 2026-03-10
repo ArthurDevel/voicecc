@@ -85,10 +85,30 @@ const footerStyle: React.CSSProperties = {
   marginTop: 16,
 };
 
+const primaryBtnStyle: React.CSSProperties = {
+  background: "var(--btn-primary-bg)",
+  color: "var(--btn-primary-text)",
+  border: "none",
+  borderRadius: 0,
+  padding: "8px 16px",
+  fontSize: 13,
+  fontWeight: 500,
+  fontFamily: "inherit",
+  cursor: "pointer",
+  transition: "all 0.2s",
+};
+
 const cancelBtnStyle: React.CSSProperties = {
   background: "var(--btn-secondary-bg)",
   color: "var(--btn-secondary-text)",
   border: "1px solid var(--btn-secondary-border)",
+  borderRadius: 0,
+  padding: "8px 16px",
+  fontSize: 13,
+  fontWeight: 500,
+  fontFamily: "inherit",
+  cursor: "pointer",
+  transition: "all 0.2s",
 };
 
 const recommendedBadgeStyle: React.CSSProperties = {
@@ -223,7 +243,7 @@ export function AuthTokenModal({ onClose, onAuthenticated }: AuthTokenModalProps
                 </div>
                 <div style={footerStyle}>
                   <button style={cancelBtnStyle} onClick={onClose}>Cancel</button>
-                  <button onClick={handleStartLogin}>Start login</button>
+                  <button style={primaryBtnStyle} onClick={handleStartLogin}>Start login</button>
                 </div>
               </div>
             )}
@@ -294,7 +314,7 @@ export function AuthTokenModal({ onClose, onAuthenticated }: AuthTokenModalProps
 
                 <div style={footerStyle}>
                   <button style={cancelBtnStyle} onClick={onClose}>Cancel</button>
-                  <button onClick={handleSubmitCode} disabled={oauthSubmitting || !oauthCode.trim()}>
+                  <button style={primaryBtnStyle} onClick={handleSubmitCode} disabled={oauthSubmitting || !oauthCode.trim()}>
                     {oauthSubmitting ? (
                       <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                         <span style={{
@@ -364,7 +384,7 @@ export function AuthTokenModal({ onClose, onAuthenticated }: AuthTokenModalProps
 
             <div style={footerStyle}>
               <button style={cancelBtnStyle} onClick={onClose}>Cancel</button>
-              <button onClick={handleSaveToken} disabled={saving || !token.trim()}>
+              <button style={primaryBtnStyle} onClick={handleSaveToken} disabled={saving || !token.trim()}>
                 {saving ? "Saving..." : "Save token"}
               </button>
             </div>
