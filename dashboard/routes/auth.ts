@@ -2,15 +2,19 @@
  * Claude Code authentication routes.
  *
  * Handles auth status checks, manual token auth, and CLI OAuth login flow.
+ * The OAuth flow spawns an interactive `claude` session via node-pty, sends
+ * `/login`, selects "Claude Pro", and captures the OAuth URL. The user then
+ * authenticates in their browser and pastes the code back.
  *
  * - GET /              -- probe auth status via `claude auth status`
  * - POST /token        -- save a manually pasted token to .env
- * - POST /oauth/start  -- spawn `claude auth login`, return the OAuth URL
- * - POST /oauth/code   -- send the auth code to the spawned login process
+ * - POST /oauth/start  -- spawn interactive claude, run /login, return OAuth URL
+ * - POST /oauth/code   -- send the auth code to the PTY process
  */
 
 import { Hono } from "hono";
-import { execFile, spawn, type ChildProcess } from "child_process";
+import { execFile } from "child_process";
+import pty, { type IPty } from "node-pty";
 import { writeEnvKey } from "../../server/services/env.js";
 
 // ============================================================================
@@ -19,7 +23,7 @@ import { writeEnvKey } from "../../server/services/env.js";
 
 const CLAUDE_BIN = "claude";
 const PROBE_TIMEOUT_MS = 5_000;
-const LOGIN_TIMEOUT_MS = 120_000;
+const LOGIN_TIMEOUT_MS = 60_000;
 
 // ============================================================================
 // TYPES
@@ -32,9 +36,9 @@ interface AuthStatus {
   email?: string;
 }
 
-/** Tracks the running `claude auth login` process. */
+/** Tracks the running interactive claude PTY process. */
 interface PendingLogin {
-  process: ChildProcess;
+  pty: IPty;
   url: string;
   createdAt: number;
 }
@@ -52,11 +56,6 @@ let pendingLogin: PendingLogin | null = null;
 
 /**
  * Get auth status via `claude auth status` JSON output.
- *
- * Tries stdout first, then stderr (some versions output there on non-zero exit).
- * Falls back to unauthenticated if parsing fails entirely.
- *
- * @returns Current authentication status
  */
 async function getAuthStatus(): Promise<AuthStatus> {
   return new Promise((resolve) => {
@@ -77,86 +76,118 @@ async function getAuthStatus(): Promise<AuthStatus> {
 }
 
 /**
- * Spawn `claude auth login` and extract the OAuth URL from its output.
+ * Resolve the full path to the claude binary.
+ */
+function resolveClaudePath(): string {
+  try {
+    const { execFileSync } = require("child_process");
+    return execFileSync("which", [CLAUDE_BIN]).toString().trim();
+  } catch {
+    return CLAUDE_BIN;
+  }
+}
+
+/**
+ * Spawn an interactive `claude` session via PTY, navigate through the login
+ * flow, and extract the OAuth URL.
  *
- * The CLI prints a URL like `https://claude.ai/oauth/authorize?...` to stdout/stderr.
- * We capture it and keep the process alive so we can later write the auth code to stdin.
+ * Steps:
+ * 1. Accept the "trust this folder" prompt
+ * 2. Send `/login`
+ * 3. Select "Claude Pro" (option 1)
+ * 4. Capture the OAuth URL
  *
+ * @param onStep - Callback for progress updates (not used by HTTP, for future SSE)
  * @returns The OAuth URL to show the user
  */
 function spawnLoginProcess(): Promise<string> {
   return new Promise((resolve, reject) => {
     // Kill any existing login process
     if (pendingLogin) {
-      pendingLogin.process.kill();
+      pendingLogin.pty.kill();
       pendingLogin = null;
     }
 
-    const child = spawn(CLAUDE_BIN, ["auth", "login"], {
-      stdio: ["pipe", "pipe", "pipe"],
+    const claudePath = resolveClaudePath();
+    console.debug("[auth/login] spawning PTY:", claudePath);
+
+    const child = pty.spawn(claudePath, [], {
+      name: "xterm-256color",
+      cols: 2000,
+      rows: 50,
     });
 
     let output = "";
     let resolved = false;
+    let step = 0;
 
-    const onData = (chunk: Buffer) => {
-      const text = chunk.toString();
-      output += text;
-      console.debug("[auth/login] stdout/stderr:", text.trim());
+    child.onData((data: string) => {
+      output += data;
 
-      // Look for the OAuth URL in the output
-      const urlMatch = output.match(/(https:\/\/claude\.ai\/oauth\/authorize\S+)/);
-      if (urlMatch && !resolved) {
-        resolved = true;
-        pendingLogin = {
-          process: child,
-          url: urlMatch[1],
-          createdAt: Date.now(),
-        };
-        resolve(urlMatch[1]);
+      // Step 0 → 1: Accept trust prompt
+      if (step === 0 && /enter to confirm/i.test(output)) {
+        step = 1;
+        console.debug("[auth/login] step 1: accepting trust prompt");
+        setTimeout(() => child.write("\r"), 500);
       }
-    };
 
-    child.stdout?.on("data", onData);
-    child.stderr?.on("data", onData);
+      // Step 1 → 2: Wait for main prompt, send /login
+      if (step === 1 && /v\d+\.\d+\.\d+/.test(output.slice(-2000))) {
+        step = 2;
+        console.debug("[auth/login] step 2: sending /login");
+        setTimeout(() => child.write("/login\r"), 1000);
+      }
 
-    child.on("error", (err) => {
-      if (!resolved) {
-        resolved = true;
-        reject(new Error(`Failed to start login: ${err.message}`));
+      // Step 2 → 3: Select Claude Pro (first option)
+      if (step === 2 && /claude.*pro|login.*method/i.test(output.slice(-500))) {
+        step = 3;
+        console.debug("[auth/login] step 3: selecting Claude Pro");
+        setTimeout(() => child.write("\r"), 1000);
+      }
+
+      // Step 3 → done: Capture OAuth URL
+      if (step >= 2) {
+        const urlMatch = output.match(/(https:\/\/claude\.ai\/oauth\/authorize\S+)/);
+        if (urlMatch && !resolved) {
+          resolved = true;
+          step = 4;
+          console.debug("[auth/login] step 4: URL captured");
+          pendingLogin = {
+            pty: child,
+            url: urlMatch[1],
+            createdAt: Date.now(),
+          };
+          resolve(urlMatch[1]);
+        }
       }
     });
 
-    child.on("exit", (code) => {
+    child.onExit(({ exitCode }: { exitCode: number }) => {
+      console.debug("[auth/login] PTY exited with code", exitCode);
       if (!resolved) {
         resolved = true;
-        reject(new Error(`Login process exited (code ${code}) before producing a URL. Output: ${output}`));
+        reject(new Error(`Login process exited (code ${exitCode}) before producing a URL.`));
       }
-      // Clean up if the process exits after URL was captured
-      if (pendingLogin?.process === child) {
+      if (pendingLogin?.pty === child) {
         pendingLogin = null;
       }
     });
 
-    // Timeout: if no URL appears within the timeout, kill the process
+    // Timeout
     setTimeout(() => {
       if (!resolved) {
         resolved = true;
         child.kill();
-        reject(new Error(`Login process did not produce a URL within ${LOGIN_TIMEOUT_MS / 1000}s. Output: ${output}`));
+        const clean = output.replace(/\x1b\[[^m]*m/g, "").slice(-500);
+        reject(new Error(`Login timed out at step ${step}. Last output: ${clean}`));
       }
     }, LOGIN_TIMEOUT_MS);
   });
 }
 
 /**
- * Send the auth code to the pending login process's stdin.
- *
- * After the user authenticates in their browser, the callback page shows a code.
- * We write that code to the CLI process's stdin so it can complete the login.
- *
- * @param code - The auth code from the OAuth callback
- * @returns Whether login completed successfully
+ * Send the auth code to the pending login PTY process.
+ * Also handles the "Press Enter to continue" prompt that follows.
  */
 function sendCodeToLogin(code: string): Promise<{ success: boolean; error?: string }> {
   return new Promise((resolve) => {
@@ -165,48 +196,59 @@ function sendCodeToLogin(code: string): Promise<{ success: boolean; error?: stri
       return;
     }
 
-    const child = pendingLogin.process;
+    const child = pendingLogin.pty;
     pendingLogin = null;
 
     let output = "";
-    let resolved = false;
+    let done = false;
+    let sentEnter = false;
 
-    const collectOutput = (chunk: Buffer) => {
-      const text = chunk.toString();
-      output += text;
-      console.debug("[auth/login] after code:", text.trim());
+    child.onData((data: string) => {
+      output += data;
+      console.debug("[auth/login] after code:", data.replace(/\x1b\[[^m]*m/g, "").trim().slice(0, 200));
 
       // Handle "Press Enter to continue" prompt
-      if (/press enter/i.test(text)) {
-        console.debug("[auth/login] detected 'Press Enter' prompt, sending newline");
-        child.stdin?.write("\n");
-        child.stdin?.end();
+      if (!sentEnter && /press enter/i.test(output)) {
+        sentEnter = true;
+        console.debug("[auth/login] detected 'Press Enter' prompt, sending Enter");
+        setTimeout(() => child.write("\r"), 1000);
       }
-    };
 
-    child.stdout?.on("data", collectOutput);
-    child.stderr?.on("data", collectOutput);
-
-    child.on("exit", (exitCode) => {
-      if (resolved) return;
-      resolved = true;
-      console.debug("[auth/login] process exited with code", exitCode);
-      if (exitCode === 0) {
-        resolve({ success: true });
-      } else {
-        resolve({ success: false, error: `Login process exited with code ${exitCode}. Output: ${output}` });
+      // Detect successful login
+      if (!done && /logged in/i.test(output)) {
+        done = true;
+        console.debug("[auth/login] login successful");
+        setTimeout(() => {
+          child.kill();
+          resolve({ success: true });
+        }, 2000);
       }
     });
 
-    // Write the code to stdin (don't close yet -- CLI may prompt "Press Enter")
-    console.debug("[auth/login] writing code to stdin");
-    child.stdin?.write(code + "\n");
+    child.onExit(() => {
+      if (!done) {
+        done = true;
+        // Even if exit wasn't clean, check if login was successful
+        if (/logged in/i.test(output)) {
+          resolve({ success: true });
+        } else {
+          const clean = output.replace(/\x1b\[[^m]*m/g, "").slice(-300);
+          resolve({ success: false, error: `Login process exited. Output: ${clean}` });
+        }
+      }
+    });
 
-    // Timeout for the code exchange
+    // Send the code
+    console.debug("[auth/login] writing code to PTY");
+    child.write(code + "\r");
+
+    // Timeout
     setTimeout(() => {
-      if (!child.killed) {
+      if (!done) {
+        done = true;
         child.kill();
-        resolve({ success: false, error: `Login process timed out after sending code. Output: ${output}` });
+        const clean = output.replace(/\x1b\[[^m]*m/g, "").slice(-300);
+        resolve({ success: false, error: `Timed out after sending code. Output: ${clean}` });
       }
     }, 30_000);
   });
@@ -241,9 +283,8 @@ export function authRoutes(): Hono {
   });
 
   /**
-   * Start the OAuth login flow by spawning `claude auth login`.
-   *
-   * @returns The OAuth URL the user should open in their browser
+   * Start the OAuth login flow.
+   * Spawns interactive claude via PTY, navigates to /login, returns URL.
    */
   app.post("/oauth/start", async (c) => {
     try {
@@ -255,9 +296,7 @@ export function authRoutes(): Hono {
   });
 
   /**
-   * Complete the OAuth login by sending the auth code to the CLI process.
-   *
-   * @returns Auth status after login attempt
+   * Complete the OAuth login by sending the auth code to the PTY process.
    */
   app.post("/oauth/code", async (c) => {
     const { code } = await c.req.json<{ code: string }>();
@@ -272,7 +311,6 @@ export function authRoutes(): Hono {
       return c.json({ error: result.error }, 400);
     }
 
-    // Verify auth status after successful login
     const status = await getAuthStatus();
     return c.json(status);
   });

@@ -1,6 +1,6 @@
 {
   "name": "voicecc",
-  "version": "1.1.15",
+  "version": "1.1.16",
   "description": "Voice mode plugin for Claude Code -- hands-free interaction via ElevenLabs STT/TTS and VAD",
   "type": "module",
   "bin": {
@@ -33,6 +33,7 @@
     "cloudflared": "^0.7.1",
     "dotenv": "^16.4.0",
     "hono": "^4.12.0",
+    "node-pty": "^1.1.0",
     "qrcode.react": "^4.2.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",

@@ -212,7 +212,7 @@ export function AuthTokenModal({ onClose, onAuthenticated }: AuthTokenModalProps
         {activeTab === "oauth" && (
           <div>
             {/* Step 1: Start the login flow */}
-            {!oauthUrl && (
+            {!oauthUrl && !oauthLoading && (
               <div>
                 <div style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.6 }}>
                   <p style={{ marginBottom: 12 }}>
@@ -223,10 +223,31 @@ export function AuthTokenModal({ onClose, onAuthenticated }: AuthTokenModalProps
                 </div>
                 <div style={footerStyle}>
                   <button style={cancelBtnStyle} onClick={onClose}>Cancel</button>
-                  <button onClick={handleStartLogin} disabled={oauthLoading}>
-                    {oauthLoading ? "Starting..." : "Start login"}
-                  </button>
+                  <button onClick={handleStartLogin}>Start login</button>
                 </div>
+              </div>
+            )}
+
+            {/* Loading: navigating CLI login flow */}
+            {!oauthUrl && oauthLoading && (
+              <div style={{ textAlign: "center", padding: "24px 0" }}>
+                <div style={{
+                  display: "inline-block",
+                  width: 20,
+                  height: 20,
+                  border: "2px solid var(--border-color)",
+                  borderTopColor: "var(--accent-color)",
+                  borderRadius: "50%",
+                  animation: "spin 0.8s linear infinite",
+                  marginBottom: 12,
+                }} />
+                <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+                <p style={{ fontSize: 13, color: "var(--text-secondary)" }}>
+                  Preparing login session...
+                </p>
+                <p style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 4, opacity: 0.7 }}>
+                  Starting CLI, accepting prompts, navigating to login
+                </p>
               </div>
             )}
 
@@ -274,7 +295,20 @@ export function AuthTokenModal({ onClose, onAuthenticated }: AuthTokenModalProps
                 <div style={footerStyle}>
                   <button style={cancelBtnStyle} onClick={onClose}>Cancel</button>
                   <button onClick={handleSubmitCode} disabled={oauthSubmitting || !oauthCode.trim()}>
-                    {oauthSubmitting ? "Authenticating..." : "Submit code"}
+                    {oauthSubmitting ? (
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                        <span style={{
+                          display: "inline-block",
+                          width: 12,
+                          height: 12,
+                          border: "2px solid rgba(255,255,255,0.3)",
+                          borderTopColor: "#fff",
+                          borderRadius: "50%",
+                          animation: "spin 0.8s linear infinite",
+                        }} />
+                        Authenticating...
+                      </span>
+                    ) : "Submit code"}
                   </button>
                 </div>
               </div>
