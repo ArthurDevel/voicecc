@@ -4,8 +4,8 @@
  * Responsibilities:
  * - Start the dashboard HTTP server (editor UI, conversation viewer, voice launcher)
  * - Start the unified voice server (Twilio + browser audio + dashboard proxy)
- * - Auto-start tunnel if enabled (independent of integrations)
- * - Auto-start enabled integrations (Twilio, Browser Call) -- require tunnel
+ * - Auto-start tunnel if enabled
+ * - Auto-start Twilio if enabled (requires tunnel)
  */
 
 import "dotenv/config";
@@ -18,7 +18,6 @@ import { startDashboard } from "../dashboard/server.js";
 import { readEnv } from "./services/env.js";
 import { startTunnel, stopTunnel, isTunnelRunning, getTunnelUrl } from "./services/tunnel.js";
 import { startTwilioServer } from "./services/twilio-manager.js";
-import { startBrowserCallServer } from "./services/browser-call-manager.js";
 import { startHeartbeat } from "./services/heartbeat.js";
 import { startVoiceServer } from "./voice/voice-server.js";
 
@@ -94,20 +93,6 @@ async function main(): Promise<void> {
         await startTwilioServer(dashboardPort, getTunnelUrl() ?? undefined);
       } catch (err) {
         console.error(`Twilio auto-start failed: ${err}`);
-      }
-    }
-  }
-
-  // Auto-start Browser Call if enabled
-  if (envVars.BROWSER_CALL_ENABLED === "true") {
-    console.log("Browser Call integration enabled, starting...");
-    if (!isTunnelRunning()) {
-      console.error("Browser Call auto-start failed: Tunnel is not enabled. Enable it in Settings > General.");
-    } else {
-      try {
-        await startBrowserCallServer(dashboardPort);
-      } catch (err) {
-        console.error(`Browser Call auto-start failed: ${err}`);
       }
     }
   }

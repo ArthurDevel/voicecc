@@ -5,7 +5,7 @@ import { SettingsPanel } from "../components/SettingsPanel";
 import { VoiceProvidersPanel } from "../components/VoiceProvidersPanel";
 import { McpServersPanel } from "../components/McpServersPanel";
 import { ClaudeMdEditor } from "../components/ClaudeMdEditor";
-import type { TunnelStatus, TwilioStatus, BrowserCallStatus } from "../pages/Home";
+import type { TunnelStatus, TwilioStatus } from "../pages/Home";
 
 export function Settings() {
     const [searchParams] = useSearchParams();
@@ -15,13 +15,11 @@ export function Settings() {
     );
     const [tunnelStatus, setTunnelStatus] = useState<TunnelStatus>({ running: false, url: null });
     const [twilioStatus, setTwilioStatus] = useState<TwilioStatus>({ running: false, tunnelUrl: null });
-    const [browserCallStatus, setBrowserCallStatus] = useState<BrowserCallStatus>({ running: false, tunnelUrl: null });
 
     useEffect(() => {
         const poll = () => {
             get<TunnelStatus>("/api/tunnel/status").then(setTunnelStatus).catch(() => { });
             get<TwilioStatus>("/api/twilio/status").then(setTwilioStatus).catch(() => { });
-            get<BrowserCallStatus>("/api/browser-call/status").then(setBrowserCallStatus).catch(() => { });
         };
         poll();
         const interval = setInterval(poll, 5000);
@@ -59,7 +57,7 @@ export function Settings() {
                     <VoiceProvidersPanel />
                 )}
                 {activeTab === "integrations" && (
-                    <McpServersPanel twilioRunning={twilioStatus.running} browserCallRunning={browserCallStatus.running} />
+                    <McpServersPanel twilioRunning={twilioStatus.running} />
                 )}
                 {activeTab === "system" && (
                     <ClaudeMdEditor />
