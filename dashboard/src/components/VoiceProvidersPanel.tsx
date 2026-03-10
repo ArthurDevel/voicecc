@@ -14,7 +14,6 @@ import { get, post } from "../api";
 // CONSTANTS
 // ============================================================================
 
-const DEFAULT_VOICE_ID = "JBFqnCBsd6RMkjVDRZzb";
 const DEFAULT_MODEL_ID = "eleven_turbo_v2_5";
 const DEFAULT_STT_MODEL_ID = "scribe_v1";
 
@@ -214,23 +213,19 @@ const applyBtnStyle: React.CSSProperties = {
 /** Modal for configuring ElevenLabs TTS settings */
 function ElevenLabsTtsModal({
   apiKey,
-  voiceId,
   modelId,
   onSave,
   onClose,
 }: {
   apiKey: string;
-  voiceId: string;
   modelId: string;
-  onSave: (values: { apiKey: string; voiceId: string; modelId: string }) => void;
+  onSave: (values: { apiKey: string }) => void;
   onClose: () => void;
 }) {
   const [localApiKey, setLocalApiKey] = useState(apiKey);
-  const [localVoiceId, setLocalVoiceId] = useState(voiceId);
-  const [localModelId, setLocalModelId] = useState(modelId);
 
   const handleSave = () => {
-    onSave({ apiKey: localApiKey, voiceId: localVoiceId, modelId: localModelId });
+    onSave({ apiKey: localApiKey });
     onClose();
   };
 
@@ -240,7 +235,7 @@ function ElevenLabsTtsModal({
         <button className="modal-close" onClick={onClose}>&times;</button>
         <h2>ElevenLabs TTS</h2>
         <p style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 16 }}>
-          Configure API key, voice, and model for ElevenLabs text-to-speech.
+          Configure API key for ElevenLabs text-to-speech.
         </p>
 
         <div style={fieldStyle}>
@@ -254,23 +249,12 @@ function ElevenLabsTtsModal({
           />
         </div>
         <div style={fieldStyle}>
-          <label style={labelStyle}>Voice ID</label>
-          <input
-            type="text"
-            value={localVoiceId}
-            onChange={(e) => setLocalVoiceId(e.target.value)}
-            placeholder={DEFAULT_VOICE_ID}
-            style={modalInputStyle}
-          />
-        </div>
-        <div style={fieldStyle}>
           <label style={labelStyle}>TTS Model ID</label>
           <input
             type="text"
-            value={localModelId}
-            onChange={(e) => setLocalModelId(e.target.value)}
-            placeholder={DEFAULT_MODEL_ID}
-            style={modalInputStyle}
+            value={modelId}
+            disabled
+            style={{ ...modalInputStyle, opacity: 0.5, cursor: "not-allowed" }}
           />
         </div>
 
@@ -292,14 +276,13 @@ function ElevenLabsSttModal({
 }: {
   apiKey: string;
   sttModelId: string;
-  onSave: (values: { apiKey: string; sttModelId: string }) => void;
+  onSave: (values: { apiKey: string }) => void;
   onClose: () => void;
 }) {
   const [localApiKey, setLocalApiKey] = useState(apiKey);
-  const [localSttModelId, setLocalSttModelId] = useState(sttModelId);
 
   const handleSave = () => {
-    onSave({ apiKey: localApiKey, sttModelId: localSttModelId });
+    onSave({ apiKey: localApiKey });
     onClose();
   };
 
@@ -309,7 +292,7 @@ function ElevenLabsSttModal({
         <button className="modal-close" onClick={onClose}>&times;</button>
         <h2>ElevenLabs STT</h2>
         <p style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 16 }}>
-          Configure API key and model for ElevenLabs speech-to-text.
+          Configure API key for ElevenLabs speech-to-text.
         </p>
 
         <div style={fieldStyle}>
@@ -326,10 +309,9 @@ function ElevenLabsSttModal({
           <label style={labelStyle}>STT Model ID</label>
           <input
             type="text"
-            value={localSttModelId}
-            onChange={(e) => setLocalSttModelId(e.target.value)}
-            placeholder={DEFAULT_STT_MODEL_ID}
-            style={modalInputStyle}
+            value={sttModelId}
+            disabled
+            style={{ ...modalInputStyle, opacity: 0.5, cursor: "not-allowed" }}
           />
         </div>
 
@@ -352,7 +334,6 @@ export function VoiceProvidersPanel() {
   const [activeTts, setActiveTts] = useState("elevenlabs");
   const [activeStt, setActiveStt] = useState("elevenlabs");
   const [apiKey, setApiKey] = useState("");
-  const [voiceId, setVoiceId] = useState(DEFAULT_VOICE_ID);
   const [modelId, setModelId] = useState(DEFAULT_MODEL_ID);
   const [sttModelId, setSttModelId] = useState(DEFAULT_STT_MODEL_ID);
   const [modal, setModal] = useState<ModalState>(null);
@@ -385,7 +366,6 @@ export function VoiceProvidersPanel() {
     fetchSettings()
       .then((data) => {
         if (data.ELEVENLABS_API_KEY) setApiKey(data.ELEVENLABS_API_KEY);
-        if (data.ELEVENLABS_VOICE_ID) setVoiceId(data.ELEVENLABS_VOICE_ID);
         if (data.ELEVENLABS_MODEL_ID) setModelId(data.ELEVENLABS_MODEL_ID);
         if (data.ELEVENLABS_STT_MODEL_ID) setSttModelId(data.ELEVENLABS_STT_MODEL_ID);
       })
@@ -482,16 +462,11 @@ export function VoiceProvidersPanel() {
       {modal?.kind === "elevenlabs-tts" && (
         <ElevenLabsTtsModal
           apiKey={apiKey}
-          voiceId={voiceId}
           modelId={modelId}
           onSave={(values) => {
             setApiKey(values.apiKey);
-            setVoiceId(values.voiceId);
-            setModelId(values.modelId);
             saveSettings({
               ELEVENLABS_API_KEY: values.apiKey,
-              ELEVENLABS_VOICE_ID: values.voiceId,
-              ELEVENLABS_MODEL_ID: values.modelId,
             });
           }}
           onClose={() => setModal(null)}
@@ -505,10 +480,8 @@ export function VoiceProvidersPanel() {
           sttModelId={sttModelId}
           onSave={(values) => {
             setApiKey(values.apiKey);
-            setSttModelId(values.sttModelId);
             saveSettings({
               ELEVENLABS_API_KEY: values.apiKey,
-              ELEVENLABS_STT_MODEL_ID: values.sttModelId,
             });
           }}
           onClose={() => setModal(null)}

@@ -49,6 +49,8 @@ export function Home() {
   const [twilioStatus, setTwilioStatus] = useState<TwilioStatus | null>(null);
   const [mcpServers, setMcpServers] = useState<McpServerEntry[] | null>(null);
   const [showTokenModal, setShowTokenModal] = useState(false);
+  /** null = checking, "missing" | "valid" */
+  const [elevenLabsStatus, setElevenLabsStatus] = useState<string | null>(null);
 
   useEffect(() => {
     get<AgentSummary[]>("/api/agents")
@@ -60,6 +62,9 @@ export function Home() {
     get<{ servers: McpServerEntry[] }>("/api/mcp-servers")
       .then((data) => setMcpServers(data.servers))
       .catch(() => setMcpServers([]));
+    get<{ status: string }>("/api/providers/elevenlabs/validate")
+      .then((data) => setElevenLabsStatus(data.status))
+      .catch(() => setElevenLabsStatus("missing"));
   }, []);
 
   return (
@@ -72,46 +77,81 @@ export function Home() {
       </div>
 
       <div style={{ padding: "0 64px 48px" }}>
-        <div className="settings-panel">
-          <h2 style={{ fontSize: 16, fontWeight: 600, color: "var(--text-primary)", marginBottom: 4 }}>
-            Connect your Claude Code
-          </h2>
-          <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 20 }}>
-            VoiceCC needs an authenticated Claude Code session to work. The check below verifies your local CLI is logged in.
-          </p>
+        {authStatus !== true && (
+          <div className="settings-panel">
+            <h2 style={{ fontSize: 16, fontWeight: 600, color: "var(--text-primary)", marginBottom: 4 }}>
+              Connect your Claude Code
+            </h2>
+            <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 20 }}>
+              VoiceCC needs an authenticated Claude Code session to work. The check below verifies your local CLI is logged in.
+            </p>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{
-              width: 8,
-              height: 8,
-              borderRadius: "50%",
-              background: authStatus === null ? "#666" : authStatus ? "var(--accent-color)" : "#d73a49",
-              flexShrink: 0,
-            }} />
-            <span style={{
-              fontSize: 13,
-              color: authStatus === null ? "var(--text-secondary)" : authStatus ? "var(--accent-color)" : "#d73a49",
-            }}>
-              {authStatus === null
-                ? "Checking authentication..."
-                : authStatus
-                  ? "Claude Code is authenticated"
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background: authStatus === null ? "#666" : "#d73a49",
+                flexShrink: 0,
+              }} />
+              <span style={{
+                fontSize: 13,
+                color: authStatus === null ? "var(--text-secondary)" : "#d73a49",
+              }}>
+                {authStatus === null
+                  ? "Checking authentication..."
                   : "Claude Code is not authenticated"}
-            </span>
-          </div>
-
-          {authStatus === false && (
-            <div className="settings-actions">
-              <button onClick={() => setShowTokenModal(true)}>Set up authentication</button>
+              </span>
             </div>
-          )}
-        </div>
+
+            {authStatus === false && (
+              <div className="settings-actions">
+                <button onClick={() => setShowTokenModal(true)}>Set up authentication</button>
+              </div>
+            )}
+          </div>
+        )}
 
         {showTokenModal && (
           <AuthTokenModal
             onClose={() => setShowTokenModal(false)}
             onAuthenticated={() => setAuthStatus(true)}
           />
+        )}
+
+        {elevenLabsStatus !== "valid" && (
+          <div className="settings-panel">
+            <h2 style={{ fontSize: 16, fontWeight: 600, color: "var(--text-primary)", marginBottom: 4 }}>
+              Set up ElevenLabs
+            </h2>
+            <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 20 }}>
+              An ElevenLabs API key is required for text-to-speech and speech-to-text. Add your key in the Voice settings.
+            </p>
+
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background: elevenLabsStatus === null ? "#666" : "#d73a49",
+                flexShrink: 0,
+              }} />
+              <span style={{
+                fontSize: 13,
+                color: elevenLabsStatus === null ? "var(--text-secondary)" : "#d73a49",
+              }}>
+                {elevenLabsStatus === null
+                  ? "Checking ElevenLabs API key..."
+                  : "ElevenLabs API key is not configured"}
+              </span>
+            </div>
+
+            <div className="settings-actions">
+              <Link to="/settings?tab=voice" style={{ textDecoration: "none" }}>
+                <button>Configure in Voice Settings</button>
+              </Link>
+            </div>
+          </div>
         )}
 
         <div className="settings-panel">
