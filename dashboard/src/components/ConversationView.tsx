@@ -14,6 +14,7 @@ import { get } from "../api";
 
 interface ConversationViewProps {
   sessionId: string;
+  agentId?: string;
 }
 
 interface ConversationMessage {
@@ -26,28 +27,30 @@ interface ConversationMessage {
 // COMPONENT
 // ============================================================================
 
-export function ConversationView({ sessionId }: ConversationViewProps) {
+export function ConversationView({ sessionId, agentId }: ConversationViewProps) {
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [title, setTitle] = useState("Loading...");
   const [error, setError] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Fetch messages when sessionId changes
+  // Fetch messages when sessionId or agentId changes
   useEffect(() => {
     setTitle("Loading...");
     setError(null);
     setMessages([]);
 
-    get<ConversationMessage[]>(`/api/conversations/${sessionId}`)
+    const query = agentId ? `?agentId=${agentId}` : "";
+    get<ConversationMessage[]>(`/api/conversations/${sessionId}${query}`)
       .then((msgs) => {
         setMessages(msgs);
-        setTitle(`Conversation (${msgs.length} messages)`);
+        const prefix = agentId ? `[${agentId}] ` : "";
+        setTitle(`${prefix}Conversation (${msgs.length} messages)`);
       })
       .catch(() => {
         setError("Error loading conversation.");
         setTitle("Conversation");
       });
-  }, [sessionId]);
+  }, [sessionId, agentId]);
 
   // Auto-scroll to bottom when messages load
   useEffect(() => {

@@ -25,6 +25,7 @@ interface ConversationSummary {
   firstMessage: string;
   timestamp: string;
   messageCount: number;
+  agentId?: string;
 }
 
 // ============================================================================
@@ -59,11 +60,23 @@ export function Sidebar({ twilioStatus, authStatus }: SidebarProps) {
     }
   }, [isDark]);
 
-  const formatLabel = (conv: ConversationSummary): string => {
-    const date = new Date(conv.timestamp);
-    const dateStr = date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-    const preview = conv.firstMessage.slice(0, 30);
-    return `${dateStr} - ${preview}`;
+  const timeAgo = (timestamp: string): string => {
+    const seconds = Math.floor((Date.now() - new Date(timestamp).getTime()) / 1000);
+    if (seconds < 60) return "just now";
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    if (days < 30) return `${days}d ago`;
+    const months = Math.floor(days / 30);
+    if (months < 12) return `${months}m ago`;
+    const years = Math.floor(months / 12);
+    return `${years}y ago`;
+  };
+
+  const formatPreview = (conv: ConversationSummary): string => {
+    return conv.firstMessage.slice(0, 40);
   };
 
   return (
@@ -120,17 +133,42 @@ export function Sidebar({ twilioStatus, authStatus }: SidebarProps) {
           {conversations.length === 0 && (
             <div style={{ padding: "8px 12px", fontSize: 13, color: "var(--text-secondary)" }}>No history yet.</div>
           )}
-          {conversations.map((conv) => (
-            <Link
-              key={conv.sessionId}
-              to={`/c/${conv.sessionId}`}
-              className={`sidebar-conversation ${location.pathname === `/c/${conv.sessionId}` ? "active" : ""}`}
-              title={conv.firstMessage}
-              style={{ textDecoration: "none", display: "block" }}
-            >
-              {formatLabel(conv)}
-            </Link>
-          ))}
+          {conversations.map((conv) => {
+            const to = conv.agentId
+              ? `/c/${conv.sessionId}?agentId=${conv.agentId}`
+              : `/c/${conv.sessionId}`;
+            return (
+              <Link
+                key={`${conv.agentId ?? "main"}-${conv.sessionId}`}
+                to={to}
+                className={`sidebar-conversation ${location.pathname === `/c/${conv.sessionId}` ? "active" : ""}`}
+                title={conv.firstMessage}
+                style={{ textDecoration: "none", display: "flex", flexDirection: "column", gap: 2 }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {formatPreview(conv)}
+                  </span>
+                  <span style={{
+                    fontSize: 10,
+                    padding: "1px 6px",
+                    borderRadius: 9999,
+                    background: "var(--bg-tertiary)",
+                    color: "var(--text-secondary)",
+                    whiteSpace: "nowrap",
+                    flexShrink: 0,
+                  }}>
+                    {timeAgo(conv.timestamp)}
+                  </span>
+                </div>
+                {conv.agentId && (
+                  <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>
+                    {conv.agentId}
+                  </span>
+                )}
+              </Link>
+            );
+          })}
         </div>
       </div>
 
