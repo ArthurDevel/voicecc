@@ -103,6 +103,7 @@ export function AuthTokenModal({ onClose, onAuthenticated }: AuthTokenModalProps
   // --- OAuth tab state ---
   const [oauthStep, setOauthStep] = useState<OAuthStep>("idle");
   const [oauthCode, setOauthCode] = useState("");
+  const [oauthState, setOauthState] = useState<string | null>(null);
   const [oauthError, setOauthError] = useState<string | null>(null);
 
   // --- Token tab state ---
@@ -119,7 +120,8 @@ export function AuthTokenModal({ onClose, onAuthenticated }: AuthTokenModalProps
   const handleOAuthStart = async () => {
     setOauthError(null);
     try {
-      const { url } = await post<{ url: string }>("/api/auth/oauth/start");
+      const { url, state } = await post<{ url: string; state: string }>("/api/auth/oauth/start");
+      setOauthState(state);
       window.open(url, "_blank");
       setOauthStep("waiting");
     } catch (err) {
@@ -135,7 +137,7 @@ export function AuthTokenModal({ onClose, onAuthenticated }: AuthTokenModalProps
     setOauthError(null);
 
     try {
-      const result = await post<{ authenticated: boolean }>("/api/auth/oauth/callback", { code: trimmed });
+      const result = await post<{ authenticated: boolean }>("/api/auth/oauth/callback", { code: trimmed, state: oauthState });
       if (result.authenticated) {
         onAuthenticated();
         onClose();
