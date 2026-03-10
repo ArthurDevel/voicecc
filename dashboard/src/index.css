@@ -974,6 +974,18 @@ button.mcp-server-status.needs-auth:hover {
   color: var(--text-primary);
 }
 
+.setup-warning-banner {
+  background: #fff3cd;
+  color: #856404;
+  border: 1px solid #ffc107;
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin-bottom: 18px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
 .setup-step {
   margin-bottom: 16px;
 }
