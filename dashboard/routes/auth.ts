@@ -188,7 +188,9 @@ export function authRoutes(): Hono {
     }
 
     try {
-      const tokens = await exchangeCodeForTokens(code.trim(), pendingPkce.codeVerifier, pendingPkce.state);
+      // The callback page shows "code#state" -- strip the #state suffix if present
+      const cleanCode = code.trim().split("#")[0];
+      const tokens = await exchangeCodeForTokens(cleanCode, pendingPkce.codeVerifier, pendingPkce.state);
       pendingPkce = null;
 
       const scopes = tokens.scope

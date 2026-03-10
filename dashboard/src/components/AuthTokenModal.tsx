@@ -130,7 +130,8 @@ export function AuthTokenModal({ onClose, onAuthenticated }: AuthTokenModalProps
   };
 
   const handleOAuthSubmitCode = async () => {
-    const trimmed = oauthCode.trim();
+    // The callback page shows "code#state" -- strip the #state suffix if present
+    const trimmed = oauthCode.trim().split("#")[0];
     if (!trimmed) return;
 
     setOauthStep("exchanging");
