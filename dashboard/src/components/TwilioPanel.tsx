@@ -5,10 +5,10 @@
  * for PSTN calling. cloudflared is auto-managed via the npm package. Steps:
  * 1. Create a Twilio account (credentials)
  * 2. Get a phone number
- * 3. Enable integration
- * 4. Configure webhook
- * 5. Your phone number
- * 6. Test call
+ * 3. Add personal phone number as verified caller
+ * 4. Enter your personal phone number
+ * 5. Enable integration
+ * 6. Test
  */
 
 import { useState, useEffect, useCallback } from "react";
@@ -27,11 +27,6 @@ interface TwilioStatusData {
   tunnelUrl: string | null;
 }
 
-interface PhoneNumber {
-  phoneNumber: string;
-  friendlyName: string;
-}
-
 interface IntegrationsState {
   twilio: { enabled: boolean };
   browserCall: { enabled: boolean };
@@ -45,11 +40,10 @@ export function TwilioPanel({ onClose }: TwilioPanelProps) {
   const [accountSid, setAccountSid] = useState("");
   const [authToken, setAuthToken] = useState("");
   const [status, setStatus] = useState<TwilioStatusData | null>(null);
-  const [phoneNumbers, setPhoneNumbers] = useState<PhoneNumber[]>([]);
   const [actionText, setActionText] = useState("");
   const [enabled, setEnabled] = useState(false);
   const [toggling, setToggling] = useState(false);
-  const [testNumber, setTestNumber] = useState("");
+  const [userPhoneNumber, setUserPhoneNumber] = useState("");
   const [testCallStatus, setTestCallStatus] = useState("");
 
   // Load current settings, integration state, and check cloudflared on mount
@@ -58,6 +52,7 @@ export function TwilioPanel({ onClose }: TwilioPanelProps) {
       .then((data) => {
         if (data.TWILIO_ACCOUNT_SID) setAccountSid(data.TWILIO_ACCOUNT_SID);
         if (data.TWILIO_AUTH_TOKEN) setAuthToken(data.TWILIO_AUTH_TOKEN);
+        if (data.USER_PHONE_NUMBER) setUserPhoneNumber(data.USER_PHONE_NUMBER);
       })
       .catch(() => {});
 
@@ -70,14 +65,6 @@ export function TwilioPanel({ onClose }: TwilioPanelProps) {
     return () => clearInterval(interval);
   }, []);
 
-  // Fetch phone numbers when credentials are set
-  useEffect(() => {
-    if (accountSid && authToken) {
-      get<{ numbers: PhoneNumber[] }>("/api/twilio/phone-numbers")
-        .then((data) => setPhoneNumbers(data.numbers || []))
-        .catch(() => {});
-    }
-  }, [accountSid, authToken]);
 
   /** Poll Twilio status */
   const pollStatus = () => {
@@ -123,13 +110,21 @@ export function TwilioPanel({ onClose }: TwilioPanelProps) {
   };
 
   const isRunning = status?.running ?? false;
-  const webhookUrl = status?.tunnelUrl ? `${status.tunnelUrl}/twilio/incoming-call` : null;
+  const canEnable = !!(accountSid.trim() && authToken.trim() && userPhoneNumber.trim());
 
   return (
     <div className="modal-overlay visible" onClick={handleOverlayClick}>
       <div className="modal">
         <button className="modal-close" onClick={onClose}>&times;</button>
         <h2>Twilio Voice Setup</h2>
+
+        <div className="setup-warning-banner">
+          For now, only Twilio Trial Accounts are supported. Non-trial accounts might work but have not been tested.
+        </div>
+
+        <div className="setup-warning-banner">
+          Read thoroughly! Twilio requires many steps and it is easy to miss something.
+        </div>
 
         {/* Step 1: Credentials */}
         <div className="setup-step">
@@ -139,7 +134,7 @@ export function TwilioPanel({ onClose }: TwilioPanelProps) {
           </div>
           <div className="setup-step-desc">
             Sign up at <a href="https://www.twilio.com/try-twilio" target="_blank" rel="noreferrer">twilio.com/try-twilio</a>.
-            Copy your Account SID and Auth Token from the console dashboard.
+            Copy your Account SID and Auth Token from the <a href="https://console.twilio.com/" target="_blank" rel="noreferrer">console dashboard</a>.
           </div>
           <div className="setup-paste-row">
             <input
@@ -172,27 +167,62 @@ export function TwilioPanel({ onClose }: TwilioPanelProps) {
 
         <hr className="setup-divider" />
 
-        {/* Step 3: Enable integration */}
+        {/* Step 3: Verify personal phone number */}
+        <div className="setup-step">
+          <div className="setup-step-title"><span className="setup-step-number">3</span>Add your personal phone number to Twilio</div>
+          <div className="setup-step-desc">
+            Add your personal phone number as a verified caller in the Twilio console at{" "}
+            <a href="https://console.twilio.com/us1/develop/phone-numbers/manage/verified" target="_blank" rel="noreferrer">
+              Verified Caller IDs
+            </a>.
+            This is required for Twilio to be able to call your phone.
+          </div>
+        </div>
+
+        <hr className="setup-divider" />
+
+        {/* Step 4: Enter personal phone number */}
+        <div className="setup-step">
+          <div className="setup-step-title"><span className="setup-step-number">4</span>Enter your personal phone number</div>
+          <div className="setup-step-desc">
+            Enter the same phone number you verified on Twilio in the previous step.
+          </div>
+          <div className="setup-paste-row">
+            <input
+              type="tel"
+              placeholder="+1234567890"
+              value={userPhoneNumber}
+              onChange={(e) => setUserPhoneNumber(e.target.value)}
+            />
+            <ApplyButton onClick={() => saveSetting("USER_PHONE_NUMBER", userPhoneNumber.trim())} />
+          </div>
+        </div>
+
+        <hr className="setup-divider" />
+
+        {/* Step 5: Enable integration */}
         <div className="setup-step">
           <div className="setup-step-title">
-            <span className="setup-step-number">3</span>
+            <span className="setup-step-number">5</span>
             {isRunning ? "Server running" : "Enable integration"}
           </div>
           <div className="setup-step-desc">
             {isRunning
               ? <>Server is running.{status?.tunnelUrl && <> Tunnel URL: <code>{status.tunnelUrl}</code></>}</>
-              : "Enable to start the Twilio server and auto-start on boot."
+              : !canEnable
+                ? "Complete all previous steps before enabling."
+                : "Enable to start the Twilio server and auto-start on boot."
             }
             {actionText && <div style={{ color: "#d73a49", marginTop: 4, fontSize: 12 }}>{actionText}</div>}
           </div>
           <div className="setup-paste-row">
-            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: toggling ? "wait" : "pointer" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: (toggling || !canEnable) ? "not-allowed" : "pointer" }}>
               <input
                 type="checkbox"
                 checked={enabled}
-                disabled={toggling}
+                disabled={toggling || (!enabled && !canEnable)}
                 onChange={handleToggle}
-                style={{ width: 16, height: 16, cursor: toggling ? "wait" : "pointer" }}
+                style={{ width: 16, height: 16, cursor: (toggling || !canEnable) ? "not-allowed" : "pointer" }}
               />
               <span style={{ fontSize: 14, fontWeight: 500, color: "var(--text-primary)" }}>
                 {toggling ? (enabled ? "Stopping..." : "Starting...") : "Enabled"}
@@ -201,69 +231,23 @@ export function TwilioPanel({ onClose }: TwilioPanelProps) {
           </div>
         </div>
 
-        {/* Step 4: Webhook URL */}
-        <div className="setup-step">
-          <div className="setup-step-title"><span className="setup-step-number">4</span>Configure the Twilio webhook</div>
-          <div className="setup-step-desc">
-            {webhookUrl ? (
-              <>
-                In the Twilio console, go to your phone number's configuration.<br />
-                Under <strong>Voice & Fax</strong> &rarr; <strong>A Call Comes In</strong>, set:<br />
-                <code style={{ userSelect: "all", cursor: "text" }}>{webhookUrl}</code><br />
-                Method: <strong>HTTP POST</strong>
-              </>
-            ) : (
-              "Start the server first, then the webhook URL will appear here."
-            )}
-          </div>
-        </div>
-
         <hr className="setup-divider" />
 
-        {/* Step 5: Phone number display */}
-        <div className="setup-step">
-          <div className="setup-step-title"><span className="setup-step-number">5</span>Your phone number</div>
-          <div className="setup-step-desc">
-            {phoneNumbers.length > 0 ? (
-              <>
-                Call this number to talk to Claude:<br />
-                {phoneNumbers.map((n) => (
-                  <strong key={n.phoneNumber} style={{ color: "#d4d4d4", fontSize: 16, fontFamily: "SF Mono, Fira Code, monospace", display: "inline-block", marginTop: 4 }}>
-                    {n.phoneNumber}
-                  </strong>
-                ))}
-              </>
-            ) : accountSid && authToken ? (
-              "Fetching phone number..."
-            ) : (
-              "Set your Account SID and Auth Token to fetch your phone number."
-            )}
-          </div>
-        </div>
-
-        <hr className="setup-divider" />
-
-        {/* Test Call */}
+        {/* Step 6: Test */}
         <div className="setup-step">
           <div className="setup-step-title"><span className="setup-step-number">6</span>Test your setup</div>
           <div className="setup-step-desc">
-            Enter your phone number and we'll call you with a test message.
+            We'll call your personal phone number with a test message.
             {testCallStatus && <div style={{ color: testCallStatus.startsWith("Error") ? "#d73a49" : "#2ea043", marginTop: 4, fontSize: 12 }}>{testCallStatus}</div>}
           </div>
           <div className="setup-paste-row">
-            <input
-              type="tel"
-              placeholder="+1234567890"
-              value={testNumber}
-              onChange={(e) => setTestNumber(e.target.value)}
-            />
             <button
-              disabled={!testNumber.trim() || !accountSid || !authToken || testCallStatus === "Calling..."}
+              disabled={!enabled || !userPhoneNumber.trim() || testCallStatus === "Calling..."}
               onClick={async () => {
                 setTestCallStatus("Calling...");
                 try {
-                  await post("/api/twilio/test-call", { to: testNumber.trim() });
-                  setTestCallStatus("Call initiated! Check your phone.");
+                  await post("/api/twilio/test-call", { to: userPhoneNumber.trim() });
+                  setTestCallStatus("Success! Go to an agent and click \"Call via Phone\"!");
                 } catch (err) {
                   const message = err instanceof Error ? err.message : (err as { message?: string })?.message || "Failed";
                   setTestCallStatus(`Error: ${message}`);
