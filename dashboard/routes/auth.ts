@@ -13,7 +13,7 @@
  */
 
 import { Hono } from "hono";
-import { execFile } from "child_process";
+import { execFile, execFileSync } from "child_process";
 import pty, { type IPty } from "node-pty";
 import { writeEnvKey } from "../../server/services/env.js";
 
@@ -80,7 +80,6 @@ async function getAuthStatus(): Promise<AuthStatus> {
  */
 function resolveClaudePath(): string {
   try {
-    const { execFileSync } = require("child_process");
     return execFileSync("which", [CLAUDE_BIN]).toString().trim();
   } catch {
     return CLAUDE_BIN;
@@ -123,6 +122,8 @@ function spawnLoginProcess(): Promise<string> {
 
     child.onData((data: string) => {
       output += data;
+      const clean = data.replace(/\x1b\[[^m]*m/g, "").replace(/\r/g, "").trim();
+      if (clean) console.debug(`[auth/login] step=${step} data: ${clean.slice(0, 200)}`);
 
       // Step 0 → 1: Accept trust prompt
       if (step === 0 && /enter to confirm/i.test(output)) {
@@ -131,7 +132,14 @@ function spawnLoginProcess(): Promise<string> {
         setTimeout(() => child.write("\r"), 500);
       }
 
-      // Step 1 → 2: Wait for main prompt, send /login
+      // Step 0 alternative: no trust prompt, already trusted — look for version string
+      if (step === 0 && /v\d+\.\d+\.\d+/.test(output)) {
+        step = 2;
+        console.debug("[auth/login] step 2: no trust prompt, sending /login");
+        setTimeout(() => child.write("/login\r"), 1000);
+      }
+
+      // Step 1 → 2: Wait for main prompt after trust, send /login
       if (step === 1 && /v\d+\.\d+\.\d+/.test(output.slice(-2000))) {
         step = 2;
         console.debug("[auth/login] step 2: sending /login");
@@ -145,7 +153,7 @@ function spawnLoginProcess(): Promise<string> {
         setTimeout(() => child.write("\r"), 1000);
       }
 
-      // Step 3 → done: Capture OAuth URL
+      // Capture OAuth URL (can happen at step 2 or 3)
       if (step >= 2) {
         const urlMatch = output.match(/(https:\/\/claude\.ai\/oauth\/authorize\S+)/);
         if (urlMatch && !resolved) {
