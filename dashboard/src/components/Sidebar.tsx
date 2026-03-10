@@ -1,8 +1,7 @@
 /**
- * Dashboard sidebar with navigation, browser call button, and conversation list.
+ * Dashboard sidebar with navigation and conversation list.
  *
  * Renders:
- * - New Browser Session button (enabled when browser call server is running)
  * - Conversation list fetched from API
  * - Settings nav item in footer
  */
@@ -10,8 +9,7 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { get } from "../api";
-import { BrowserCallModal } from "./BrowserCallModal";
-import type { TwilioStatus, BrowserCallStatus } from "../pages/Home";
+import type { TwilioStatus } from "../pages/Home";
 
 // ============================================================================
 // TYPES
@@ -19,7 +17,6 @@ import type { TwilioStatus, BrowserCallStatus } from "../pages/Home";
 
 interface SidebarProps {
   twilioStatus: TwilioStatus;
-  browserCallStatus: BrowserCallStatus;
   authStatus: boolean | null;
 }
 
@@ -34,13 +31,10 @@ interface ConversationSummary {
 // COMPONENT
 // ============================================================================
 
-export function Sidebar({ twilioStatus, browserCallStatus, authStatus }: SidebarProps) {
+export function Sidebar({ twilioStatus, authStatus }: SidebarProps) {
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
-  const [showBrowserCallModal, setShowBrowserCallModal] = useState(false);
 
   const location = useLocation();
-
-  const browserCallEnabled = browserCallStatus.running && !!browserCallStatus.tunnelUrl;
 
   const [isDark, setIsDark] = useState(() => {
     return localStorage.getItem("theme") === "dark" ||
@@ -92,22 +86,6 @@ export function Sidebar({ twilioStatus, browserCallStatus, authStatus }: Sidebar
         </span>
       </div>
 
-      {/* Top action button */}
-      <div style={{ padding: "16px 12px 0" }}>
-        <span style={{ position: "relative" }} className="browser-call-wrap">
-          <button
-            className="btn-browser-call"
-            disabled={!browserCallEnabled}
-            onClick={() => setShowBrowserCallModal(true)}
-          >
-            New Browser Session
-          </button>
-          {!browserCallEnabled && (
-            <span className="browser-call-tooltip">Enable in Settings!</span>
-          )}
-        </span>
-      </div>
-
       <div className="sidebar-nav">
         {/* Main Navigation to match mockup structure */}
         <Link
@@ -120,21 +98,21 @@ export function Sidebar({ twilioStatus, browserCallStatus, authStatus }: Sidebar
         </Link>
 
         <Link
-          to="/settings"
-          className={`sidebar-item ${location.pathname.startsWith("/settings") ? "active" : ""}`}
-          style={{ textDecoration: "none", display: "flex", alignItems: "center" }}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-          Settings
-        </Link>
-
-        <Link
           to="/agents"
           className={`sidebar-item ${location.pathname.startsWith("/agents") ? "active" : ""}`}
           style={{ textDecoration: "none", display: "flex", alignItems: "center" }}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
           Agents
+        </Link>
+
+        <Link
+          to="/settings"
+          className={`sidebar-item ${location.pathname.startsWith("/settings") ? "active" : ""}`}
+          style={{ textDecoration: "none", display: "flex", alignItems: "center" }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+          Settings
         </Link>
 
         <div className="sidebar-section-label" style={{ marginTop: 16, flexShrink: 0 }}>History</div>
@@ -184,12 +162,6 @@ export function Sidebar({ twilioStatus, browserCallStatus, authStatus }: Sidebar
         </button>
       </div>
 
-      {showBrowserCallModal && browserCallStatus.tunnelUrl && (
-        <BrowserCallModal
-          tunnelUrl={browserCallStatus.tunnelUrl}
-          onClose={() => setShowBrowserCallModal(false)}
-        />
-      )}
     </div>
   );
 }

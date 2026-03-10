@@ -16,6 +16,7 @@ import { get, post } from "../api";
 
 interface BrowserCallModalProps {
   tunnelUrl: string;
+  agentId: string;
   onClose: () => void;
 }
 
@@ -28,7 +29,7 @@ interface PairingCodeResponse {
 // COMPONENT
 // ============================================================================
 
-export function BrowserCallModal({ tunnelUrl, onClose }: BrowserCallModalProps) {
+export function BrowserCallModal({ tunnelUrl, agentId, onClose }: BrowserCallModalProps) {
   const [code, setCode] = useState<string | null>(null);
   const [expiresAt, setExpiresAt] = useState<number>(0);
   const [countdown, setCountdown] = useState("");
@@ -39,7 +40,9 @@ export function BrowserCallModal({ tunnelUrl, onClose }: BrowserCallModalProps) 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const warmupRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const callPageUrl = code ? `${tunnelUrl}/call?code=${code}` : `${tunnelUrl}/call`;
+  const callPageUrl = code
+    ? `${tunnelUrl}/call?code=${code}&agentId=${agentId}`
+    : `${tunnelUrl}/call`;
 
   /** Generate a new pairing code */
   const generateCode = useCallback(async () => {
@@ -49,14 +52,14 @@ export function BrowserCallModal({ tunnelUrl, onClose }: BrowserCallModalProps) 
     setPaired(false);
 
     try {
-      const data = await post<PairingCodeResponse>("/api/webrtc/generate-code");
+      const data = await post<PairingCodeResponse>("/api/webrtc/generate-code", { agentId });
       setCode(data.code);
       setExpiresAt(data.expiresAt);
     } catch (err) {
       const message = err instanceof Error ? err.message : (err as { message?: string })?.message || "Failed to generate code";
       setError(message);
     }
-  }, []);
+  }, [agentId]);
 
   // Generate code on mount + check tunnel warmup
   useEffect(() => {
