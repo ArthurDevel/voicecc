@@ -126,56 +126,41 @@ function spawnLoginProcess(): Promise<string> {
     child.onData((data: string) => {
       output += data;
       const clean = data.replace(/\x1b\[[^m]*m/g, "").replace(/\r/g, "").trim();
-      if (clean) console.debug(`[auth/login] step=${step} data: ${clean.slice(0, 200)}`);
-
-      // ---- Check for OAuth URL first (can appear at any point after /login) ----
-      if (loginSent) {
-        const urlMatch = output.match(/(https:\/\/claude\.ai\/oauth\/authorize\S+)/);
-        if (urlMatch && !resolved) {
-          resolved = true;
-          step = 4;
-          console.debug("[auth/login] URL captured");
-          pendingLogin = {
-            pty: child,
-            url: urlMatch[1],
-            createdAt: Date.now(),
-          };
-          resolve(urlMatch[1]);
-          return;
-        }
-      }
+      if (clean) console.debug(`[auth/login] step=${step} loginSent=${loginSent} data: ${clean.slice(0, 200)}`);
 
       if (resolved) return;
 
-      // ---- Before /login: dismiss any setup prompt by pressing Enter ----
-      // The CLI may show trust, theme picker, or other selection prompts.
-      // They all show ❯ with numbered options. We debounce to avoid spamming.
-      if (!loginSent) {
-        // Detect the main input prompt: sparkle animation = CLI is ready
-        if (/[✻✽✶✢]/.test(data)) {
-          loginSent = true;
-          console.debug("[auth/login] main prompt ready, sending /login");
-          setTimeout(() => child.write("/login\r"), 1000);
-          return;
-        }
-
-        // Any selection prompt (❯ followed by numbered items): press Enter
-        if (/❯/.test(data)) {
-          if (enterDebounce) clearTimeout(enterDebounce);
-          enterDebounce = setTimeout(() => {
-            console.debug("[auth/login] dismissing selection prompt");
-            child.write("\r");
-          }, 800);
-        }
+      // ---- Always check for OAuth URL (can appear during setup or after /login) ----
+      const urlMatch = output.match(/(https:\/\/claude\.ai\/oauth\/authorize\S+)/);
+      if (urlMatch) {
+        resolved = true;
+        step = 4;
+        console.debug("[auth/login] URL captured");
+        pendingLogin = {
+          pty: child,
+          url: urlMatch[1],
+          createdAt: Date.now(),
+        };
+        resolve(urlMatch[1]);
+        return;
       }
 
-      // ---- After /login: dismiss the login method picker ----
-      if (loginSent && step < 4 && /❯/.test(data)) {
+      // ---- Dismiss any selection prompt (❯) by pressing Enter ----
+      // Handles: trust, theme picker, login method, or any other setup prompt.
+      if (/❯/.test(data)) {
         if (enterDebounce) clearTimeout(enterDebounce);
         enterDebounce = setTimeout(() => {
-          console.debug("[auth/login] selecting first option in login picker");
+          console.debug("[auth/login] pressing Enter on selection prompt");
           child.write("\r");
         }, 800);
+      }
+
+      // ---- Detect the main REPL prompt and send /login ----
+      // Sparkle animation means we're in the main REPL, not setup.
+      if (!loginSent && /[✻✽✶✢]/.test(data)) {
+        loginSent = true;
+        console.debug("[auth/login] main prompt ready, sending /login");
+        setTimeout(() => child.write("/login\r"), 1000);
       }
     });
 
