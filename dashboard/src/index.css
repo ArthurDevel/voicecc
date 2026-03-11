@@ -765,6 +765,76 @@ button.mcp-server-status.needs-auth:hover {
   border-color: transparent;
 }
 
+/* Add MCP Server modal -- tabs */
+.mcp-add-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: 16px;
+}
+
+.mcp-add-tab {
+  padding: 8px 16px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.mcp-add-tab:hover {
+  color: var(--text-primary);
+}
+
+.mcp-add-tab.active {
+  color: var(--text-primary);
+  border-bottom-color: var(--btn-primary-bg);
+}
+
+.mcp-add-tab .mcp-tab-rec {
+  font-size: 10px;
+  background: rgba(46, 160, 67, 0.25);
+  color: #3fb950;
+  padding: 1px 6px;
+  border-radius: 8px;
+  margin-left: 6px;
+  font-weight: 600;
+}
+
+/* Add MCP Server modal -- claude.ai tab content */
+.mcp-add-claudeai {
+  padding: 12px 0;
+}
+
+.mcp-add-claudeai p {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-bottom: 16px;
+}
+
+.mcp-add-claudeai-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-text);
+  border: none;
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.mcp-add-claudeai-link:hover {
+  opacity: 0.85;
+}
+
 /* Add MCP Server modal -- card grid */
 .mcp-add-grid {
   display: grid;
