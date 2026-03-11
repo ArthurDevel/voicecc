@@ -37,6 +37,7 @@
     "@anthropic-ai/claude-agent-sdk": "^0.2.70",
     "@anthropic-ai/sdk": "^0.39.0",
     "@hono/node-server": "^1.19.9",
+    "archiver": "^7.0.1",
     "avr-vad": "^1.0.0",
     "cloudflared": "^0.7.1",
     "dotenv": "^16.4.0",
@@ -48,12 +49,15 @@
     "react-router-dom": "^7.13.0",
     "tsx": "^4.19.0",
     "twilio": "^5.0.0",
+    "unzipper": "^0.12.3",
     "ws": "^8.18.0"
   },
   "devDependencies": {
+    "@types/archiver": "^7.0.0",
     "@types/node": "^22.0.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
+    "@types/unzipper": "^0.10.11",
     "@types/ws": "^8.5.0",
     "@vitejs/plugin-react": "^5.1.4",
     "typescript": "^5.7.0",

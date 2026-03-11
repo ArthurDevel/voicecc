@@ -16,11 +16,8 @@ import { readFile, writeFile, mkdir, readdir, rm, access } from "fs/promises";
 import { dirname, join } from "path";
 import { homedir } from "os";
 import { fileURLToPath } from "url";
-import { execFile } from "child_process";
-import { promisify } from "util";
-import { tmpdir } from "os";
-
-const execFileAsync = promisify(execFile);
+import archiver from "archiver";
+import unzipper from "unzipper";
 
 // ============================================================================
 // CONSTANTS
@@ -230,25 +227,22 @@ export async function updateAgentConfig(
  */
 export async function exportAgent(id: string): Promise<Buffer> {
   const agentDir = join(AGENTS_DIR, id);
-  console.log(`[exportAgent] Agent dir: ${agentDir}`);
   await assertAgentExists(agentDir, id);
 
-  const zipPath = join(tmpdir(), `agent-export-${id}-${Date.now()}.zip`);
-  console.log(`[exportAgent] Zip temp path: ${zipPath}`);
-  try {
-    const { stdout, stderr } = await execFileAsync("zip", ["-r", zipPath, "."], { cwd: agentDir });
-    console.log(`[exportAgent] zip stdout: ${stdout}`);
-    if (stderr) console.warn(`[exportAgent] zip stderr: ${stderr}`);
+  return new Promise((resolve, reject) => {
+    const archive = archiver("zip", { zlib: { level: 9 } });
+    const chunks: Buffer[] = [];
 
-    const buf = await readFile(zipPath);
-    console.log(`[exportAgent] Zip file read, size: ${buf.length} bytes`);
-    return buf;
-  } catch (err) {
-    console.error(`[exportAgent] Failed to create zip for agent ${id}:`, err);
-    throw err;
-  } finally {
-    await rm(zipPath, { force: true }).catch(() => {});
-  }
+    archive.on("data", (chunk: Buffer) => chunks.push(chunk));
+    archive.on("end", () => resolve(Buffer.concat(chunks)));
+    archive.on("error", (err) => {
+      console.error(`[exportAgent] Failed to create zip for agent ${id}:`, err);
+      reject(err);
+    });
+
+    archive.directory(agentDir, false);
+    archive.finalize();
+  });
 }
 
 /**
@@ -265,12 +259,17 @@ export async function importAgent(id: string, zipBuffer: Buffer): Promise<void> 
   const dirExists = await access(agentDir).then(() => true).catch(() => false);
   if (dirExists) throw new Error(`Agent "${id}" already exists`);
 
-  // Write zip to temp file, extract to agent dir
-  const zipPath = join(tmpdir(), `agent-import-${id}-${Date.now()}.zip`);
   try {
-    await writeFile(zipPath, zipBuffer);
     await mkdir(agentDir, { recursive: true });
-    await execFileAsync("unzip", ["-o", zipPath, "-d", agentDir]);
+
+    const directory = await unzipper.Open.buffer(zipBuffer);
+    for (const file of directory.files) {
+      if (file.type === "Directory") continue;
+      const destPath = join(agentDir, file.path);
+      await mkdir(dirname(destPath), { recursive: true });
+      const content = await file.buffer();
+      await writeFile(destPath, content);
+    }
 
     // Validate the zip contained a config.json
     const hasConfig = await access(join(agentDir, "config.json")).then(() => true).catch(() => false);
@@ -286,8 +285,6 @@ export async function importAgent(id: string, zipBuffer: Buffer): Promise<void> 
       if (!hasConfig) await rm(agentDir, { recursive: true });
     }
     throw err;
-  } finally {
-    await rm(zipPath, { force: true }).catch(() => {});
   }
 }
 

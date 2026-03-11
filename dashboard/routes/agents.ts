@@ -45,12 +45,9 @@ export function agentsRoutes(): Hono {
   /** Import an agent from a zip upload */
   app.post("/import", async (c) => {
     try {
-      console.log("[import] Parsing body...");
       const body = await c.req.parseBody();
       const file = body["file"];
       const id = body["id"];
-      console.log("[import] file type:", typeof file, file instanceof File ? "File" : file?.constructor?.name);
-      console.log("[import] id:", id);
 
       if (!file || !(file instanceof File)) {
         return c.json({ error: "Missing 'file' field (zip archive)" }, 400);
@@ -61,9 +58,7 @@ export function agentsRoutes(): Hono {
 
       const arrayBuffer = await file.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
-      console.log("[import] Buffer size:", buffer.length);
       await importAgent(id, buffer);
-      console.log("[import] Success, agent:", id);
       return c.json({ success: true, id });
     } catch (err) {
       console.error("[import] Error:", err);
@@ -80,11 +75,9 @@ export function agentsRoutes(): Hono {
   /** Export an agent as a zip download */
   app.get("/:id/export", async (c) => {
     const id = c.req.param("id");
-    console.log(`[export] Starting export for agent: ${id}`);
     try {
       const zipBuffer = await exportAgent(id);
       const body = new Uint8Array(zipBuffer);
-      console.log(`[export] Zip buffer size: ${body.byteLength} bytes for agent: ${id}`);
       return new Response(body, {
         headers: {
           "Content-Type": "application/zip",
