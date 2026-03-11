@@ -230,13 +230,22 @@ export async function updateAgentConfig(
  */
 export async function exportAgent(id: string): Promise<Buffer> {
   const agentDir = join(AGENTS_DIR, id);
+  console.log(`[exportAgent] Agent dir: ${agentDir}`);
   await assertAgentExists(agentDir, id);
 
   const zipPath = join(tmpdir(), `agent-export-${id}-${Date.now()}.zip`);
+  console.log(`[exportAgent] Zip temp path: ${zipPath}`);
   try {
-    await execFileAsync("zip", ["-r", zipPath, "."], { cwd: agentDir });
+    const { stdout, stderr } = await execFileAsync("zip", ["-r", zipPath, "."], { cwd: agentDir });
+    console.log(`[exportAgent] zip stdout: ${stdout}`);
+    if (stderr) console.warn(`[exportAgent] zip stderr: ${stderr}`);
+
     const buf = await readFile(zipPath);
+    console.log(`[exportAgent] Zip file read, size: ${buf.length} bytes`);
     return buf;
+  } catch (err) {
+    console.error(`[exportAgent] Failed to create zip for agent ${id}:`, err);
+    throw err;
   } finally {
     await rm(zipPath, { force: true }).catch(() => {});
   }
