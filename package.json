@@ -2,6 +2,14 @@
   "name": "voicecc",
   "version": "1.1.29",
   "description": "Voice Agent Platform running on Claude Code -- create and deploy conversational voice agents with ElevenLabs STT/TTS and VAD",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ArthurDevel/voicecc.git"
+  },
+  "homepage": "https://github.com/ArthurDevel/voicecc#readme",
+  "bugs": {
+    "url": "https://github.com/ArthurDevel/voicecc/issues"
+  },
   "type": "module",
   "bin": {
     "voicecc": "bin/voicecc.js"
