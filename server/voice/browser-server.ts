@@ -281,7 +281,10 @@ async function createSession(ws: WebSocket, entry: ActiveBrowserSession): Promis
         `<HEARTBEAT.md>\n${agent.heartbeatMd}\n</HEARTBEAT.md>`,
         `<MEMORY.md>\n${agent.memoryMd}\n</MEMORY.md>`,
       ].join("\n\n");
-      const agentPrompt = DEFAULT_SYSTEM_PROMPT.replace("<<AGENT_FILES>>", agentFiles);
+      const agentDir = join(AGENTS_DIR, entry.agentId);
+      const agentPrompt = DEFAULT_SYSTEM_PROMPT
+        .replaceAll("<<AGENT_DIR>>", agentDir)
+        .replace("<<AGENT_FILES>>", agentFiles);
 
       sessionConfig = {
         ...defaultConfig,

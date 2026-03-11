@@ -471,13 +471,16 @@ async function handleStreamStart(
         `<HEARTBEAT.md>\n${agent.heartbeatMd}\n</HEARTBEAT.md>`,
         `<MEMORY.md>\n${agent.memoryMd}\n</MEMORY.md>`,
       ].join("\n\n");
-      const agentPrompt = DEFAULT_SYSTEM_PROMPT.replace("<<AGENT_FILES>>", agentFiles);
+      const agentDir = join(AGENTS_DIR, agentId);
+      const agentPrompt = DEFAULT_SYSTEM_PROMPT
+        .replaceAll("<<AGENT_DIR>>", agentDir)
+        .replace("<<AGENT_FILES>>", agentFiles);
       sessionConfig = {
         ...defaultConfig,
         claudeSession: {
           ...defaultConfig.claudeSession,
           customSystemPrompt: agentPrompt,
-          cwd: join(AGENTS_DIR, agentId),
+          cwd: agentDir,
         },
         onSessionEnd: () => ws.close(),
       };
