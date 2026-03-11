@@ -10,7 +10,7 @@
  * - Supports subcommands: stop, logs, autostart
  */
 
-import { spawn, execSync } from "node:child_process";
+import { spawn, spawnSync, execSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync, openSync, closeSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { createInterface } from "node:readline";
@@ -343,7 +343,7 @@ function stopDaemon() {
 }
 
 /**
- * Tail the log file.
+ * Tail the log file in the foreground (blocks until Ctrl+C).
  */
 function showLogs() {
   if (!existsSync(LOG_FILE)) {
@@ -351,9 +351,8 @@ function showLogs() {
     process.exit(1);
   }
 
-  const child = spawn("tail", ["-n", "100", "-f", LOG_FILE], { stdio: "inherit" });
-  process.on("SIGINT", () => child.kill("SIGINT"));
-  child.on("exit", (code) => process.exit(code ?? 0));
+  const { status } = spawnSync("tail", ["-n", "100", "-f", LOG_FILE], { stdio: "inherit" });
+  process.exit(status ?? 0);
 }
 
 /**
