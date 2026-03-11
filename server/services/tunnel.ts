@@ -140,13 +140,10 @@ async function createTunnel(port: number): Promise<string> {
     console.log(`[cloudflared] ${data.trim()}`);
   });
 
-  // Log connection-level events for observability
-  tunnel.on("connected", (conn: { id: string; ip: string; location: string }) => {
-    console.log(`[cloudflared] Connected: ${conn.location} (${conn.ip})`);
-  });
-  tunnel.on("disconnected", (conn: { id: string; ip: string; location: string }) => {
-    console.log(`[cloudflared] Disconnected: ${conn.location} (${conn.ip})`);
-  });
+  // Note: we intentionally skip tunnel.on("connected"/"disconnected") here.
+  // The cloudflared package fires processOutput() on both stdout and stderr,
+  // so those events fire twice per connection. The raw stderr handler above
+  // already captures connection info from cloudflared's own log lines.
 
   // Wait for the tunnel URL or fail
   const url = await new Promise<string>((resolve, reject) => {

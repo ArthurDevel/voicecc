@@ -24,7 +24,20 @@ const PKG_ROOT = join(__dirname, "..");
 const TSX_BIN = join(PKG_ROOT, "node_modules", ".bin", "tsx");
 const ENV_PATH = join(PKG_ROOT, ".env");
 
-const VOICECC_DIR = join(homedir(), ".voicecc");
+// When running as root on Linux, use the voicecc user's home directory so
+// both the CLI (root) and the server process (voicecc user) can access the
+// same status/PID files.  /root is typically mode 700, so a non-root user
+// cannot traverse it to reach /root/.voicecc.
+let voiceccDir = join(homedir(), ".voicecc");
+if (process.getuid && process.getuid() === 0 && platform() === "linux") {
+  try {
+    const voiceccHome = execSync(`eval echo ~voicecc`, { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    if (voiceccHome && !voiceccHome.startsWith("~")) {
+      voiceccDir = join(voiceccHome, ".voicecc");
+    }
+  } catch { /* voicecc user doesn't exist yet, use default */ }
+}
+const VOICECC_DIR = voiceccDir;
 const PID_FILE = join(VOICECC_DIR, "voicecc.pid");
 const LOG_FILE = join(VOICECC_DIR, "voicecc.log");
 const STATUS_FILE = join(VOICECC_DIR, "status.json");
