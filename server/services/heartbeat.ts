@@ -277,14 +277,22 @@ async function checkSingleAgent(agent: Agent): Promise<HeartbeatResult> {
  */
 async function runHeartbeatSession(agent: Agent): Promise<{ result: HeartbeatResult; claudeSession: ClaudeSession }> {
   // Include voice instructions so the session is ready for voice call continuity
-  const systemPrompt = [DEFAULT_SYSTEM_PROMPT, agent.soulMd, agent.memoryMd, agent.heartbeatMd].join("\n\n");
+  const agentDir = join(AGENTS_DIR, agent.id);
+  const agentFiles = [
+    `<SOUL.md>\n${agent.soulMd}\n</SOUL.md>`,
+    `<HEARTBEAT.md>\n${agent.heartbeatMd}\n</HEARTBEAT.md>`,
+    `<MEMORY.md>\n${agent.memoryMd}\n</MEMORY.md>`,
+  ].join("\n\n");
+  const systemPrompt = DEFAULT_SYSTEM_PROMPT
+    .replaceAll("<<AGENT_DIR>>", agentDir)
+    .replace("<<AGENT_FILES>>", agentFiles);
 
   const claudeSession = await createClaudeSession({
     allowedTools: [],
     permissionMode: "bypassPermissions",
     systemPrompt: "",
     customSystemPrompt: systemPrompt,
-    cwd: join(AGENTS_DIR, agent.id),
+    cwd: agentDir,
   });
 
   // Set up a timeout to close the session if it takes too long
