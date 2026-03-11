@@ -71,7 +71,7 @@ export function Layout() {
                                 fontFamily: '"SF Mono", "Fira Code", monospace',
                                 fontSize: 11,
                                 color: "var(--accent-color)",
-                            }}>npm install -g voicecc</code> to update.
+                            }}>npm update -g voicecc</code> to update.
                         </span>
                         <button
                             onClick={() => setBannerDismissed(true)}
