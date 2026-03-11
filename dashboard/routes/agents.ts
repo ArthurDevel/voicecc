@@ -80,9 +80,11 @@ export function agentsRoutes(): Hono {
   /** Export an agent as a zip download */
   app.get("/:id/export", async (c) => {
     const id = c.req.param("id");
+    console.log(`[export] Starting export for agent: ${id}`);
     try {
       const zipBuffer = await exportAgent(id);
       const body = new Uint8Array(zipBuffer);
+      console.log(`[export] Zip buffer size: ${body.byteLength} bytes for agent: ${id}`);
       return new Response(body, {
         headers: {
           "Content-Type": "application/zip",
@@ -91,6 +93,7 @@ export function agentsRoutes(): Hono {
         },
       });
     } catch (err) {
+      console.error(`[export] Failed for agent ${id}:`, err);
       return c.json({ error: (err as Error).message }, 404);
     }
   });

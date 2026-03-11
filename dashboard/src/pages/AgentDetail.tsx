@@ -141,6 +141,37 @@ export function AgentDetail() {
   };
 
   /**
+   * Export agent as a zip download.
+   * Uses fetch instead of <a download> to surface errors properly.
+   */
+  const handleExport = async () => {
+    if (!id) return;
+    try {
+      console.log(`[export-ui] Fetching /api/agents/${id}/export`);
+      const res = await fetch(`/api/agents/${id}/export`);
+      console.log(`[export-ui] Response status: ${res.status}, content-type: ${res.headers.get("content-type")}`);
+      if (!res.ok) {
+        const text = await res.text();
+        console.error(`[export-ui] Export failed: ${res.status} - ${text}`);
+        alert(`Export failed: ${text}`);
+        return;
+      }
+      const blob = await res.blob();
+      console.log(`[export-ui] Blob size: ${blob.size}, type: ${blob.type}`);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${id}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+      console.log(`[export-ui] Download triggered for ${id}.zip`);
+    } catch (err) {
+      console.error("[export-ui] Export error:", err);
+      alert(`Export failed: ${err}`);
+    }
+  };
+
+  /**
    * Delete this agent after confirmation.
    * DELETEs /api/agents/:id, then navigates to /agents.
    */
@@ -180,9 +211,8 @@ export function AgentDetail() {
           <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: "var(--text-primary)" }}>{agent.id}</h2>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <a
-            href={`/api/agents/${id}/export`}
-            download={`${id}.zip`}
+          <button
+            onClick={handleExport}
             style={{
               padding: "6px 14px",
               background: "var(--bg-main)",
@@ -192,13 +222,12 @@ export function AgentDetail() {
               fontWeight: 500,
               fontSize: 13,
               cursor: "pointer",
-              textDecoration: "none",
               display: "inline-flex",
               alignItems: "center",
             }}
           >
             Export
-          </a>
+          </button>
           <button
             onClick={handleCall}
             disabled={calling}
