@@ -76,7 +76,7 @@ export function Home() {
         </div>
       </div>
 
-      <div style={{ padding: "0 64px 48px" }}>
+      <div style={{ flex: 1, overflowY: "auto", padding: "0 64px 48px" }}>
         {authStatus !== true && (
           <div className="settings-panel">
             <h2 style={{ fontSize: 16, fontWeight: 600, color: "var(--text-primary)", marginBottom: 4 }}>
