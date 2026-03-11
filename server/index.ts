@@ -8,11 +8,11 @@
  * - Auto-start Twilio if enabled (requires tunnel)
  */
 
-import "dotenv/config";
-
 import { writeFileSync, unlinkSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { config } from "dotenv";
+config({ path: process.env.VOICECC_DIR ? join(process.env.VOICECC_DIR, ".env") : join(homedir(), ".voicecc", ".env") });
 
 import { startDashboard } from "../dashboard/server.js";
 import { readEnv } from "./services/env.js";

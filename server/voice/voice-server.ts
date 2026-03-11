@@ -13,7 +13,10 @@
  * - *                           → proxy to dashboard
  */
 
-import "dotenv/config";
+import { join } from "node:path";
+import { homedir } from "node:os";
+import { config } from "dotenv";
+config({ path: process.env.VOICECC_DIR ? join(process.env.VOICECC_DIR, ".env") : join(homedir(), ".voicecc", ".env") });
 
 import { createServer, request as httpRequest } from "http";
 import { WebSocketServer } from "ws";

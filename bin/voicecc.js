@@ -22,7 +22,7 @@ import { homedir, platform } from "node:os";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PKG_ROOT = join(__dirname, "..");
 const TSX_BIN = join(PKG_ROOT, "node_modules", ".bin", "tsx");
-const ENV_PATH = join(PKG_ROOT, ".env");
+const OLD_ENV_PATH = join(PKG_ROOT, ".env");
 
 // When running as root on Linux, use the voicecc user's home directory so
 // both the CLI (root) and the server process (voicecc user) can access the
@@ -38,6 +38,7 @@ if (process.getuid && process.getuid() === 0 && platform() === "linux") {
   } catch { /* voicecc user doesn't exist yet, use default */ }
 }
 const VOICECC_DIR = voiceccDir;
+const ENV_PATH = join(VOICECC_DIR, ".env");
 const PID_FILE = join(VOICECC_DIR, "voicecc.pid");
 const LOG_FILE = join(VOICECC_DIR, "voicecc.log");
 const STATUS_FILE = join(VOICECC_DIR, "status.json");
@@ -299,7 +300,7 @@ function ensureNonRootUser() {
 
 /**
  * Give the voicecc user ownership of the package directory so it can
- * read config, write .env, etc.
+ * read config, etc.
  */
 function chownPkgRoot() {
   execSync(`chown -R ${VOICECC_USER}:${VOICECC_USER} ${PKG_ROOT}`, { stdio: "inherit" });
@@ -583,6 +584,15 @@ if (subcommand === "autostart") {
 const claudeMdSrc = join("init", "CLAUDE.md");
 if (existsSync(claudeMdSrc)) {
   copyFileSync(claudeMdSrc, "CLAUDE.md");
+}
+
+// Migrate .env from old location (inside package dir) to ~/.voicecc/.env
+// so that `npm install -g voicecc` no longer overwrites user config.
+ensureVoiceccDir();
+if (existsSync(OLD_ENV_PATH) && !existsSync(ENV_PATH)) {
+  copyFileSync(OLD_ENV_PATH, ENV_PATH);
+  unlinkSync(OLD_ENV_PATH);
+  console.log(`Migrated .env to ${ENV_PATH}`);
 }
 
 // Run setup wizard on first run (no .env file)

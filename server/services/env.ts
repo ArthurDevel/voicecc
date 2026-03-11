@@ -9,6 +9,12 @@
 
 import { readFile, writeFile } from "fs/promises";
 import { join } from "path";
+import { homedir } from "os";
+
+/** Default .env path: ~/.voicecc/.env (survives npm install -g updates) */
+const DEFAULT_ENV_PATH = process.env.VOICECC_DIR
+  ? join(process.env.VOICECC_DIR, ".env")
+  : join(homedir(), ".voicecc", ".env");
 
 // ============================================================================
 // TYPES
@@ -25,11 +31,11 @@ export type EnvRecord = Record<string, string>;
  * Read and parse a .env file from disk.
  * Returns an empty record if the file does not exist.
  *
- * @param envPath - Absolute path to the .env file. Defaults to process.cwd()/.env
+ * @param envPath - Absolute path to the .env file. Defaults to ~/.voicecc/.env
  * @returns Parsed key-value pairs from the .env file
  */
 export async function readEnv(envPath?: string): Promise<EnvRecord> {
-  const filePath = envPath ?? join(process.cwd(), ".env");
+  const filePath = envPath ?? DEFAULT_ENV_PATH;
   const content = await readFile(filePath, "utf-8").catch(() => "");
   return parseEnvFile(content);
 }
@@ -40,7 +46,7 @@ export async function readEnv(envPath?: string): Promise<EnvRecord> {
  *
  * @param key - The env variable name to set
  * @param value - The value to write
- * @param envPath - Absolute path to the .env file. Defaults to process.cwd()/.env
+ * @param envPath - Absolute path to the .env file. Defaults to ~/.voicecc/.env
  */
 export async function writeEnvKey(key: string, value: string, envPath?: string): Promise<void> {
   const settings = await readEnv(envPath);
@@ -53,10 +59,10 @@ export async function writeEnvKey(key: string, value: string, envPath?: string):
  * Overwrites the entire file contents. Each entry becomes a KEY=VALUE line.
  *
  * @param settings - Key-value pairs to write
- * @param envPath - Absolute path to the .env file. Defaults to process.cwd()/.env
+ * @param envPath - Absolute path to the .env file. Defaults to ~/.voicecc/.env
  */
 export async function writeEnvFile(settings: EnvRecord, envPath?: string): Promise<void> {
-  const filePath = envPath ?? join(process.cwd(), ".env");
+  const filePath = envPath ?? DEFAULT_ENV_PATH;
   const lines = Object.entries(settings).map(([k, v]) => `${k}=${v}`);
   await writeFile(filePath, lines.join("\n") + "\n", "utf-8");
 }
