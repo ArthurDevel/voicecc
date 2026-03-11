@@ -82,10 +82,12 @@ export function agentsRoutes(): Hono {
     const id = c.req.param("id");
     try {
       const zipBuffer = await exportAgent(id);
-      return new Response(new Uint8Array(zipBuffer), {
+      const body = new Uint8Array(zipBuffer);
+      return new Response(body, {
         headers: {
           "Content-Type": "application/zip",
           "Content-Disposition": `attachment; filename="${id}.zip"`,
+          "Content-Length": String(body.byteLength),
         },
       });
     } catch (err) {
