@@ -1,5 +1,9 @@
 # Voice CC
 
+[![npm version](https://img.shields.io/npm/v/voicecc.svg)](https://www.npmjs.com/package/voicecc)
+[![npm downloads](https://img.shields.io/npm/dm/voicecc.svg)](https://www.npmjs.com/package/voicecc)
+[![license](https://img.shields.io/npm/l/voicecc.svg)](https://github.com/ArthurDevel/voicecc/blob/main/LICENSE)
+
 A Voice Agent Platform running on Claude Code. Create, manage, and deploy conversational voice agents powered by Claude, with real-time speech-to-text, text-to-speech, and voice activity detection via ElevenLabs.
 
 ## Project Structure
