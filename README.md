@@ -27,6 +27,8 @@ bin/                CLI entry point (voicecc command)
 - Node.js 18+
 - An ElevenLabs API key
 
+### Terminal
+
 Sets up Cloudflared Quicktunnel (optional), protects installation with password (optional), and sets up your Elevenlabs API key.
 
 ```bash
