@@ -19,15 +19,13 @@ init/               Default prompt templates for new agents
 bin/                CLI entry point (voicecc command)
 ```
 
-## Installation
+## Install
 
 ### Prerequisites
 
 - macOS or Linux
 - Node.js 18+
 - An ElevenLabs API key
-
-### Install
 
 Sets up Cloudflared Quicktunnel (optional), protects installation with password (optional), and sets up your Elevenlabs API key.
 
@@ -39,7 +37,7 @@ npm install -g voicecc
 voicecc
 ```
 
-## Development
+### Development
 
 ```bash
 # 1. Install dependencies
