@@ -8,8 +8,6 @@
  * Routes:
  * - POST /twilio/incoming-call → Twilio webhook handler
  * - POST /register-call        → outbound call token registration
- * - POST /api/chat/send        → text chat message (SSE response)
- * - POST /api/chat/close       → close text chat session
  * - WS   /media/:token         → Twilio media stream
  * - WS   /audio?token=<token>  → Browser audio stream
  * - *                           → proxy to dashboard
@@ -25,7 +23,6 @@ import { WebSocketServer } from "ws";
 
 import { handleTwilioHttpRequest, handleTwilioUpgrade } from "./twilio-server.js";
 import { handleBrowserUpgrade } from "./browser-server.js";
-import { handleChatHttpRequest } from "./chat-server.js";
 
 import type { IncomingMessage, ServerResponse } from "http";
 import type { Duplex } from "stream";
@@ -58,11 +55,6 @@ export async function startVoiceServer(dashboardPort: number): Promise<number> {
   const server = createServer((req, res) => {
     // Try Twilio HTTP handlers first
     if (handleTwilioHttpRequest(req, res)) {
-      return;
-    }
-
-    // Try chat HTTP handlers
-    if (handleChatHttpRequest(req, res)) {
       return;
     }
 

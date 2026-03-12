@@ -384,6 +384,10 @@ export function Chat() {
       if (sseBuffer.trim()) {
         parseSseChunk(sseBuffer + "\n\n", "");
       }
+
+      // Safety net: ensure streaming is reset when the stream ends
+      setIsStreaming(false);
+      setToolStatus(null);
     } catch (err) {
       const msg = (err as Error).message || "Failed to send message";
       setError(msg);
