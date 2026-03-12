@@ -1,4 +1,4 @@
-# Voice CC
+# VoiceCC
 
 [![npm version](https://img.shields.io/npm/v/voicecc.svg)](https://www.npmjs.com/package/voicecc)
 [![npm downloads](https://img.shields.io/npm/dm/voicecc.svg)](https://www.npmjs.com/package/voicecc)
@@ -35,19 +35,6 @@ npm install -g voicecc
 
 # 2. Start the platform
 voicecc
-```
-
-### Development
-
-```bash
-# 1. Install dependencies
-npm install
-
-# 2. Start the backend server
-npm start
-
-# 3. In a separate terminal, start the dashboard with hot reload
-npm run dev:dashboard
 ```
 
 ## How It Works
