@@ -1,11 +1,12 @@
 /**
- * Full-page text chat component for conversing with an agent via WebSocket.
+ * Full-page text chat component for conversing with an agent via HTTP POST + SSE.
  *
  * Responsibilities:
- * - Handles device pairing (same flow as Call.tsx: URL code auto-pair, cached token validation, PIN fallback)
- * - Opens a WebSocket to /chat-ws for streaming text conversation
+ * - Handles device pairing (URL code auto-pair, cached token validation, PIN fallback)
+ * - Sends messages via POST /api/chat/send and reads SSE response stream
  * - Renders a scrollable message list with user/assistant bubbles
  * - Manages send-disable during assistant streaming
+ * - Closes session on unmount via POST /api/chat/close
  */
 
 import { useState, useRef, useEffect, useCallback } from "react";
@@ -25,7 +26,7 @@ interface ChatMessage {
   isStreaming: boolean;
 }
 
-interface WsIncomingMessage {
+interface SseEvent {
   type: "text_delta" | "tool_start" | "tool_end" | "result" | "error";
   content: string;
   toolName?: string;
@@ -56,7 +57,6 @@ export function Chat() {
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const deviceTokenRef = useRef(localStorage.getItem(DEVICE_TOKEN_KEY) || "");
   const agentIdRef = useRef("");
-  const wsRef = useRef<WebSocket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const textInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -86,104 +86,13 @@ export function Chat() {
   };
 
   /**
-   * Open WebSocket connection to the chat server.
-   * Constructs ws URL from the current page host.
+   * Mark the chat as connected after successful pairing or token validation.
+   * No WebSocket needed -- we use HTTP POST + SSE per message.
    */
-  const connectWebSocket = useCallback(() => {
-    const wsProtocol = window.location.protocol === "http:" ? "ws:" : "wss:";
-    const agentParam = agentIdRef.current ? `&agentId=${encodeURIComponent(agentIdRef.current)}` : "";
-    const wsUrl = `${wsProtocol}//${window.location.host}/chat-ws?token=${deviceTokenRef.current}${agentParam}`;
-
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      console.log("[Chat] WebSocket connected");
-      setChatState("connected");
-    };
-
-    ws.onmessage = (event: MessageEvent) => {
-      if (typeof event.data !== "string") return;
-
-      let msg: WsIncomingMessage;
-      try {
-        msg = JSON.parse(event.data);
-      } catch {
-        return;
-      }
-
-      handleIncoming(msg);
-    };
-
-    ws.onclose = (ev) => {
-      console.log("[Chat] WebSocket closed, code:", ev.code, "reason:", ev.reason);
-      wsRef.current = null;
-      if (ev.code !== 1000) {
-        setError(`Connection closed: ${ev.reason || "unexpected disconnect"}`);
-        setChatState("error");
-      }
-    };
-
-    ws.onerror = () => {
-      console.error("[Chat] WebSocket error");
-      setError("WebSocket connection failed");
-      setChatState("error");
-    };
+  const markConnected = useCallback(() => {
+    setChatState("connected");
+    console.log("[Chat] Connected (HTTP + SSE mode)");
   }, []);
-
-  /**
-   * Handle an incoming WebSocket message from the server.
-   *
-   * @param msg - Parsed incoming message
-   */
-  const handleIncoming = (msg: WsIncomingMessage): void => {
-    switch (msg.type) {
-      case "text_delta":
-        setMessages((prev) => {
-          const last = prev[prev.length - 1];
-          // Append to existing streaming assistant message
-          if (last && last.role === "assistant" && last.isStreaming) {
-            return [...prev.slice(0, -1), { ...last, content: last.content + msg.content }];
-          }
-          // Create new assistant message
-          return [...prev, {
-            id: generateId(),
-            role: "assistant",
-            content: msg.content,
-            timestamp: Date.now(),
-            isStreaming: true,
-          }];
-        });
-        break;
-
-      case "tool_start":
-        setToolStatus(`Using ${msg.toolName || "tool"}...`);
-        break;
-
-      case "tool_end":
-        setToolStatus(null);
-        break;
-
-      case "result":
-        // Finalize assistant message, re-enable input
-        setMessages((prev) => {
-          const last = prev[prev.length - 1];
-          if (last && last.role === "assistant" && last.isStreaming) {
-            return [...prev.slice(0, -1), { ...last, isStreaming: false }];
-          }
-          return prev;
-        });
-        setIsStreaming(false);
-        setToolStatus(null);
-        break;
-
-      case "error":
-        setError(msg.content);
-        setIsStreaming(false);
-        setToolStatus(null);
-        break;
-    }
-  };
 
   /**
    * Submit the pairing code to the server.
@@ -207,13 +116,13 @@ export function Chat() {
         localStorage.setItem(`${AGENT_ID_KEY_PREFIX}${data.token}`, agentIdRef.current);
       }
 
-      connectWebSocket();
+      markConnected();
     } catch (err) {
       const message = (err as { message?: string })?.message || "Pairing failed";
       setPairError(message);
       clearPin();
     }
-  }, [getFullPin, connectWebSocket]);
+  }, [getFullPin, markConnected]);
 
   // Check existing token or auto-pair from URL code on mount
   useEffect(() => {
@@ -252,7 +161,7 @@ export function Chat() {
       .then((res) => res.json())
       .then((data: { valid: boolean }) => {
         if (data.valid) {
-          connectWebSocket();
+          markConnected();
         } else {
           localStorage.removeItem(DEVICE_TOKEN_KEY);
           deviceTokenRef.current = "";
@@ -273,21 +182,106 @@ export function Chat() {
     scrollToBottom();
   }, [messages, toolStatus]);
 
-  // Clean up WebSocket on unmount
+  // Close session on unmount
   useEffect(() => {
     return () => {
-      if (wsRef.current) {
-        wsRef.current.onopen = null;
-        wsRef.current.onclose = null;
-        wsRef.current.onerror = null;
-        wsRef.current.onmessage = null;
-        if (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING) {
-          wsRef.current.close();
-        }
-        wsRef.current = null;
+      const token = deviceTokenRef.current;
+      if (token) {
+        // Use sendBeacon for reliable cleanup on page unload
+        const body = JSON.stringify({ token });
+        navigator.sendBeacon("/api/chat/close", new Blob([body], { type: "application/json" }));
       }
     };
   }, []);
+
+  // ============================================================================
+  // SSE STREAM HANDLER
+  // ============================================================================
+
+  /**
+   * Handle an incoming SSE event from the server.
+   *
+   * @param event - Parsed SSE event
+   */
+  const handleSseEvent = (event: SseEvent): void => {
+    switch (event.type) {
+      case "text_delta":
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          // Append to existing streaming assistant message
+          if (last && last.role === "assistant" && last.isStreaming) {
+            return [...prev.slice(0, -1), { ...last, content: last.content + event.content }];
+          }
+          // Create new assistant message
+          return [...prev, {
+            id: generateId(),
+            role: "assistant",
+            content: event.content,
+            timestamp: Date.now(),
+            isStreaming: true,
+          }];
+        });
+        break;
+
+      case "tool_start":
+        setToolStatus(`Using ${event.toolName || "tool"}...`);
+        break;
+
+      case "tool_end":
+        setToolStatus(null);
+        break;
+
+      case "result":
+        // Finalize assistant message, re-enable input
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          if (last && last.role === "assistant" && last.isStreaming) {
+            return [...prev.slice(0, -1), { ...last, isStreaming: false }];
+          }
+          return prev;
+        });
+        setIsStreaming(false);
+        setToolStatus(null);
+        break;
+
+      case "error":
+        setError(event.content);
+        setIsStreaming(false);
+        setToolStatus(null);
+        break;
+    }
+  };
+
+  /**
+   * Parse SSE data from a text chunk. Handles partial lines across chunks
+   * by returning any incomplete trailing data.
+   *
+   * @param chunk - Raw text chunk from the stream
+   * @param buffer - Leftover text from the previous chunk
+   * @returns Remaining buffer text (incomplete line)
+   */
+  const parseSseChunk = (chunk: string, buffer: string): string => {
+    const text = buffer + chunk;
+    const parts = text.split("\n\n");
+
+    // The last part may be incomplete -- keep it as buffer
+    const remaining = parts.pop() ?? "";
+
+    for (const part of parts) {
+      const trimmed = part.trim();
+      if (!trimmed.startsWith("data: ")) continue;
+
+      try {
+        const json = trimmed.slice(6); // Remove "data: " prefix
+        const event = JSON.parse(json) as SseEvent;
+        handleSseEvent(event);
+      } catch {
+        // Skip malformed SSE events
+      }
+    }
+
+    return remaining;
+  };
 
   // ============================================================================
   // EVENT HANDLERS
@@ -333,13 +327,13 @@ export function Chat() {
   };
 
   /**
-   * Send a user message over the WebSocket.
+   * Send a user message via POST /api/chat/send and read the SSE response.
    *
    * @param text - The message text to send
    */
-  const sendMessage = (text: string): void => {
+  const sendMessage = async (text: string): Promise<void> => {
     const trimmed = text.trim();
-    if (!trimmed || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    if (!trimmed || isStreaming) return;
 
     // Add user message to state
     setMessages((prev) => [...prev, {
@@ -350,10 +344,52 @@ export function Chat() {
       isStreaming: false,
     }]);
 
-    // Send over WebSocket
-    wsRef.current.send(JSON.stringify({ type: "user_message", text: trimmed }));
     setInputText("");
     setIsStreaming(true);
+
+    try {
+      const response = await fetch("/api/chat/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          token: deviceTokenRef.current,
+          agentId: agentIdRef.current || undefined,
+          text: trimmed,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({ error: "Request failed" }));
+        throw new Error((errorBody as { error?: string }).error || `HTTP ${response.status}`);
+      }
+
+      if (!response.body) {
+        throw new Error("No response body");
+      }
+
+      // Read the SSE stream
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let sseBuffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        sseBuffer = parseSseChunk(chunk, sseBuffer);
+      }
+
+      // Process any remaining buffer
+      if (sseBuffer.trim()) {
+        parseSseChunk(sseBuffer + "\n\n", "");
+      }
+    } catch (err) {
+      const msg = (err as Error).message || "Failed to send message";
+      setError(msg);
+      setIsStreaming(false);
+      setToolStatus(null);
+    }
   };
 
   /** Handle form submission */
