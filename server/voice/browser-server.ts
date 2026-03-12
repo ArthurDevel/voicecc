@@ -11,14 +11,13 @@
  * - Create BrowserAudioAdapter + VoiceSession per connection
  */
 
-import { readFileSync } from "fs";
-import { dirname, join } from "path";
-import { fileURLToPath } from "url";
+import { join } from "path";
 
 import { WebSocketServer } from "ws";
 
 import { createBrowserAudioAdapter } from "./browser-audio.js";
 import { createVoiceSession } from "./voice-session.js";
+import { buildAgentPrompt } from "./prompt-builder.js";
 import { isValidDeviceToken } from "../services/device-pairing.js";
 import { getAgent, AGENTS_DIR } from "../services/agent-store.js";
 import { readEnv } from "../services/env.js";
@@ -32,9 +31,6 @@ import type { TtsProviderConfig, SttProviderConfig } from "./types.js";
 // ============================================================================
 // CONSTANTS
 // ============================================================================
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const DEFAULT_SYSTEM_PROMPT = readFileSync(join(__dirname, "..", "..", "init", "defaults", "system.md"), "utf-8").trim();
 
 /** Interruption threshold for browser calls (lower than Twilio's 2000ms because browser getUserMedia includes AEC) */
 const BROWSER_INTERRUPTION_THRESHOLD_MS = 1500;
@@ -275,16 +271,7 @@ async function createSession(ws: WebSocket, entry: ActiveBrowserSession): Promis
 
   if (entry.agentId) {
     try {
-      const agent = await getAgent(entry.agentId);
-      const agentFiles = [
-        `<SOUL.md>\n${agent.soulMd}\n</SOUL.md>`,
-        `<HEARTBEAT.md>\n${agent.heartbeatMd}\n</HEARTBEAT.md>`,
-        `<MEMORY.md>\n${agent.memoryMd}\n</MEMORY.md>`,
-      ].join("\n\n");
-      const agentDir = join(AGENTS_DIR, entry.agentId);
-      const agentPrompt = DEFAULT_SYSTEM_PROMPT
-        .replaceAll("<<AGENT_DIR>>", agentDir)
-        .replace("<<AGENT_FILES>>", agentFiles);
+      const agentPrompt = await buildAgentPrompt(entry.agentId, "voice");
 
       sessionConfig = {
         ...defaultConfig,
@@ -297,6 +284,7 @@ async function createSession(ws: WebSocket, entry: ActiveBrowserSession): Promis
       };
 
       // Override TTS voice if the agent has a preference
+      const agent = await getAgent(entry.agentId);
       if (agent.config.voice?.elevenlabs) {
         const voicePref = agent.config.voice.elevenlabs;
         const overriddenTts: TtsProviderConfig = {

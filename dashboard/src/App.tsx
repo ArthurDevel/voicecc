@@ -14,6 +14,7 @@ import { Agents } from "./pages/Agents";
 import { AgentDetail } from "./pages/AgentDetail";
 import { Conversation } from "./pages/Conversation";
 import { Call } from "./pages/Call";
+import { Chat } from "./pages/Chat";
 
 // ============================================================================
 // COMPONENT
@@ -31,6 +32,7 @@ export function App() {
           <Route path="/c/:id" element={<Conversation />} />
         </Route>
         <Route path="/call" element={<Call />} />
+        <Route path="/chat" element={<Chat />} />
       </Routes>
     </BrowserRouter>
   );

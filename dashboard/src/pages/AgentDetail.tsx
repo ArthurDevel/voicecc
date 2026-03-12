@@ -81,6 +81,7 @@ export function AgentDetail() {
   const [voicesError, setVoicesError] = useState<string | null>(null);
   const [savingVoice, setSavingVoice] = useState(false);
   const [showBrowserCallModal, setShowBrowserCallModal] = useState(false);
+  const [openingChat, setOpeningChat] = useState(false);
 
   // ============================================================================
   // EVENT HANDLERS
@@ -187,6 +188,24 @@ export function AgentDetail() {
     }
   };
 
+  /**
+   * Generate a pairing code and open the /chat page in a new tab.
+   * Uses the same generate-code endpoint as browser calling.
+   */
+  const handleOpenChat = async () => {
+    if (!id) return;
+    setOpeningChat(true);
+    try {
+      const data = await post<{ code: string }>("/api/webrtc/generate-code", { agentId: id });
+      window.open(`/chat?code=${data.code}&agentId=${encodeURIComponent(id)}`, "_blank");
+    } catch (err: unknown) {
+      const message = (err as { message?: string })?.message || "Failed to generate pairing code";
+      setCallError(message);
+    } finally {
+      setOpeningChat(false);
+    }
+  };
+
   // ============================================================================
   // RENDER
   // ============================================================================
@@ -259,6 +278,23 @@ export function AgentDetail() {
             }}
           >
             Call via Browser
+          </button>
+          <button
+            onClick={handleOpenChat}
+            disabled={openingChat}
+            style={{
+              padding: "6px 14px",
+              background: "var(--btn-primary-bg)",
+              color: "var(--btn-primary-text)",
+              border: "none",
+              borderRadius: 0,
+              fontWeight: 500,
+              fontSize: 13,
+              cursor: openingChat ? "not-allowed" : "pointer",
+              opacity: openingChat ? 0.6 : 1,
+            }}
+          >
+            {openingChat ? "Opening..." : "Chat via Text"}
           </button>
           <button
             onClick={handleDelete}

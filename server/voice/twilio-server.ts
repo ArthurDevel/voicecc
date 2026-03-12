@@ -14,9 +14,7 @@
  */
 
 import { randomUUID } from "crypto";
-import { readFileSync } from "fs";
-import { dirname, join } from "path";
-import { fileURLToPath } from "url";
+import { join } from "path";
 
 import twilio from "twilio";
 import { WebSocketServer } from "ws";
@@ -24,6 +22,7 @@ import { WebSocketServer } from "ws";
 import { createTwilioAudioAdapter } from "./twilio-audio.js";
 import { createVoiceSession } from "./voice-session.js";
 import { createAudioInactivityWatchdog } from "./audio-inactivity.js";
+import { buildAgentPrompt, buildDefaultPrompt } from "./prompt-builder.js";
 import { getAgent, AGENTS_DIR } from "../services/agent-store.js";
 import { getTunnelUrl } from "../services/tunnel.js";
 import { readEnv } from "../services/env.js";
@@ -37,9 +36,6 @@ import type { TtsProviderConfig, SttProviderConfig } from "./types.js";
 // ============================================================================
 // CONSTANTS
 // ============================================================================
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const DEFAULT_SYSTEM_PROMPT = readFileSync(join(__dirname, "..", "..", "init", "defaults", "system.md"), "utf-8").trim();
 
 /** Interruption threshold for phone calls (higher than local mic due to no VPIO echo cancellation) */
 const PHONE_INTERRUPTION_THRESHOLD_MS = 2000;
@@ -455,7 +451,7 @@ async function handleStreamStart(
     claudeSession: {
       allowedTools: [] as string[],
       permissionMode: "bypassPermissions",
-      systemPrompt: DEFAULT_SYSTEM_PROMPT,
+      systemPrompt: buildDefaultPrompt("voice"),
     } as import("./types.js").ClaudeSessionConfig,
   };
 
@@ -465,16 +461,8 @@ async function handleStreamStart(
 
   if (agentId) {
     try {
-      const agent = await getAgent(agentId);
-      const agentFiles = [
-        `<SOUL.md>\n${agent.soulMd}\n</SOUL.md>`,
-        `<HEARTBEAT.md>\n${agent.heartbeatMd}\n</HEARTBEAT.md>`,
-        `<MEMORY.md>\n${agent.memoryMd}\n</MEMORY.md>`,
-      ].join("\n\n");
+      const agentPrompt = await buildAgentPrompt(agentId, "voice");
       const agentDir = join(AGENTS_DIR, agentId);
-      const agentPrompt = DEFAULT_SYSTEM_PROMPT
-        .replaceAll("<<AGENT_DIR>>", agentDir)
-        .replace("<<AGENT_FILES>>", agentFiles);
       sessionConfig = {
         ...defaultConfig,
         claudeSession: {
@@ -485,6 +473,7 @@ async function handleStreamStart(
         onSessionEnd: () => ws.close(),
       };
       // Override TTS voice if the agent has a preference
+      const agent = await getAgent(agentId);
       if (agent.config.voice?.elevenlabs) {
         const voicePref = agent.config.voice.elevenlabs;
         const overriddenTts: TtsProviderConfig = {
