@@ -23,6 +23,7 @@ import { WebSocketServer } from "ws";
 
 import { handleTwilioHttpRequest, handleTwilioUpgrade } from "./twilio-server.js";
 import { handleBrowserUpgrade } from "./browser-server.js";
+import { handleChatUpgrade } from "./chat-server.js";
 
 import type { IncomingMessage, ServerResponse } from "http";
 import type { Duplex } from "stream";
@@ -72,6 +73,8 @@ export async function startVoiceServer(dashboardPort: number): Promise<number> {
       handleTwilioUpgrade(req, socket, head, wss);
     } else if (url.pathname === "/audio") {
       handleBrowserUpgrade(req, socket, head, wss);
+    } else if (url.pathname === "/chat-ws") {
+      handleChatUpgrade(req, socket, head, wss);
     } else {
       socket.destroy();
     }

@@ -22,6 +22,7 @@ import { fileURLToPath } from "url";
 
 import twilio from "twilio";
 import { createClaudeSession, type ClaudeSession } from "../voice/claude-session.js";
+import { buildAgentPrompt } from "../voice/prompt-builder.js";
 import { listAgents, getAgent, AGENTS_DIR, type Agent } from "./agent-store.js";
 import { readEnv } from "./env.js";
 import { getTunnelUrl, isTunnelRunning } from "./tunnel.js";
@@ -43,8 +44,6 @@ const SESSION_TIMEOUT_MS = 120_000;
 /** User-facing prompt sent to the heartbeat Claude session */
 const HEARTBEAT_PROMPT = readFileSync(join(__dirname, "..", "..", "init", "defaults", "system-heartbeat.md"), "utf-8").trim();
 
-/** Default voice system prompt (shared with voice sessions) */
-const DEFAULT_SYSTEM_PROMPT = readFileSync(join(__dirname, "..", "..", "init", "defaults", "system.md"), "utf-8").trim();
 
 // ============================================================================
 // TYPES
@@ -276,16 +275,9 @@ async function checkSingleAgent(agent: Agent): Promise<HeartbeatResult> {
  * @returns The heartbeat result and the live Claude session
  */
 async function runHeartbeatSession(agent: Agent): Promise<{ result: HeartbeatResult; claudeSession: ClaudeSession }> {
-  // Include voice instructions so the session is ready for voice call continuity
+  // Use voice overlay so the session is ready for voice call continuity
   const agentDir = join(AGENTS_DIR, agent.id);
-  const agentFiles = [
-    `<SOUL.md>\n${agent.soulMd}\n</SOUL.md>`,
-    `<HEARTBEAT.md>\n${agent.heartbeatMd}\n</HEARTBEAT.md>`,
-    `<MEMORY.md>\n${agent.memoryMd}\n</MEMORY.md>`,
-  ].join("\n\n");
-  const systemPrompt = DEFAULT_SYSTEM_PROMPT
-    .replaceAll("<<AGENT_DIR>>", agentDir)
-    .replace("<<AGENT_FILES>>", agentFiles);
+  const systemPrompt = await buildAgentPrompt(agent.id, "voice");
 
   const claudeSession = await createClaudeSession({
     allowedTools: [],

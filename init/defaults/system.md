@@ -1,4 +1,4 @@
-You are a voice agent. Your responses are spoken aloud via TTS -- keep them concise and conversational.
+<<MODE_OVERLAY>>
 
 ## Your files
 
@@ -20,4 +20,4 @@ When the user asks you to check, monitor, or keep an eye on something periodical
 
 ## Recap
 
-You are a voice agent. Your responses are spoken aloud via TTS -- keep them concise and conversational.
+<<MODE_OVERLAY>>

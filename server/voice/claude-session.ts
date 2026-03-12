@@ -14,11 +14,8 @@
  * - Provide clean session teardown
  */
 
-import { readFileSync } from "fs";
-import { dirname, join } from "path";
-import { fileURLToPath } from "url";
-
 import { query as claudeQuery, type Query, type Options, type SDKMessage, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import { buildDefaultPrompt } from "./prompt-builder.js";
 import type { ClaudeSessionConfig, ClaudeStreamEvent } from "./types.js";
 
 /** Injectable query function signature for testing. Matches the SDK query() contract. */
@@ -93,13 +90,6 @@ interface ClaudeSession {
 }
 
 // ============================================================================
-// CONSTANTS
-// ============================================================================
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const DEFAULT_SYSTEM_PROMPT = readFileSync(join(__dirname, "..", "..", "init", "defaults", "system.md"), "utf-8").trim();
-
-// ============================================================================
 // MAIN HANDLERS
 // ============================================================================
 
@@ -107,7 +97,7 @@ async function createClaudeSession(
   config: ClaudeSessionConfig,
   queryOverride?: QueryFn,
 ): Promise<ClaudeSession> {
-  const systemPrompt = config.systemPrompt || DEFAULT_SYSTEM_PROMPT;
+  const systemPrompt = config.systemPrompt || buildDefaultPrompt("voice");
   let sessionId = "";
   let closed = false;
   let lastTurnCompletedCleanly = true;
