@@ -6,6 +6,7 @@
     "type": "git",
     "url": "https://github.com/ArthurDevel/voicecc.git"
   },
+  "license": "MIT",
   "homepage": "https://github.com/ArthurDevel/voicecc#readme",
   "bugs": {
     "url": "https://github.com/ArthurDevel/voicecc/issues"
