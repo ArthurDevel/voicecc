@@ -55,6 +55,7 @@ export interface AgentVoiceConfig {
 /** Configuration stored in config.json for each agent */
 export interface AgentConfig {
   heartbeatIntervalMinutes: number;
+  heartbeatTimeoutMinutes?: number;
   enabled: boolean;
   voice?: AgentVoiceConfig;
 }

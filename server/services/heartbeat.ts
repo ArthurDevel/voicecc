@@ -38,8 +38,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 /** Global check interval in milliseconds (60 seconds) */
 const CHECK_INTERVAL_MS = 60_000;
 
-/** Maximum time for a single heartbeat Claude session in milliseconds */
-const SESSION_TIMEOUT_MS = 120_000;
+/** Default maximum time for a single heartbeat Claude session (5 minutes) */
+const DEFAULT_HEARTBEAT_TIMEOUT_MS = 5 * 60_000;
 
 /** User-facing prompt sent to the heartbeat Claude session */
 const HEARTBEAT_PROMPT = readFileSync(join(__dirname, "..", "..", "init", "defaults", "system-heartbeat.md"), "utf-8").trim();
@@ -234,7 +234,8 @@ async function checkSingleAgent(agent: Agent): Promise<HeartbeatResult> {
   let session: ClaudeSession | null = null;
 
   try {
-    const { result, claudeSession } = await runHeartbeatSession(agent);
+    const timeoutMs = (agent.config.heartbeatTimeoutMinutes ?? 5) * 60_000 || DEFAULT_HEARTBEAT_TIMEOUT_MS;
+    const { result, claudeSession } = await runHeartbeatSession(agent, timeoutMs);
     session = claudeSession;
     lastResults[agent.id] = result;
 
@@ -274,7 +275,7 @@ async function checkSingleAgent(agent: Agent): Promise<HeartbeatResult> {
  * @param agent - Full agent data
  * @returns The heartbeat result and the live Claude session
  */
-async function runHeartbeatSession(agent: Agent): Promise<{ result: HeartbeatResult; claudeSession: ClaudeSession }> {
+async function runHeartbeatSession(agent: Agent, timeoutMs: number): Promise<{ result: HeartbeatResult; claudeSession: ClaudeSession }> {
   // Use voice overlay so the session is ready for voice call continuity
   const agentDir = join(AGENTS_DIR, agent.id);
   const systemPrompt = await buildAgentPrompt(agent.id, "voice");
@@ -292,7 +293,7 @@ async function runHeartbeatSession(agent: Agent): Promise<{ result: HeartbeatRes
   const timeout = setTimeout(() => {
     timedOut = true;
     claudeSession.interrupt();
-  }, SESSION_TIMEOUT_MS);
+  }, timeoutMs);
 
   try {
     // Send the heartbeat prompt and collect the response text
