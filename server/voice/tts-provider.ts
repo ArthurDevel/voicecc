@@ -61,6 +61,8 @@ export interface CreateTtsOptions {
   interruptPlayback: () => void;
   /** Callback to resume playback after an interrupt */
   resumePlayback: () => void;
+  /** Callback to pause the playback buffer (suspend output without cancelling) */
+  pausePlayback: () => void;
 }
 
 // ============================================================================

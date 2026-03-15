@@ -82,6 +82,11 @@ export async function createElevenlabsTts(config: ElevenlabsTtsConfig): Promise<
   let interruptFlag = false;
   let wasInterrupted = false;
 
+  // Pause/resume gate: the speakStream loop awaits this promise between chunks.
+  // When not paused, it resolves immediately. When paused, it blocks until resume/interrupt.
+  let pauseGate: Promise<void> = Promise.resolve();
+  let pauseGateResolver: (() => void) | null = null;
+
   /**
    * POST text to the ElevenLabs TTS streaming endpoint and stream PCM chunks
    * to the speaker. Returns the total number of PCM bytes written.
@@ -109,6 +114,8 @@ export async function createElevenlabsTts(config: ElevenlabsTtsConfig): Promise<
     let totalBytes = 0;
 
     for await (const chunk of readResponseChunks(response)) {
+      if (interruptFlag) break;
+      await pauseGate;
       if (interruptFlag) break;
 
       const pcmBuffer = Buffer.from(chunk);
@@ -218,6 +225,8 @@ export async function createElevenlabsTts(config: ElevenlabsTtsConfig): Promise<
         // Read chunked PCM from the response body
         for await (const chunk of readResponseChunks(response)) {
           if (interruptFlag) break;
+          await pauseGate;
+          if (interruptFlag) break;
 
           const pcmBuffer = Buffer.from(chunk);
           const now = Date.now() - t0;
@@ -250,13 +259,47 @@ export async function createElevenlabsTts(config: ElevenlabsTtsConfig): Promise<
   }
 
   /**
+   * Pause playback without cancelling generation.
+   * Creates an unresolved promise gate that suspends the speakStream loop.
+   * The ElevenLabs HTTP stream continues and chunks buffer in memory.
+   */
+  function pause(): void {
+    if (destroyed || pauseGateResolver) return;
+    console.log("[tts-elevenlabs] pausing playback");
+    pauseGate = new Promise<void>((resolve) => {
+      pauseGateResolver = resolve;
+    });
+  }
+
+  /**
+   * Resume playback after a pause. Resolves the pause gate so the
+   * speakStream loop wakes up and flushes buffered chunks.
+   */
+  function resume(): void {
+    if (!pauseGateResolver) return;
+    console.log("[tts-elevenlabs] resuming playback");
+    pauseGateResolver();
+    pauseGateResolver = null;
+    pauseGate = Promise.resolve();
+  }
+
+  /**
    * Interrupt current playback and cancel in-flight generation.
    * Clears the playback buffer and sets the interrupt flag.
+   * Also resolves pauseGate so the loop wakes up and hits the interruptFlag break.
    */
   function interrupt(): void {
     if (destroyed) return;
     interruptFlag = true;
     wasInterrupted = true;
+
+    // Wake up the loop if paused so it can hit the interruptFlag break
+    if (pauseGateResolver) {
+      pauseGateResolver();
+      pauseGateResolver = null;
+      pauseGate = Promise.resolve();
+    }
+
     interruptPlayback();
   }
 
@@ -280,6 +323,8 @@ export async function createElevenlabsTts(config: ElevenlabsTtsConfig): Promise<
   return {
     speak,
     speakStream,
+    pause,
+    resume,
     interrupt,
     isSpeaking: checkIsSpeaking,
     destroy: destroyPlayer,

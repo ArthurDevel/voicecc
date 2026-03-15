@@ -15,6 +15,7 @@
 
 import { randomUUID } from "crypto";
 import { join } from "path";
+import { homedir } from "os";
 
 import twilio from "twilio";
 import { WebSocketServer } from "ws";
@@ -37,8 +38,14 @@ import type { TtsProviderConfig, SttProviderConfig } from "./types.js";
 // CONSTANTS
 // ============================================================================
 
-/** Interruption threshold for phone calls (higher than local mic due to no VPIO echo cancellation) */
-const PHONE_INTERRUPTION_THRESHOLD_MS = 2000;
+/** Interruption threshold (ms) for phone calls -- higher than browser due to no VPIO echo cancellation */
+const PHONE_INTERRUPTION_THRESHOLD_MS = 800;
+
+/** Minimum transcribed words to confirm a real interruption */
+const PHONE_INTERRUPTION_MIN_WORDS = 2;
+
+/** Time (ms) to wait before resuming TTS on false interruption */
+const PHONE_FALSE_INTERRUPTION_TIMEOUT_MS = 2000;
 
 /** Close the WebSocket if no Twilio audio frames arrive within this window (ms) */
 const AUDIO_INACTIVITY_TIMEOUT_MS = 5000;
@@ -438,12 +445,21 @@ async function handleStreamStart(
     stopPhrase: "stop listening",
     ttsProvider,
     sttProvider,
-    interruptionThresholdMs: PHONE_INTERRUPTION_THRESHOLD_MS,
+    interruption: {
+      thresholdMs: PHONE_INTERRUPTION_THRESHOLD_MS,
+      minWords: PHONE_INTERRUPTION_MIN_WORDS,
+      falseInterruptionTimeoutMs: PHONE_FALSE_INTERRUPTION_TIMEOUT_MS,
+    },
     endpointing: {
       silenceThresholdMs: 700,
       maxSilenceBeforeTimeoutMs: 1200,
       minWordCountForFastPath: 2,
       enableHaikuFallback: false,
+      smartTurn: {
+        modelPath: join(process.env.VOICECC_DIR ?? join(homedir(), ".voicecc"), "models", "smart-turn-v3.2-cpu.onnx"),
+        threshold: 0.5,
+        enabled: true,
+      },
     },
     narration: {
       summaryIntervalMs: 12000,

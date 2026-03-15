@@ -16,6 +16,7 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import type { EndpointDecision, EndpointingConfig, VadEvent } from "./types.js";
+import type { SmartTurnPredictor } from "./smart-turn.js";
 
 // ============================================================================
 // CONSTANTS
@@ -36,9 +37,10 @@ export interface Endpointer {
    * Process a VAD event and determine if the user's turn is complete.
    * @param event - The VAD event from the voice activity detector
    * @param currentTranscript - The accumulated transcript so far
+   * @param audioBuffer - Raw audio samples for Smart Turn inference (optional)
    * @returns Decision on whether the user has finished speaking
    */
-  onVadEvent(event: VadEvent, currentTranscript: string): Promise<EndpointDecision>;
+  onVadEvent(event: VadEvent, currentTranscript: string, audioBuffer?: Float32Array): Promise<EndpointDecision>;
 
   /**
    * Reset internal state for a new turn.
@@ -53,14 +55,15 @@ export interface Endpointer {
 /**
  * Create an endpointer instance with the given configuration.
  * @param config - Endpointing thresholds and feature flags
+ * @param smartTurnPredictor - Optional Smart Turn predictor for ML-based end-of-turn detection
  * @returns A configured Endpointer
  */
-export function createEndpointer(config: EndpointingConfig): Endpointer {
+export function createEndpointer(config: EndpointingConfig, smartTurnPredictor?: SmartTurnPredictor): Endpointer {
   const anthropicClient = config.enableHaikuFallback ? new Anthropic() : null;
 
   return {
-    onVadEvent(event: VadEvent, currentTranscript: string): Promise<EndpointDecision> {
-      return handleVadEvent(event, currentTranscript, config, anthropicClient);
+    onVadEvent(event: VadEvent, currentTranscript: string, audioBuffer?: Float32Array): Promise<EndpointDecision> {
+      return handleVadEvent(event, currentTranscript, config, anthropicClient, smartTurnPredictor, audioBuffer);
     },
 
     reset(): void {
@@ -79,6 +82,8 @@ export function createEndpointer(config: EndpointingConfig): Endpointer {
  * @param transcript - Current accumulated transcript
  * @param config - Endpointing configuration
  * @param client - Anthropic client for Haiku calls (null if disabled)
+ * @param smartTurn - Optional Smart Turn predictor for ML-based detection
+ * @param audioBuffer - Raw audio samples for Smart Turn inference
  * @returns The endpoint decision
  */
 async function handleVadEvent(
@@ -86,6 +91,8 @@ async function handleVadEvent(
   transcript: string,
   config: EndpointingConfig,
   client: Anthropic | null,
+  smartTurn?: SmartTurnPredictor,
+  audioBuffer?: Float32Array,
 ): Promise<EndpointDecision> {
   // Active speech -- not complete
   if (event.type === "SPEECH_START" || event.type === "SPEECH_CONTINUE") {
@@ -97,9 +104,15 @@ async function handleVadEvent(
   // so silence has already been confirmed by the VAD. No need to wait for
   // separate SILENCE events (avr-vad doesn't emit them).
   if (event.type === "SPEECH_END") {
+    // Smart Turn path: use ML model if enabled and audio is available
+    if (config.smartTurn.enabled && smartTurn && audioBuffer && audioBuffer.length > 0) {
+      const result = await smartTurn.predict(audioBuffer);
+      return { isComplete: result.isComplete, transcript, method: "smart_turn" };
+    }
+
+    // Fallback: word-count fast path
     const wordCount = countWords(transcript);
 
-    // Fast path: sufficient words, complete immediately
     if (wordCount >= config.minWordCountForFastPath) {
       return { isComplete: true, transcript, method: "vad_fast" };
     }

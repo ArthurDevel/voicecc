@@ -44,6 +44,33 @@ export interface EndpointingConfig {
   minWordCountForFastPath: number;
   /** Whether to use Haiku API for ambiguous short utterances */
   enableHaikuFallback: boolean;
+  /** Smart Turn model configuration for ML-based end-of-turn detection */
+  smartTurn: SmartTurnConfig;
+}
+
+/**
+ * Configuration for the Smart Turn ONNX model.
+ * Controls ML-based end-of-turn detection using mel spectrogram analysis.
+ */
+export interface SmartTurnConfig {
+  /** Path to the Smart Turn ONNX model file */
+  modelPath: string;
+  /** Confidence threshold above which speech is considered complete (0.0-1.0) */
+  threshold: number;
+  /** Feature flag to toggle Smart Turn on/off */
+  enabled: boolean;
+}
+
+/**
+ * Configuration for interruption detection and false-interruption recovery.
+ */
+export interface InterruptionConfig {
+  /** Minimum sustained speech duration (ms) before pausing agent output */
+  thresholdMs: number;
+  /** Minimum transcribed words to confirm a real interruption */
+  minWords: number;
+  /** Time (ms) to wait before resuming agent output on false interruption */
+  falseInterruptionTimeoutMs: number;
 }
 
 /**
@@ -86,6 +113,12 @@ export interface TtsPlayer {
    * @param texts - Async iterable of text chunks
    */
   speakStream(texts: AsyncIterable<TextChunk>): Promise<void>;
+
+  /** Suspend output without cancelling generation. Buffered audio resumes on resume. */
+  pause(): void;
+
+  /** Resume output after a pause. Flushes buffered audio chunks. */
+  resume(): void;
 
   /** Interrupt current playback immediately. */
   interrupt(): void;
@@ -176,7 +209,7 @@ export interface TranscriptionResult {
 // ============================================================================
 
 /** Method used to determine that the user finished speaking */
-export type EndpointMethod = "vad_fast" | "haiku_semantic" | "timeout";
+export type EndpointMethod = "vad_fast" | "haiku_semantic" | "timeout" | "smart_turn";
 
 /**
  * Decision from the endpointing module on whether the user has finished speaking.

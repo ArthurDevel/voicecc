@@ -8,6 +8,20 @@
  * - Auto-start Twilio if enabled (requires tunnel)
  */
 
+// Global error handlers -- must be registered before any async work to prevent
+// silent crashes from unhandled promise rejections or uncaught exceptions.
+process.on("uncaughtException", (err) => {
+  console.error("[FATAL] Uncaught exception:", err);
+  console.error(err.stack ?? "(no stack trace)");
+});
+
+process.on("unhandledRejection", (reason) => {
+  console.error("[FATAL] Unhandled rejection:", reason);
+  if (reason instanceof Error) {
+    console.error(reason.stack ?? "(no stack trace)");
+  }
+});
+
 import { writeFileSync, unlinkSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";

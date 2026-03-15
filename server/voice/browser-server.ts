@@ -12,6 +12,7 @@
  */
 
 import { join } from "path";
+import { homedir } from "os";
 
 import { WebSocketServer } from "ws";
 
@@ -32,8 +33,14 @@ import type { TtsProviderConfig, SttProviderConfig } from "./types.js";
 // CONSTANTS
 // ============================================================================
 
-/** Interruption threshold for browser calls (lower than Twilio's 2000ms because browser getUserMedia includes AEC) */
-const BROWSER_INTERRUPTION_THRESHOLD_MS = 1500;
+/** Interruption threshold (ms) for browser calls -- lower than Twilio because browser getUserMedia includes AEC */
+const BROWSER_INTERRUPTION_THRESHOLD_MS = 500;
+
+/** Minimum transcribed words to confirm a real interruption */
+const BROWSER_INTERRUPTION_MIN_WORDS = 2;
+
+/** Time (ms) to wait before resuming TTS on false interruption */
+const BROWSER_FALSE_INTERRUPTION_TIMEOUT_MS = 2000;
 
 /** Default ElevenLabs voice ID (used when not set in .env) */
 const DEFAULT_ELEVENLABS_VOICE_ID = "WrjxnKxK0m1uiaH0uteU";
@@ -230,12 +237,21 @@ function buildDefaultConfig(ttsProvider: TtsProviderConfig, sttProvider: SttProv
     stopPhrase: "stop listening",
     ttsProvider,
     sttProvider,
-    interruptionThresholdMs: BROWSER_INTERRUPTION_THRESHOLD_MS,
+    interruption: {
+      thresholdMs: BROWSER_INTERRUPTION_THRESHOLD_MS,
+      minWords: BROWSER_INTERRUPTION_MIN_WORDS,
+      falseInterruptionTimeoutMs: BROWSER_FALSE_INTERRUPTION_TIMEOUT_MS,
+    },
     endpointing: {
       silenceThresholdMs: 700,
       maxSilenceBeforeTimeoutMs: 1200,
       minWordCountForFastPath: 2,
       enableHaikuFallback: false,
+      smartTurn: {
+        modelPath: join(process.env.VOICECC_DIR ?? join(homedir(), ".voicecc"), "models", "smart-turn-v3.2-cpu.onnx"),
+        threshold: 0.5,
+        enabled: true,
+      },
     },
     narration: {
       summaryIntervalMs: 12000,

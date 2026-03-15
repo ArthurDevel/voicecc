@@ -36,7 +36,8 @@ import type { VadProcessor } from "./vad.js";
 import type { Endpointer } from "./endpointing.js";
 import type { ClaudeSession } from "./claude-session.js";
 import type { Narrator } from "./narration.js";
-import type { SttProcessor, TtsPlayer, VadEvent, VoiceLoopState, VoiceLoopStatus, TextChunk, EndpointingConfig, NarrationConfig, ClaudeSessionConfig, TtsProviderConfig, SttProviderConfig } from "./types.js";
+import type { SmartTurnPredictor } from "./smart-turn.js";
+import type { SttProcessor, TtsPlayer, VadEvent, VoiceLoopState, VoiceLoopStatus, TextChunk, EndpointingConfig, NarrationConfig, ClaudeSessionConfig, TtsProviderConfig, SttProviderConfig, InterruptionConfig } from "./types.js";
 
 // ============================================================================
 // CONSTANTS
@@ -44,6 +45,12 @@ import type { SttProcessor, TtsPlayer, VadEvent, VoiceLoopState, VoiceLoopStatus
 
 /** Default max concurrent sessions (overridden by .env) */
 const DEFAULT_MAX_SESSIONS = 2;
+
+/** Maximum audio samples to buffer for Smart Turn (8s at 16kHz) */
+const SMART_TURN_MAX_SAMPLES = 128000;
+
+/** Timeout (ms) after Smart Turn returns incomplete -- force-complete if no new speech */
+const SMART_TURN_INCOMPLETE_TIMEOUT_MS = 3000;
 
 /** Pre-recorded startup greeting (24kHz 16-bit mono PCM). Null if file is missing. */
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -62,7 +69,7 @@ const STARTUP_PCM: Buffer | null = (() => {
 /**
  * Configuration for a voice session.
  * Like VoiceLoopConfig but without sampleRate (adapter concern),
- * and with onSessionEnd and interruptionThresholdMs added.
+ * and with onSessionEnd and interruption config added.
  */
 export interface VoiceSessionConfig {
   /** TTS provider configuration (which provider + per-provider settings) */
@@ -71,8 +78,8 @@ export interface VoiceSessionConfig {
   sttProvider: SttProviderConfig;
   /** Phrase that stops the voice session when spoken */
   stopPhrase: string;
-  /** Minimum sustained speech duration (ms) before interrupting TTS playback */
-  interruptionThresholdMs: number;
+  /** Interruption detection and false-interruption recovery configuration */
+  interruption: InterruptionConfig;
   /** Endpointing configuration for turn detection */
   endpointing: EndpointingConfig;
   /** Narration configuration for Claude response processing */
@@ -126,6 +133,17 @@ export async function createVoiceSession(
   let interrupted = false;
   let stopping = false;
 
+  // False-interruption recovery state
+  let interruptionPending = false;
+  let interruptionResumeTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // Smart Turn state: parallel audio buffer and cross-segment transcript accumulation
+  let audioBufferChunks: Float32Array[] = [];
+  let audioBufferTotalSamples = 0;
+  let turnTranscript = "";
+  let smartTurnTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
+  let smartTurnInferenceInFlight = false;
+
   // Module instances
   let vadProcessor: VadProcessor | null = null;
   let sttProcessor: SttProcessor | null = null;
@@ -133,6 +151,7 @@ export async function createVoiceSession(
   let claudeSession: ClaudeSession | null = null;
   let narrator: Narrator | null = null;
   let ttsPlayer: TtsPlayer | null = null;
+  let smartTurnPredictor: SmartTurnPredictor | null = null;
 
   // ---- Helper functions (closure-scoped) ----
 
@@ -142,6 +161,70 @@ export async function createVoiceSession(
       clearTimeout(interruptionTimer);
       interruptionTimer = null;
     }
+  }
+
+  /** Clear the false-interruption resume timer if active. */
+  function clearInterruptionResumeTimer(): void {
+    if (interruptionResumeTimer !== null) {
+      clearTimeout(interruptionResumeTimer);
+      interruptionResumeTimer = null;
+    }
+  }
+
+  /** Clear the Smart Turn incomplete timeout timer if active. */
+  function clearSmartTurnTimeout(): void {
+    if (smartTurnTimeoutTimer !== null) {
+      clearTimeout(smartTurnTimeoutTimer);
+      smartTurnTimeoutTimer = null;
+    }
+  }
+
+  /**
+   * Append audio samples to the parallel audio buffer for Smart Turn.
+   * Caps total samples at SMART_TURN_MAX_SAMPLES by dropping oldest chunks.
+   *
+   * @param samples - Audio samples to append
+   */
+  function accumulateAudioBuffer(samples: Float32Array): void {
+    audioBufferChunks.push(samples);
+    audioBufferTotalSamples += samples.length;
+
+    // Drop oldest chunks if we exceed the max
+    while (audioBufferTotalSamples > SMART_TURN_MAX_SAMPLES && audioBufferChunks.length > 1) {
+      const dropped = audioBufferChunks.shift()!;
+      audioBufferTotalSamples -= dropped.length;
+    }
+  }
+
+  /**
+   * Concatenate audio buffer chunks into a single Float32Array.
+   * @returns Concatenated audio buffer
+   */
+  function getAudioBuffer(): Float32Array {
+    if (audioBufferChunks.length === 0) {
+      return new Float32Array(0);
+    }
+    const result = new Float32Array(audioBufferTotalSamples);
+    let offset = 0;
+    for (const chunk of audioBufferChunks) {
+      result.set(chunk, offset);
+      offset += chunk.length;
+    }
+    return result;
+  }
+
+  /** Clear the parallel audio buffer. */
+  function clearAudioBuffer(): void {
+    audioBufferChunks = [];
+    audioBufferTotalSamples = 0;
+  }
+
+  /** Reset all Smart Turn state for a new turn. */
+  function resetSmartTurnState(): void {
+    clearAudioBuffer();
+    turnTranscript = "";
+    clearSmartTurnTimeout();
+    smartTurnInferenceInFlight = false;
   }
 
   /**
@@ -197,9 +280,10 @@ export async function createVoiceSession(
   async function handleAudioChunk(samples: Float32Array): Promise<void> {
     if (!vadProcessor) return;
 
-    // If we're in a speech segment, accumulate for STT
-    if (accumulating && sttProcessor) {
-      sttProcessor.accumulate(samples);
+    // If we're in a speech segment, accumulate for both STT and Smart Turn audio buffer
+    if (accumulating) {
+      if (sttProcessor) sttProcessor.accumulate(samples);
+      if (smartTurnPredictor) accumulateAudioBuffer(samples);
     }
 
     // Feed raw audio to VAD -- it handles framing internally (512 samples)
@@ -230,6 +314,15 @@ export async function createVoiceSession(
     if (event.type === "SPEECH_START") {
       console.log("Hearing speech...");
       accumulating = true;
+
+      // Cancel Smart Turn incomplete timeout -- user resumed speaking
+      clearSmartTurnTimeout();
+
+      // If a Smart Turn prediction is in-flight, mark it so we ignore the result
+      if (smartTurnInferenceInFlight) {
+        smartTurnInferenceInFlight = false;
+      }
+
       return;
     }
 
@@ -241,7 +334,7 @@ export async function createVoiceSession(
     if (event.type === "SPEECH_END") {
       accumulating = false;
       handleSpeechEnd(event).catch((err) => {
-        console.error(`Error handling speech end: ${err}`);
+        console.error("[voice-session] Error handling speech end:", err);
       });
     }
   }
@@ -265,14 +358,55 @@ export async function createVoiceSession(
 
     console.log(`Heard: "${result.text}"`);
 
-    // Check endpointing decision
-    const decision = await endpointer.onVadEvent(event, result.text);
+    // Accumulate transcript across segments for Smart Turn multi-segment turns
+    turnTranscript += (turnTranscript ? " " : "") + result.text;
+
+    // Get audio buffer for Smart Turn inference
+    const audioBuffer = smartTurnPredictor ? getAudioBuffer() : undefined;
+
+    // Mark inference as in-flight so concurrent SPEECH_START can invalidate it
+    if (smartTurnPredictor && config.endpointing.smartTurn.enabled) {
+      smartTurnInferenceInFlight = true;
+    }
+
+    // Check endpointing decision (passes audio buffer for Smart Turn)
+    let decision;
+    try {
+      decision = await endpointer.onVadEvent(event, result.text, audioBuffer);
+    } catch (err) {
+      console.error("[voice-session] Endpointing error, falling back to complete:", err);
+      smartTurnInferenceInFlight = false;
+      decision = { isComplete: true, transcript: result.text, method: "error_fallback" };
+    }
+
+    // If SPEECH_START fired during inference, ignore the result -- user resumed speaking
+    if (smartTurnPredictor && config.endpointing.smartTurn.enabled && !smartTurnInferenceInFlight) {
+      console.log("Smart Turn result ignored -- user resumed speaking during inference");
+      return;
+    }
+    smartTurnInferenceInFlight = false;
 
     if (decision.isComplete) {
+      // Use accumulated turn transcript instead of just the current segment
+      const finalTranscript = turnTranscript;
       endpointer.reset();
-      await handleCompleteTurn(result.text);
+      resetSmartTurnState();
+      await handleCompleteTurn(finalTranscript);
+    } else {
+      // Smart Turn says incomplete -- start timeout in case user is truly done
+      clearSmartTurnTimeout();
+      smartTurnTimeoutTimer = setTimeout(() => {
+        smartTurnTimeoutTimer = null;
+        console.log("Smart Turn incomplete timeout -- force-completing turn");
+        const finalTranscript = turnTranscript;
+        endpointer!.reset();
+        resetSmartTurnState();
+        handleCompleteTurn(finalTranscript).catch((err) => {
+          console.error("[voice-session] Error force-completing turn:", err);
+          state = handleStateTransition(state, "error");
+        });
+      }, SMART_TURN_INCOMPLETE_TIMEOUT_MS);
     }
-    // If not complete, keep listening for more speech
   }
 
   /**
@@ -294,7 +428,7 @@ export async function createVoiceSession(
 
     // Start processing Claude response (runs concurrently with audio events)
     processClaudeResponse(transcript).catch((err) => {
-      console.error(`Error processing Claude response: ${err}`);
+      console.error("[voice-session] Error processing Claude response:", err);
       state = handleStateTransition(state, "error");
     });
   }
@@ -360,17 +494,21 @@ export async function createVoiceSession(
     if (vadProcessor) vadProcessor.reset();
     if (endpointer) endpointer.reset();
     accumulating = false;
+    interruptionPending = false;
     clearInterruptionTimer();
+    clearInterruptionResumeTimer();
+    resetSmartTurnState();
   }
 
   /**
    * Detect sustained speech during SPEAKING/PROCESSING state for interruption.
+   * Uses a two-phase approach: pause TTS first, then verify with transcription.
    *
    * @param event - The VAD event to evaluate
    */
   function handleInterruptionDetection(event: VadEvent): void {
     if (event.type === "SPEECH_START") {
-      if (interruptionTimer === null) {
+      if (interruptionTimer === null && !interruptionPending) {
         // Start capturing audio immediately so we have the full utterance if this
         // turns out to be an interruption
         if (sttProcessor) sttProcessor.clearBuffer();
@@ -378,13 +516,19 @@ export async function createVoiceSession(
 
         interruptionTimer = setTimeout(() => {
           interruptionTimer = null;
-          triggerInterruption();
-        }, config.interruptionThresholdMs);
+          handleSoftInterruption();
+        }, config.interruption.thresholdMs);
       }
       return;
     }
 
     if (event.type === "SPEECH_END") {
+      if (interruptionPending) {
+        // Speech ended during pause-verify phase -- transcribe and decide
+        verifyInterruption();
+        return;
+      }
+
       // Speech ended before threshold -- not an interruption, discard audio
       clearInterruptionTimer();
       accumulating = false;
@@ -393,20 +537,83 @@ export async function createVoiceSession(
   }
 
   /**
-   * Interrupt TTS playback and Claude session, transition back to LISTENING.
+   * Pause TTS output and start the false-interruption verification window.
+   * Called when the interruption threshold timer fires.
    */
-  function triggerInterruption(): void {
-    console.log("User interruption detected");
+  function handleSoftInterruption(): void {
+    console.log("Soft interruption -- pausing TTS, verifying...");
+
+    interruptionPending = true;
+    if (ttsPlayer) ttsPlayer.pause();
+
+    // Start a timeout: if no words are transcribed within this window, resume
+    interruptionResumeTimer = setTimeout(() => {
+      interruptionResumeTimer = null;
+      if (!interruptionPending) return;
+
+      // Timeout fired without enough words -- false interruption, resume TTS
+      resumeFromFalseInterruption();
+    }, config.interruption.falseInterruptionTimeoutMs);
+  }
+
+  /**
+   * Transcribe the captured audio and decide: commit (real interruption) or resume.
+   * Called when SPEECH_END fires during the pause-verify phase.
+   */
+  function verifyInterruption(): void {
+    if (!sttProcessor) return;
+
+    sttProcessor.transcribe().then((result) => {
+      if (!interruptionPending) return;
+
+      const wordCount = result.text.trim().split(/\s+/).filter(Boolean).length;
+      console.log(`Interruption transcript: "${result.text}" (${wordCount} words)`);
+
+      if (wordCount >= config.interruption.minWords) {
+        commitInterruption();
+      } else {
+        resumeFromFalseInterruption();
+      }
+    }).catch((err) => {
+      console.error(`Error verifying interruption: ${err}`);
+      // On error, commit the interruption to avoid stuck state
+      commitInterruption();
+    });
+  }
+
+  /**
+   * Commit a real interruption: cancel TTS + Claude, transition to LISTENING.
+   */
+  function commitInterruption(): void {
+    console.log("User interruption confirmed");
+
+    interruptionPending = false;
+    clearInterruptionResumeTimer();
+    clearInterruptionTimer();
 
     interrupted = true;
     if (ttsPlayer) ttsPlayer.interrupt();
     if (claudeSession) claudeSession.interrupt();
 
-    clearInterruptionTimer();
     // Keep accumulating -- user is still speaking. Buffer already has audio from
     // SPEECH_START onwards, so the full utterance will be transcribed on SPEECH_END.
 
     state = handleStateTransition(state, "user_interrupt");
+  }
+
+  /**
+   * Resume TTS output after a false interruption (backchannel, noise).
+   */
+  function resumeFromFalseInterruption(): void {
+    console.log("False interruption -- resuming TTS");
+
+    interruptionPending = false;
+    clearInterruptionResumeTimer();
+    clearInterruptionTimer();
+    accumulating = false;
+
+    if (ttsPlayer) ttsPlayer.resume();
+    if (sttProcessor) sttProcessor.clearBuffer();
   }
 
   /**
@@ -438,10 +645,18 @@ export async function createVoiceSession(
       claudeSession = null;
     }
 
+    if (smartTurnPredictor) {
+      smartTurnPredictor.destroy();
+      smartTurnPredictor = null;
+    }
+
     endpointer = null;
     narrator = null;
     accumulating = false;
+    interruptionPending = false;
     clearInterruptionTimer();
+    clearInterruptionResumeTimer();
+    resetSmartTurnState();
 
     state = { status: "idle", sessionId: null };
 
@@ -478,6 +693,7 @@ export async function createVoiceSession(
       speakerInput: speakerWritable,
       interruptPlayback: () => adapter.interrupt(),
       resumePlayback: () => adapter.resume(),
+      pausePlayback: () => { /* pause handled at TTS level via pauseGate */ },
     });
   } else {
     // Claude session and TTS are the slowest to initialize (process spawns + model
@@ -490,14 +706,28 @@ export async function createVoiceSession(
         speakerInput: speakerWritable,
         interruptPlayback: () => adapter.interrupt(),
         resumePlayback: () => adapter.resume(),
+        pausePlayback: () => { /* pause handled at TTS level via pauseGate */ },
       }),
     ]);
     claudeSession = claudeResult;
     ttsPlayer = ttsResult;
   }
 
-  // VAD and STT both load ONNX runtimes -- keep them sequential to avoid
-  // native library conflicts within the same Node process.
+  // Smart Turn must initialize BEFORE VAD. Both load onnxruntime-node native
+  // bindings, and @huggingface/transformers (used by Smart Turn) bundles its own
+  // onnxruntime-node@1.21.0 which conflicts with avr-vad's top-level @1.24.3.
+  // Loading transformers first avoids the native symbol conflict (std::bad_alloc).
+  if (config.endpointing.smartTurn.enabled) {
+    try {
+      console.log("Initializing Smart Turn predictor...");
+      const { createSmartTurnPredictor } = await import("./smart-turn.js");
+      smartTurnPredictor = await createSmartTurnPredictor(config.endpointing.smartTurn);
+    } catch (err) {
+      console.error("[voice-session] Smart Turn initialization failed, falling back to VAD-only:", err);
+      smartTurnPredictor = null;
+    }
+  }
+
   console.log("Initializing VAD...");
   vadProcessor = await createVad(handleVadEvent);
 
@@ -505,7 +735,7 @@ export async function createVoiceSession(
   sttProcessor = await createSttForProvider({ providerConfig: config.sttProvider });
 
   console.log("Initializing endpointer...");
-  endpointer = createEndpointer(config.endpointing);
+  endpointer = createEndpointer(config.endpointing, smartTurnPredictor ?? undefined);
 
   console.log("Initializing narrator...");
   narrator = createNarrator(config.narration, async (summary: string) => {
@@ -520,7 +750,7 @@ export async function createVoiceSession(
   // Subscribe to audio from the adapter
   adapter.onAudio((samples: Float32Array) => {
     handleAudioChunk(samples).catch((err) => {
-      console.error(`Error processing audio chunk: ${err}`);
+      console.error("[voice-session] Error processing audio chunk:", err);
     });
   });
 
