@@ -12,7 +12,7 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 
-import { getOrCreateSession, streamMessage, closeSession, hasSession } from "../../server/voice/chat-server.js";
+import { getOrCreateSession, streamMessage, closeSession, interruptSession, hasSession } from "../../server/voice/chat-server.js";
 import { isValidDeviceToken } from "../../server/services/device-pairing.js";
 
 // ============================================================================
@@ -97,6 +97,23 @@ export function chatRoutes(): Hono {
       const msg = err instanceof Error ? err.message : "Stream error";
       return c.json({ error: msg }, 500);
     }
+  });
+
+  /** POST /stop - interrupt the current streaming response */
+  app.post("/stop", async (c) => {
+    let body: ChatCloseBody;
+    try {
+      body = await c.req.json<ChatCloseBody>();
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+
+    if (!body.token || typeof body.token !== "string") {
+      return c.json({ error: "Missing 'token' field" }, 400);
+    }
+
+    const interrupted = interruptSession(body.token);
+    return c.json({ ok: true, interrupted });
   });
 
   /** POST /close - explicitly close a chat session */

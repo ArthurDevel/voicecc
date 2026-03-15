@@ -205,6 +205,27 @@ export async function closeSession(sessionKey: string): Promise<void> {
 }
 
 /**
+ * Interrupt the current streaming response for a session.
+ *
+ * Calls interrupt() on the underlying ClaudeSession to stop generation,
+ * and resets the streaming flag so the user can send a new message.
+ *
+ * @param sessionKey - Device token identifying the session
+ * @returns true if a streaming session was interrupted, false if nothing to interrupt
+ */
+export function interruptSession(sessionKey: string): boolean {
+  const session = activeSessions.get(sessionKey);
+  if (!session || !session.streaming) return false;
+
+  session.claudeSession.interrupt();
+  session.streaming = false;
+  session.lastActivity = Date.now();
+
+  console.log(`Chat session interrupted, token: ${sessionKey}`);
+  return true;
+}
+
+/**
  * Check if a session exists for the given token.
  *
  * @param sessionKey - Device token to check
