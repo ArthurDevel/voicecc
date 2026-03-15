@@ -10,6 +10,7 @@
  */
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import Markdown from "react-markdown";
 import { post } from "../api";
 
 // ============================================================================
@@ -20,7 +21,7 @@ type ChatState = "pairing" | "connected" | "error";
 
 interface ChatMessage {
   id: string;
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "tool";
   content: string;
   timestamp: number;
   isStreaming: boolean;
@@ -52,13 +53,13 @@ export function Chat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
-  const [toolStatus, setToolStatus] = useState<string | null>(null);
 
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const deviceTokenRef = useRef(localStorage.getItem(DEVICE_TOKEN_KEY) || "");
   const agentIdRef = useRef("");
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const textInputRef = useRef<HTMLInputElement | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // ============================================================================
   // HELPER FUNCTIONS
@@ -180,7 +181,7 @@ export function Chat() {
   // Auto-scroll on new messages or tool status changes
   useEffect(() => {
     scrollToBottom();
-  }, [messages, toolStatus]);
+  }, [messages]);
 
   // Close session on unmount
   useEffect(() => {
@@ -201,6 +202,9 @@ export function Chat() {
   /**
    * Handle an incoming SSE event from the server.
    *
+   * Splits assistant text into separate messages around tool calls so
+   * the user sees: [text] [tool] [text] [tool] ... instead of one blob.
+   *
    * @param event - Parsed SSE event
    */
   const handleSseEvent = (event: SseEvent): void => {
@@ -212,7 +216,7 @@ export function Chat() {
           if (last && last.role === "assistant" && last.isStreaming) {
             return [...prev.slice(0, -1), { ...last, content: last.content + event.content }];
           }
-          // Create new assistant message
+          // Create new assistant message (after a tool call or at start)
           return [...prev, {
             id: generateId(),
             role: "assistant",
@@ -224,30 +228,50 @@ export function Chat() {
         break;
 
       case "tool_start":
-        setToolStatus(`Using ${event.toolName || "tool"}...`);
+        // Finalize current assistant message, then add a tool message
+        setMessages((prev) => {
+          const updated = [...prev];
+          const last = updated[updated.length - 1];
+          if (last && last.role === "assistant" && last.isStreaming) {
+            updated[updated.length - 1] = { ...last, isStreaming: false };
+          }
+          updated.push({
+            id: generateId(),
+            role: "tool",
+            content: event.toolName || "tool",
+            timestamp: Date.now(),
+            isStreaming: true,
+          });
+          return updated;
+        });
         break;
 
       case "tool_end":
-        setToolStatus(null);
+        // Mark the tool message as done
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          if (last && last.role === "tool" && last.isStreaming) {
+            return [...prev.slice(0, -1), { ...last, isStreaming: false }];
+          }
+          return prev;
+        });
         break;
 
       case "result":
-        // Finalize assistant message, re-enable input
+        // Finalize any remaining streaming message
         setMessages((prev) => {
           const last = prev[prev.length - 1];
-          if (last && last.role === "assistant" && last.isStreaming) {
+          if (last && last.isStreaming) {
             return [...prev.slice(0, -1), { ...last, isStreaming: false }];
           }
           return prev;
         });
         setIsStreaming(false);
-        setToolStatus(null);
         break;
 
       case "error":
         setError(event.content);
         setIsStreaming(false);
-        setToolStatus(null);
         break;
     }
   };
@@ -348,6 +372,9 @@ export function Chat() {
     setIsStreaming(true);
 
     try {
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+
       const response = await fetch("/api/chat/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -356,6 +383,7 @@ export function Chat() {
           agentId: agentIdRef.current || undefined,
           text: trimmed,
         }),
+        signal: controller.signal,
       });
 
       if (!response.ok) {
@@ -387,13 +415,46 @@ export function Chat() {
 
       // Safety net: ensure streaming is reset when the stream ends
       setIsStreaming(false);
-      setToolStatus(null);
+      abortControllerRef.current = null;
     } catch (err) {
+      // AbortError is expected when the user clicks stop
+      if ((err as Error).name === "AbortError") {
+        setIsStreaming(false);
+        abortControllerRef.current = null;
+        return;
+      }
       const msg = (err as Error).message || "Failed to send message";
       setError(msg);
       setIsStreaming(false);
-      setToolStatus(null);
+      abortControllerRef.current = null;
     }
+  };
+
+  /**
+   * Stop the current streaming response.
+   * Tells the server to interrupt Claude, then aborts the client-side fetch.
+   */
+  const handleStop = async (): Promise<void> => {
+    // Tell server to interrupt the Claude session
+    fetch("/api/chat/stop", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: deviceTokenRef.current }),
+    }).catch(() => { /* best effort */ });
+
+    // Abort the client-side SSE stream
+    abortControllerRef.current?.abort();
+
+    // Finalize the last assistant message so it doesn't stay in "streaming" state
+    setMessages((prev) => {
+      const last = prev[prev.length - 1];
+      if (last && last.role === "assistant" && last.isStreaming) {
+        return [...prev.slice(0, -1), { ...last, isStreaming: false }];
+      }
+      return prev;
+    });
+
+    setIsStreaming(false);
   };
 
   /** Handle form submission */
@@ -469,32 +530,48 @@ export function Chat() {
             Send a message to start the conversation.
           </div>
         )}
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            style={{
-              ...styles.messageBubbleWrapper,
-              justifyContent: msg.role === "user" ? "flex-end" : "flex-start",
-            }}
-          >
+        {messages.map((msg) => {
+          // Tool call messages render as a compact status line
+          if (msg.role === "tool") {
+            return (
+              <div key={msg.id} style={styles.messageBubbleWrapper}>
+                <div style={styles.toolBubble}>
+                  {msg.isStreaming ? `Using ${msg.content}...` : `Used ${msg.content}`}
+                </div>
+              </div>
+            );
+          }
+
+          return (
             <div
+              key={msg.id}
               style={{
-                ...styles.messageBubble,
-                ...(msg.role === "user" ? styles.userBubble : styles.assistantBubble),
+                ...styles.messageBubbleWrapper,
+                justifyContent: msg.role === "user" ? "flex-end" : "flex-start",
               }}
             >
-              <div style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
-                {msg.content}
-                {msg.isStreaming && <span style={styles.cursor}>|</span>}
+              <div
+                style={{
+                  ...styles.messageBubble,
+                  ...(msg.role === "user" ? styles.userBubble : styles.assistantBubble),
+                }}
+              >
+                <div style={{ wordBreak: "break-word" }}>
+                  {msg.role === "assistant" ? (
+                    <div className="chat-markdown">
+                      <Markdown>{msg.content}</Markdown>
+                      {msg.isStreaming && <span style={styles.cursor}>|</span>}
+                    </div>
+                  ) : (
+                    <div style={{ whiteSpace: "pre-wrap" }}>
+                      {msg.content}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-        ))}
-        {toolStatus && (
-          <div style={styles.messageBubbleWrapper}>
-            <div style={styles.toolStatus}>{toolStatus}</div>
-          </div>
-        )}
+          );
+        })}
         <div ref={messagesEndRef} />
       </div>
 
@@ -505,22 +582,32 @@ export function Chat() {
           type="text"
           value={inputText}
           onChange={(e) => setInputText(e.target.value)}
-          placeholder={isStreaming ? "Waiting for response..." : "Type a message..."}
-          disabled={isStreaming}
+          placeholder="Type a message..."
+          disabled={false}
           style={styles.textInput}
           autoFocus
         />
-        <button
-          type="submit"
-          disabled={isStreaming || !inputText.trim()}
-          style={{
-            ...styles.sendButton,
-            opacity: isStreaming || !inputText.trim() ? 0.5 : 1,
-            cursor: isStreaming || !inputText.trim() ? "not-allowed" : "pointer",
-          }}
-        >
-          Send
-        </button>
+        {isStreaming ? (
+          <button
+            type="button"
+            onClick={handleStop}
+            style={styles.stopButton}
+          >
+            Stop
+          </button>
+        ) : (
+          <button
+            type="submit"
+            disabled={!inputText.trim()}
+            style={{
+              ...styles.sendButton,
+              opacity: !inputText.trim() ? 0.5 : 1,
+              cursor: !inputText.trim() ? "not-allowed" : "pointer",
+            }}
+          >
+            Send
+          </button>
+        )}
       </form>
     </div>
   );
@@ -655,11 +742,14 @@ const styles: Record<string, React.CSSProperties> = {
     opacity: 0.5,
     animation: "blink 1s step-end infinite",
   },
-  toolStatus: {
+  toolBubble: {
     fontSize: 12,
     color: "var(--text-secondary)",
     fontStyle: "italic",
-    padding: "4px 0",
+    padding: "6px 12px",
+    background: "var(--bg-secondary)",
+    border: "1px dashed var(--border-color)",
+    borderRadius: 6,
   },
   inputBar: {
     display: "flex",
@@ -687,5 +777,15 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 0,
     fontWeight: 500,
     fontSize: 14,
+  },
+  stopButton: {
+    padding: "10px 20px",
+    background: "#d73a49",
+    color: "#ffffff",
+    border: "none",
+    borderRadius: 0,
+    fontWeight: 500,
+    fontSize: 14,
+    cursor: "pointer",
   },
 };

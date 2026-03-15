@@ -1156,6 +1156,107 @@ button.mcp-server-status.needs-auth:hover {
 }
 
 /* ============================================================================
+ * CHAT MARKDOWN (rendered assistant messages in Chat.tsx)
+ * ============================================================================ */
+
+.chat-markdown {
+  line-height: 1.7;
+  font-size: 14px;
+}
+
+.chat-markdown p {
+  margin: 0 0 12px;
+}
+
+.chat-markdown p:last-child {
+  margin-bottom: 0;
+}
+
+.chat-markdown h1,
+.chat-markdown h2,
+.chat-markdown h3 {
+  margin: 16px 0 8px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.chat-markdown h1 { font-size: 18px; }
+.chat-markdown h2 { font-size: 16px; }
+.chat-markdown h3 { font-size: 15px; }
+
+.chat-markdown h1:first-child,
+.chat-markdown h2:first-child,
+.chat-markdown h3:first-child {
+  margin-top: 0;
+}
+
+.chat-markdown ul,
+.chat-markdown ol {
+  margin: 0 0 12px;
+  padding-left: 20px;
+}
+
+.chat-markdown li {
+  margin-bottom: 4px;
+}
+
+.chat-markdown li:last-child {
+  margin-bottom: 0;
+}
+
+.chat-markdown code {
+  font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+  font-size: 12px;
+  background: var(--bg-main);
+  padding: 2px 6px;
+  border-radius: 3px;
+  border: 1px solid var(--border-color);
+}
+
+.chat-markdown pre {
+  margin: 8px 0 12px;
+  padding: 12px 14px;
+  background: var(--bg-main);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  overflow-x: auto;
+}
+
+.chat-markdown pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.chat-markdown blockquote {
+  margin: 8px 0 12px;
+  padding: 4px 12px;
+  border-left: 3px solid var(--border-color);
+  color: var(--text-secondary);
+}
+
+.chat-markdown hr {
+  border: none;
+  border-top: 1px solid var(--border-color);
+  margin: 12px 0;
+}
+
+.chat-markdown a {
+  color: var(--accent-color);
+  text-decoration: none;
+}
+
+.chat-markdown a:hover {
+  text-decoration: underline;
+}
+
+.chat-markdown strong {
+  font-weight: 600;
+}
+
+/* ============================================================================
  * CONVERSATION VIEW
  * ============================================================================ */
 
