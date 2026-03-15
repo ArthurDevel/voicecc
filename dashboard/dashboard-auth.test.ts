@@ -64,4 +64,25 @@ describe("dashboard password protection", () => {
     });
     assert.equal(res.status, 200);
   });
+
+  test("password set, /chat bypasses basic auth", async () => {
+    process.env.DASHBOARD_PASSWORD = TEST_PASSWORD;
+    const app = createApp();
+    const res = await app.request("/chat");
+    assert.notEqual(res.status, 401);
+  });
+
+  test("password set, /api/chat/* bypasses basic auth", async () => {
+    process.env.DASHBOARD_PASSWORD = TEST_PASSWORD;
+    const app = createApp();
+    const res = await app.request("/api/chat/send", { method: "POST" });
+    assert.notEqual(res.status, 401);
+  });
+
+  test("password set, /api/webrtc/* bypasses basic auth", async () => {
+    process.env.DASHBOARD_PASSWORD = TEST_PASSWORD;
+    const app = createApp();
+    const res = await app.request("/api/webrtc/validate");
+    assert.notEqual(res.status, 401);
+  });
 });

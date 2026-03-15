@@ -51,10 +51,19 @@ const USER_CLAUDE_MD_PATH = join(homedir(), ".claude", "CLAUDE.md");
 export function createApp(): Hono {
   const app = new Hono();
 
-  // Dashboard password protection (HTTP Basic Auth)
+  // Dashboard password protection (HTTP Basic Auth).
+  // Exclude /chat and /api/chat/* -- those use device-token auth and opening
+  // them in a new tab can corrupt the browser's cached Basic Auth credentials.
   const dashboardPassword = process.env.DASHBOARD_PASSWORD;
   if (dashboardPassword) {
-    app.use("*", basicAuth({ username: "admin", password: dashboardPassword }));
+    const auth = basicAuth({ username: "admin", password: dashboardPassword });
+    app.use("*", async (c, next) => {
+      const path = c.req.path;
+      if (path === "/chat" || path.startsWith("/api/chat/") || path.startsWith("/api/webrtc/")) {
+        return next();
+      }
+      return auth(c, next);
+    });
   }
 
   // API route groups
