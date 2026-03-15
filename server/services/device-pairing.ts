@@ -47,6 +47,7 @@ export interface PairingValidation {
 
 const PAIRING_CODE_TTL_MS = 5 * 60 * 1000;
 const PAIRING_MAX_ATTEMPTS = 5;
+const DEVICE_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 const DEVICE_TOKENS_PATH = join(process.cwd(), ".device-tokens.json");
 
 // ============================================================================
@@ -141,7 +142,14 @@ export function isPairingCodeActive(code: string): boolean {
 }
 
 export function isValidDeviceToken(token: string): boolean {
-  return deviceTokens.has(token);
+  const info = deviceTokens.get(token);
+  if (!info) return false;
+  if (Date.now() - info.pairedAt > DEVICE_TOKEN_TTL_MS) {
+    deviceTokens.delete(token);
+    saveDeviceTokens().catch(() => {});
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -151,9 +159,17 @@ export function isValidDeviceToken(token: string): boolean {
 export async function loadDeviceTokens(): Promise<void> {
   try {
     const data = JSON.parse(await readFile(DEVICE_TOKENS_PATH, "utf-8"));
+    const now = Date.now();
+    let pruned = false;
     for (const [token, info] of Object.entries(data)) {
-      deviceTokens.set(token, info as DeviceTokenInfo);
+      const typed = info as DeviceTokenInfo;
+      if (now - typed.pairedAt > DEVICE_TOKEN_TTL_MS) {
+        pruned = true;
+      } else {
+        deviceTokens.set(token, typed);
+      }
     }
+    if (pruned) saveDeviceTokens().catch(() => {});
   } catch {
     // File doesn't exist or is invalid -- start fresh
   }
