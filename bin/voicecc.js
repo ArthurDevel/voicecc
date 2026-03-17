@@ -740,6 +740,15 @@ if (!commandExists("claude")) {
 // Runs on every start but skips pip install if requirements.txt hasn't changed.
 ensurePythonVenv();
 
+// Hard check: verify the venv actually exists after setup
+const expectedVenvPython = join(PKG_ROOT, "voice-server", ".venv", "bin", "python");
+if (!existsSync(expectedVenvPython)) {
+  console.error(`ERROR: Python venv not found at ${expectedVenvPython}`);
+  console.error("The voice-server directory or its venv is missing from the installation.");
+  console.error("Try reinstalling: npm install -g voicecc");
+  process.exit(1);
+}
+
 // If already running, show info and exit
 if (isRunning()) {
   showInfo();
