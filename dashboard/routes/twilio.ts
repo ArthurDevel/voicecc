@@ -1,11 +1,16 @@
 /**
- * Twilio PSTN server management API routes.
+ * Twilio PSTN server management and webhook proxy API routes.
  *
- * Manages the Twilio voice server lifecycle for PSTN phone calls:
+ * Manages the Twilio integration lifecycle and proxies Twilio webhooks
+ * to the Python voice server. Keeps Twilio signature validation in Node.js.
+ *
+ * Responsibilities:
  * - GET /status -- server running state and tunnel URL
- * - POST /start -- start twilio server (requires tunnel)
- * - POST /stop -- stop twilio server
+ * - POST /start -- start twilio integration (requires tunnel)
+ * - POST /stop -- stop twilio integration
  * - GET /phone-numbers -- fetch phone numbers from Twilio API
+ * - POST /test-call -- place a test call
+ * - GET /heartbeat/status -- proxy heartbeat status from Python server
  */
 
 import { Hono } from "hono";
@@ -13,6 +18,13 @@ import twilioSdk from "twilio";
 import { readEnv } from "../../server/services/env.js";
 import { startTwilioServer, stopTwilioServer, getStatus } from "../../server/services/twilio-manager.js";
 import { getTunnelUrl, isTunnelRunning } from "../../server/services/tunnel.js";
+
+// ============================================================================
+// CONSTANTS
+// ============================================================================
+
+/** Base URL for the Python FastAPI server */
+const VOICE_API_URL = process.env.VOICE_SERVER_URL ?? "http://localhost:7861";
 
 // ============================================================================
 // STATE
@@ -38,7 +50,7 @@ export function setDashboardPort(port: number): void {
 /**
  * Create Hono route group for Twilio operations.
  *
- * @returns Hono instance with status, start, stop, phone-numbers routes
+ * @returns Hono instance with status, start, stop, phone-numbers, webhook proxy routes
  */
 export function twilioRoutes(): Hono {
   const app = new Hono();
@@ -143,5 +155,92 @@ export function twilioRoutes(): Hono {
     }
   });
 
+  /**
+   * Proxy Twilio incoming-call webhook to the Python server.
+   * Validates Twilio signature in Node.js before forwarding.
+   */
+  app.post("/incoming-call", async (c) => {
+    const envVars = await readEnv();
+    const authToken = envVars.TWILIO_AUTH_TOKEN;
+    const tunnelUrl = getTunnelUrl();
+
+    if (!authToken) {
+      console.log("[twilio] Rejected incoming call: TWILIO_AUTH_TOKEN not set");
+      return c.text("Server misconfigured", 500);
+    }
+
+    if (!tunnelUrl) {
+      console.log("[twilio] Rejected incoming call: no tunnel URL available");
+      return c.text("Server misconfigured", 500);
+    }
+
+    // Validate Twilio signature
+    const rawBody = await c.req.text();
+    const params = parseUrlEncodedBody(rawBody);
+    const webhookUrl = tunnelUrl.replace(/\/$/, "") + c.req.path;
+    const signature = c.req.header("x-twilio-signature") ?? "";
+
+    if (!signature || !twilioSdk.validateRequest(authToken, signature, webhookUrl, params)) {
+      console.log("[twilio] Rejected incoming call: invalid Twilio signature");
+      return c.text("Forbidden", 403);
+    }
+
+    // Proxy to Python server
+    try {
+      const response = await fetch(`${VOICE_API_URL}/twilio/incoming-call`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: rawBody,
+      });
+
+      const responseText = await response.text();
+      return new Response(responseText, {
+        status: response.status,
+        headers: { "Content-Type": response.headers.get("content-type") ?? "text/xml" },
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Proxy error";
+      console.error(`[twilio] Error proxying incoming-call: ${message}`);
+      return c.text("Voice server unavailable", 502);
+    }
+  });
+
+  /** Proxy heartbeat status from the Python server */
+  app.get("/heartbeat/status", async (c) => {
+    try {
+      const response = await fetch(`${VOICE_API_URL}/heartbeat/status`);
+      const data = await response.json();
+      return c.json(data);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Proxy error";
+      console.error(`[twilio] Error proxying heartbeat status: ${message}`);
+      return c.json({ error: "Voice server unavailable" }, 502);
+    }
+  });
+
   return app;
+}
+
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+/**
+ * Parse a URL-encoded POST body into a key-value record.
+ *
+ * @param body - URL-encoded string
+ * @returns Record of decoded key-value pairs
+ */
+function parseUrlEncodedBody(body: string): Record<string, string> {
+  const params: Record<string, string> = {};
+  if (!body) return params;
+
+  for (const pair of body.split("&")) {
+    const [key, value] = pair.split("=");
+    if (key) {
+      params[decodeURIComponent(key)] = decodeURIComponent(value ?? "");
+    }
+  }
+
+  return params;
 }

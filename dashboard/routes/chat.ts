@@ -1,19 +1,25 @@
 /**
- * Hono routes for text chat with agents via SSE.
+ * Hono routes for text chat -- proxied to the Python voice server.
  *
- * Thin route layer that delegates to the chat session manager in
- * server/voice/chat-server.ts. Handles request parsing, token validation,
- * and SSE streaming.
+ * Validates device tokens in Node.js, then proxies chat requests to the
+ * Python server's /chat/* endpoints. The Python server manages Claude
+ * sessions and streams responses.
  *
- * - POST /send: sends a message, streams response as SSE
- * - POST /close: explicitly closes a session
+ * - POST /send: proxies to Python /chat/send, returns SSE stream
+ * - POST /stop: proxies to Python /chat/stop
+ * - POST /close: proxies to Python /chat/close
  */
 
 import { Hono } from "hono";
-import { streamSSE } from "hono/streaming";
 
-import { getOrCreateSession, streamMessage, closeSession, interruptSession, hasSession } from "../../server/voice/chat-server.js";
 import { isValidDeviceToken } from "../../server/services/device-pairing.js";
+
+// ============================================================================
+// CONSTANTS
+// ============================================================================
+
+/** Base URL for the Python FastAPI server */
+const VOICE_SERVER_URL = process.env.VOICE_SERVER_URL ?? "http://localhost:7861";
 
 // ============================================================================
 // TYPES
@@ -26,8 +32,8 @@ interface ChatSendBody {
   text: string;
 }
 
-/** Request body for POST /close */
-interface ChatCloseBody {
+/** Request body for POST /stop and /close */
+interface ChatTokenBody {
   token: string;
 }
 
@@ -37,13 +43,14 @@ interface ChatCloseBody {
 
 /**
  * Create Hono route group for text chat.
+ * Validates auth, then proxies to the Python server.
  *
- * @returns Hono instance with /send and /close routes
+ * @returns Hono instance with /send, /stop, and /close routes
  */
 export function chatRoutes(): Hono {
   const app = new Hono();
 
-  /** POST /send - send a message and stream Claude's response as SSE */
+  /** POST /send - proxy to Python /chat/send, return SSE stream */
   app.post("/send", async (c) => {
     let body: ChatSendBody;
     try {
@@ -52,7 +59,6 @@ export function chatRoutes(): Hono {
       return c.json({ error: "Invalid JSON body" }, 400);
     }
 
-    // Validate required fields
     if (!body.text || typeof body.text !== "string" || !body.text.trim()) {
       return c.json({ error: "Missing or empty 'text' field" }, 400);
     }
@@ -60,7 +66,7 @@ export function chatRoutes(): Hono {
       return c.json({ error: "Missing 'token' field" }, 400);
     }
 
-    // Validate device token (localhost bypass via x-forwarded-for header set by voice-server proxy)
+    // Validate device token (localhost bypass via x-forwarded-for)
     const forwarded = c.req.header("x-forwarded-for") ?? "";
     const isLocalhost = forwarded === "127.0.0.1";
 
@@ -68,78 +74,92 @@ export function chatRoutes(): Hono {
       return c.json({ error: "Invalid device token" }, 401);
     }
 
-    const sessionKey = body.token;
-    const text = body.text.trim();
-
-    // Get or create session
+    // Proxy to Python server
     try {
-      await getOrCreateSession(sessionKey, body.agentId);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to create session";
-      console.error(`Failed to create chat session for token ${sessionKey}:`, err);
-      return c.json({ error: msg }, 503);
-    }
-
-    // Stream response as SSE
-    try {
-      const generator = streamMessage(sessionKey, text);
-
-      return streamSSE(c, async (stream) => {
-        for await (const event of generator) {
-          await stream.writeSSE({ data: JSON.stringify(event) });
-        }
+      const response = await fetch(`${VOICE_SERVER_URL}/chat/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session_key: body.token,
+          agent_id: body.agentId,
+          text: body.text.trim(),
+        }),
       });
-    } catch (err) {
-      // streamMessage throws "ALREADY_STREAMING" if concurrent
-      if (err instanceof Error && err.message === "ALREADY_STREAMING") {
-        return c.json({ error: "Already streaming a response. Wait for it to complete." }, 409);
+
+      if (!response.ok && !response.headers.get("content-type")?.includes("text/event-stream")) {
+        const errorData = await response.json().catch(() => ({ error: "Voice server error" }));
+        return c.json(errorData, response.status as 400 | 409 | 500 | 503);
       }
-      const msg = err instanceof Error ? err.message : "Stream error";
-      return c.json({ error: msg }, 500);
-    }
-  });
 
-  /** POST /stop - interrupt the current streaming response */
-  app.post("/stop", async (c) => {
-    let body: ChatCloseBody;
-    try {
-      body = await c.req.json<ChatCloseBody>();
-    } catch {
-      return c.json({ error: "Invalid JSON body" }, 400);
-    }
+      // Forward the SSE stream
+      const headers = new Headers();
+      headers.set("Content-Type", "text/event-stream");
+      headers.set("Cache-Control", "no-cache");
+      headers.set("Connection", "keep-alive");
 
-    if (!body.token || typeof body.token !== "string") {
-      return c.json({ error: "Missing 'token' field" }, 400);
-    }
-
-    const interrupted = interruptSession(body.token);
-    return c.json({ ok: true, interrupted });
-  });
-
-  /** POST /close - explicitly close a chat session */
-  app.post("/close", async (c) => {
-    let body: ChatCloseBody;
-    try {
-      body = await c.req.json<ChatCloseBody>();
-    } catch {
-      return c.json({ error: "Invalid JSON body" }, 400);
-    }
-
-    if (!body.token || typeof body.token !== "string") {
-      return c.json({ error: "Missing 'token' field" }, 400);
-    }
-
-    if (!hasSession(body.token)) {
-      return c.json({ ok: true, message: "No active session" });
-    }
-
-    try {
-      await closeSession(body.token);
-      return c.json({ ok: true });
+      return new Response(response.body, { status: 200, headers });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to close session";
-      console.error(`Error closing chat session for token ${body.token}:`, err);
-      return c.json({ error: msg }, 500);
+      const msg = err instanceof Error ? err.message : "Voice server unavailable";
+      console.error(`[chat-proxy] Error proxying /chat/send: ${msg}`);
+      return c.json({ error: "Voice server unavailable" }, 502);
+    }
+  });
+
+  /** POST /stop - proxy to Python /chat/stop */
+  app.post("/stop", async (c) => {
+    let body: ChatTokenBody;
+    try {
+      body = await c.req.json<ChatTokenBody>();
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+
+    if (!body.token || typeof body.token !== "string") {
+      return c.json({ error: "Missing 'token' field" }, 400);
+    }
+
+    try {
+      const response = await fetch(`${VOICE_SERVER_URL}/chat/stop`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_key: body.token }),
+      });
+
+      const data = await response.json();
+      return c.json(data, response.status as 200);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Voice server unavailable";
+      console.error(`[chat-proxy] Error proxying /chat/stop: ${msg}`);
+      return c.json({ error: "Voice server unavailable" }, 502);
+    }
+  });
+
+  /** POST /close - proxy to Python /chat/close */
+  app.post("/close", async (c) => {
+    let body: ChatTokenBody;
+    try {
+      body = await c.req.json<ChatTokenBody>();
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+
+    if (!body.token || typeof body.token !== "string") {
+      return c.json({ error: "Missing 'token' field" }, 400);
+    }
+
+    try {
+      const response = await fetch(`${VOICE_SERVER_URL}/chat/close`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_key: body.token }),
+      });
+
+      const data = await response.json();
+      return c.json(data, response.status as 200);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Voice server unavailable";
+      console.error(`[chat-proxy] Error proxying /chat/close: ${msg}`);
+      return c.json({ error: "Voice server unavailable" }, 502);
     }
   });
 

@@ -8,7 +8,22 @@
  * - Auto-start Twilio if enabled (requires tunnel)
  */
 
-import { writeFileSync, unlinkSync, mkdirSync } from "node:fs";
+// Global error handlers -- must be registered before any async work to prevent
+// silent crashes from unhandled promise rejections or uncaught exceptions.
+process.on("uncaughtException", (err) => {
+  console.error("[FATAL] Uncaught exception:", err);
+  console.error(err.stack ?? "(no stack trace)");
+});
+
+process.on("unhandledRejection", (reason) => {
+  console.error("[FATAL] Unhandled rejection:", reason);
+  if (reason instanceof Error) {
+    console.error(reason.stack ?? "(no stack trace)");
+  }
+});
+
+import { writeFileSync, unlinkSync, mkdirSync, existsSync } from "node:fs";
+import { spawn, type ChildProcess } from "node:child_process";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { config } from "dotenv";
@@ -18,8 +33,64 @@ import { startDashboard } from "../dashboard/server.js";
 import { readEnv } from "./services/env.js";
 import { startTunnel, stopTunnel, isTunnelRunning, getTunnelUrl } from "./services/tunnel.js";
 import { startTwilioServer } from "./services/twilio-manager.js";
-import { startHeartbeat } from "./services/heartbeat.js";
-import { startVoiceServer } from "./voice/voice-server.js";
+
+/** Base URL for the Python FastAPI server (for tunnel URL notification) */
+const VOICE_SERVER_API_URL = process.env.VOICE_SERVER_URL ?? "http://localhost:7861";
+
+/** Path to the Python voice server directory */
+const VOICE_SERVER_DIR = join(import.meta.dirname ?? ".", "..", "voice-server");
+
+/** Reference to the Python voice server child process */
+let pythonProcess: ChildProcess | null = null;
+
+/**
+ * Start the Python voice server as a child process.
+ * Waits for the health endpoint to respond before returning.
+ */
+async function startPythonVoiceServer(): Promise<void> {
+  const venvPython = join(VOICE_SERVER_DIR, ".venv", "bin", "python");
+  if (!existsSync(venvPython)) {
+    console.warn(`Python venv not found at ${venvPython} -- voice server will not start`);
+    return;
+  }
+
+  console.log("Starting Python voice server...");
+  pythonProcess = spawn(venvPython, ["server.py"], {
+    cwd: VOICE_SERVER_DIR,
+    stdio: ["ignore", "inherit", "inherit"],
+  });
+
+  pythonProcess.on("exit", (code) => {
+    console.error(`Python voice server exited with code ${code}`);
+    pythonProcess = null;
+  });
+
+  // Wait for health endpoint (up to 15s)
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(`${VOICE_SERVER_API_URL}/health`);
+      if (res.ok) {
+        console.log("Python voice server is ready");
+        return;
+      }
+    } catch {
+      // Not ready yet
+    }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  console.warn("Python voice server did not become healthy within 15s -- continuing anyway");
+}
+
+/**
+ * Stop the Python voice server child process.
+ */
+function stopPythonVoiceServer(): void {
+  if (pythonProcess) {
+    pythonProcess.kill("SIGTERM");
+    pythonProcess = null;
+  }
+}
 
 // Use VOICECC_DIR env var if set (passed by CLI when dropping root privileges),
 // otherwise fall back to ~/.voicecc.
@@ -64,20 +135,36 @@ function cleanupStatusFile(): void {
 
 async function main(): Promise<void> {
   const dashboardPort = await startDashboard();
-  const voicePort = await startVoiceServer(dashboardPort);
 
-  startHeartbeat();
+  // Start the Python voice server (voice pipeline + text chat + heartbeat)
+  await startPythonVoiceServer();
 
   const envVars = await readEnv();
 
   // Write status file early so the CLI can show dashboard info while tunnel starts
   writeStatusFile(dashboardPort, null);
 
-  // Auto-start tunnel if enabled (independent of integrations)
+  // Auto-start tunnel if enabled -- tunnel now points at dashboard port
+  // so all external traffic goes through dashboard auth
   if (envVars.TUNNEL_ENABLED === "true") {
     try {
-      await startTunnel(voicePort);
-      writeStatusFile(dashboardPort, getTunnelUrl());
+      await startTunnel(dashboardPort);
+      const tunnelUrl = getTunnelUrl();
+      writeStatusFile(dashboardPort, tunnelUrl);
+
+      // Notify Python server of the tunnel URL so it can build TwiML URLs
+      if (tunnelUrl) {
+        try {
+          await fetch(`${VOICE_SERVER_API_URL}/config/tunnel-url`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url: tunnelUrl }),
+          });
+          console.log(`Notified Python server of tunnel URL: ${tunnelUrl}`);
+        } catch (notifyErr) {
+          console.warn(`Failed to notify Python server of tunnel URL: ${notifyErr}`);
+        }
+      }
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
       console.error(`Tunnel auto-start failed: ${errorMsg}`);
@@ -101,6 +188,7 @@ async function main(): Promise<void> {
 
   // Graceful shutdown: stop tunnel subprocess, then clean up status file
   const shutdown = () => {
+    stopPythonVoiceServer();
     stopTunnel();
     cleanupStatusFile();
     process.exit(0);

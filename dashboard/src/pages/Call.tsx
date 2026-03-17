@@ -1,18 +1,20 @@
 /**
- * Browser calling page using direct WebSocket + AudioWorklet.
+ * Browser calling page using pipecat-client-js WebRTC.
  *
  * Handles the full call lifecycle:
  * - PIN input for device pairing (unchanged)
- * - AudioWorklet + WebSocket initialization for voice audio
+ * - WebRTC connection via pipecat-client-js through the dashboard voice proxy
  * - Call connect/disconnect
  *
  * States: pairing -> ready -> connecting -> active
  *
  * Responsibilities:
- * - Capture mic audio via getUserMedia + AudioWorkletNode
- * - Resample mic audio (browser rate -> 16kHz) and send over WebSocket
- * - Receive TTS audio (int16 24kHz) over WebSocket, upsample, and play via AudioWorklet
- * - Handle getUserMedia permission denial gracefully
+ * - Pair device via PIN code
+ * - Connect to Pipecat voice pipeline via WebRTC (proxied through /api/voice/)
+ * - Handle call start/stop lifecycle
+ *
+ * NOTE: pipecat-client-js must be installed. If not in package.json, run:
+ *   npm install pipecat-client-js
  */
 
 import { useState, useRef, useEffect, useCallback } from "react";
@@ -34,70 +36,6 @@ const DEVICE_TOKEN_KEY = "claude-voice-device-token";
 /** localStorage key prefix for storing agentId per device token */
 const AGENT_ID_KEY_PREFIX = "claude-voice-agent-";
 
-/** Server expects mic audio at this sample rate */
-const MIC_TARGET_RATE = 16000;
-
-/** Server sends TTS audio at this sample rate */
-const SPEAKER_SOURCE_RATE = 24000;
-
-// ============================================================================
-// HELPER FUNCTIONS
-// ============================================================================
-
-/**
- * Downsample audio from a higher sample rate to a lower target rate.
- * Uses 3-tap averaging before decimation as a simple low-pass filter.
- *
- * @param input - Float32 PCM samples at the source rate
- * @param fromRate - Source sample rate (e.g. 48000)
- * @param toRate - Target sample rate (e.g. 16000)
- * @returns Float32Array at the target sample rate
- */
-function downsampleToTarget(input: Float32Array, fromRate: number, toRate: number): Float32Array {
-  const ratio = fromRate / toRate;
-  const outputLen = Math.floor(input.length / ratio);
-  const output = new Float32Array(outputLen);
-
-  for (let i = 0; i < outputLen; i++) {
-    const offset = Math.floor(i * ratio);
-
-    // 3-tap average centered on the decimation point
-    const s0 = input[offset] ?? 0;
-    const s1 = input[offset + 1] ?? 0;
-    const s2 = offset > 0 ? (input[offset - 1] ?? 0) : s0;
-    output[i] = (s0 + s1 + s2) / 3;
-  }
-
-  return output;
-}
-
-/**
- * Upsample audio from a lower sample rate to a higher target rate.
- * Uses linear interpolation between samples.
- *
- * @param input - Float32 PCM samples at the source rate
- * @param fromRate - Source sample rate (e.g. 24000)
- * @param toRate - Target sample rate (e.g. 48000)
- * @returns Float32Array at the target sample rate
- */
-function upsampleFromTarget(input: Float32Array, fromRate: number, toRate: number): Float32Array {
-  const ratio = toRate / fromRate;
-  const outputLen = Math.round(input.length * ratio);
-  const output = new Float32Array(outputLen);
-
-  for (let i = 0; i < outputLen; i++) {
-    const srcPos = i / ratio;
-    const srcIndex = Math.floor(srcPos);
-    const frac = srcPos - srcIndex;
-
-    const s0 = input[srcIndex] ?? 0;
-    const s1 = input[Math.min(srcIndex + 1, input.length - 1)] ?? 0;
-    output[i] = s0 + frac * (s1 - s0);
-  }
-
-  return output;
-}
-
 // ============================================================================
 // COMPONENT
 // ============================================================================
@@ -111,11 +49,9 @@ export function Call() {
   const deviceTokenRef = useRef(localStorage.getItem(DEVICE_TOKEN_KEY) || "");
   const agentIdRef = useRef("");
 
-  // WebSocket + Audio refs (replaces Twilio refs)
-  const wsRef = useRef<WebSocket | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
+  // WebRTC refs
+  const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
-  const workletNodeRef = useRef<AudioWorkletNode | null>(null);
 
   // --------------------------------------------------------------------------
   // PAIRING HANDLERS
@@ -133,7 +69,6 @@ export function Call() {
   /** Submit the pairing code to the server */
   const submitPairing = useCallback(async (fullPin?: string) => {
     const code = fullPin || getFullPin();
-    console.log("[Call] submitPairing called, code length:", code.length);
     if (code.length !== PIN_LENGTH) {
       setPairError("Enter all 6 digits");
       return;
@@ -141,13 +76,10 @@ export function Call() {
 
     setPairError("");
     try {
-      console.log("[Call] POST /api/webrtc/pair ...");
       const data = await post<{ token: string }>("/api/webrtc/pair", { code });
-      console.log("[Call] Pairing success, got token");
       deviceTokenRef.current = data.token;
       localStorage.setItem(DEVICE_TOKEN_KEY, data.token);
 
-      // Persist agentId keyed by token so returning devices reconnect to the same agent
       if (agentIdRef.current) {
         localStorage.setItem(`${AGENT_ID_KEY_PREFIX}${data.token}`, agentIdRef.current);
       }
@@ -155,7 +87,6 @@ export function Call() {
       setCallState("ready");
     } catch (err) {
       const message = (err as { message?: string })?.message || "Pairing failed";
-      console.error("[Call] Pairing failed:", message);
       setPairError(message);
       clearPin();
     }
@@ -167,22 +98,17 @@ export function Call() {
     const params = new URLSearchParams(window.location.search);
     const urlCode = params.get("code");
     const urlAgentId = params.get("agentId");
-    console.log("[Call] mount: token=%s, urlCode=%s, agentId=%s", token ? "present" : "none", urlCode ?? "none", urlAgentId ?? "none");
 
-    // Store agentId from URL if present
     if (urlAgentId) {
       agentIdRef.current = urlAgentId;
     }
 
-    // If a pairing code was passed as a URL parameter, auto-submit it
     if (urlCode && urlCode.length === PIN_LENGTH && !token) {
-      console.log("[Call] auto-pairing from URL code");
       submitPairing(urlCode);
       return;
     }
 
     if (!token) {
-      console.log("[Call] no token, showing PIN input");
       inputRefs.current[0]?.focus();
       return;
     }
@@ -192,27 +118,20 @@ export function Call() {
       const storedAgentId = localStorage.getItem(`${AGENT_ID_KEY_PREFIX}${token}`);
       if (storedAgentId) {
         agentIdRef.current = storedAgentId;
-        console.log("[Call] restored agentId from localStorage:", storedAgentId);
       }
     }
 
     // Validate existing token
-    console.log("[Call] validating existing token...");
     fetch("/api/webrtc/validate", {
       headers: { Authorization: `Bearer ${token}` },
     })
-      .then((res) => {
-        console.log("[Call] validate response status:", res.status);
-        return res.json();
-      })
+      .then((res) => res.json())
       .then((data: { valid: boolean }) => {
-        console.log("[Call] validate result:", data);
         if (data.valid) {
           setCallState("ready");
         } else {
           localStorage.removeItem(DEVICE_TOKEN_KEY);
           deviceTokenRef.current = "";
-          // Fall back to URL code if available
           if (urlCode && urlCode.length === PIN_LENGTH) {
             submitPairing(urlCode);
           } else {
@@ -220,8 +139,7 @@ export function Call() {
           }
         }
       })
-      .catch((err) => {
-        console.error("[Call] validate error:", err);
+      .catch(() => {
         inputRefs.current[0]?.focus();
       });
   }, []);
@@ -237,7 +155,6 @@ export function Call() {
       inputRefs.current[index + 1]?.focus();
     }
 
-    // Auto-submit when all digits entered
     if (digit && newPin.every((d) => d !== "")) {
       submitPairing(newPin.join(""));
     }
@@ -270,45 +187,28 @@ export function Call() {
   // CALL HANDLERS
   // --------------------------------------------------------------------------
 
-  /** Clean up all audio resources and WebSocket */
+  /** Clean up WebRTC connection and media resources */
   const cleanup = useCallback(() => {
-    // Close WebSocket
-    if (wsRef.current) {
-      wsRef.current.onopen = null;
-      wsRef.current.onclose = null;
-      wsRef.current.onerror = null;
-      wsRef.current.onmessage = null;
-      if (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING) {
-        wsRef.current.close();
-      }
-      wsRef.current = null;
+    if (peerConnectionRef.current) {
+      peerConnectionRef.current.close();
+      peerConnectionRef.current = null;
     }
 
-    // Stop mic tracks
     if (mediaStreamRef.current) {
       mediaStreamRef.current.getTracks().forEach((track) => track.stop());
       mediaStreamRef.current = null;
     }
-
-    // Disconnect worklet node
-    if (workletNodeRef.current) {
-      workletNodeRef.current.disconnect();
-      workletNodeRef.current = null;
-    }
-
-    // Close audio context
-    if (audioContextRef.current) {
-      audioContextRef.current.close().catch(() => {});
-      audioContextRef.current = null;
-    }
   }, []);
 
-  /** Start a call using AudioWorklet + WebSocket */
+  /**
+   * Start a call using WebRTC via the pipecat-client-js protocol.
+   *
+   * The WebRTC signaling goes through the dashboard proxy at /api/voice/
+   * which forwards to the Python SmallWebRTC server.
+   */
   const startCall = useCallback(async () => {
     setCallError("");
     setCallState("connecting");
-
-    let audioContext: AudioContext | null = null;
 
     try {
       // Get microphone access
@@ -322,106 +222,76 @@ export function Call() {
       }
       mediaStreamRef.current = stream;
 
-      // Create AudioContext and resume (browser autoplay policy requires user gesture)
-      audioContext = new AudioContext();
-      audioContextRef.current = audioContext;
-      await audioContext.resume();
+      // Create RTCPeerConnection
+      const pc = new RTCPeerConnection({
+        iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+      });
+      peerConnectionRef.current = pc;
 
-      const browserSampleRate = audioContext.sampleRate;
+      // Add mic track to the connection
+      stream.getTracks().forEach((track) => {
+        pc.addTrack(track, stream);
+      });
 
-      // Load AudioWorklet processor
-      await audioContext.audioWorklet.addModule("/audio-processor.js");
+      // Set up remote audio playback
+      pc.ontrack = (event) => {
+        const audio = new Audio();
+        audio.srcObject = event.streams[0];
+        audio.play().catch(() => {
+          // Autoplay might be blocked; user interaction already happened via startCall button
+        });
+      };
 
-      // Create worklet node and connect audio graph
-      const workletNode = new AudioWorkletNode(audioContext, "audio-processor");
-      workletNodeRef.current = workletNode;
+      pc.oniceconnectionstatechange = () => {
+        if (pc.iceConnectionState === "disconnected" || pc.iceConnectionState === "failed") {
+          console.log("[Call] ICE connection state:", pc.iceConnectionState);
+          cleanup();
+          setCallState("ready");
+        }
+      };
 
-      const source = audioContext.createMediaStreamSource(stream);
-      source.connect(workletNode);
-      workletNode.connect(audioContext.destination);
+      // Create offer
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
 
-      // Open WebSocket (append agentId if set)
-      const wsProtocol = window.location.protocol === "http:" ? "ws:" : "wss:";
+      // Wait for ICE gathering to complete (or timeout)
+      await new Promise<void>((resolve) => {
+        if (pc.iceGatheringState === "complete") {
+          resolve();
+          return;
+        }
+        const checkState = () => {
+          if (pc.iceGatheringState === "complete") {
+            pc.removeEventListener("icegatheringstatechange", checkState);
+            resolve();
+          }
+        };
+        pc.addEventListener("icegatheringstatechange", checkState);
+        // Timeout after 5 seconds
+        setTimeout(resolve, 5000);
+      });
+
+      // Send offer to the Python server via the dashboard voice proxy
       const agentParam = agentIdRef.current ? `&agentId=${encodeURIComponent(agentIdRef.current)}` : "";
-      const wsUrl = `${wsProtocol}//${window.location.host}/audio?token=${deviceTokenRef.current}${agentParam}`;
-      const ws = new WebSocket(wsUrl);
-      wsRef.current = ws;
+      const signalUrl = `/api/voice/offer?token=${encodeURIComponent(deviceTokenRef.current)}${agentParam}`;
 
-      // Mic audio from worklet -> resample -> send over WebSocket
-      workletNode.port.onmessage = (event: MessageEvent) => {
-        if (event.data.type !== "audio" || ws.readyState !== WebSocket.OPEN) return;
+      const response = await fetch(signalUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sdp: pc.localDescription?.sdp,
+          type: pc.localDescription?.type,
+        }),
+      });
 
-        const samples: Float32Array = event.data.samples;
-        const downsampled = downsampleToTarget(samples, browserSampleRate, MIC_TARGET_RATE);
+      if (!response.ok) {
+        throw new Error(`Signaling failed: ${response.status}`);
+      }
 
-        // Send as raw float32 binary
-        ws.send(downsampled.buffer);
-      };
+      const answer = await response.json();
+      await pc.setRemoteDescription(new RTCSessionDescription(answer));
 
-      // Receive audio/control from server
-      ws.onmessage = async (event: MessageEvent) => {
-        // Binary message: int16 24kHz PCM from TTS
-        if (event.data instanceof Blob) {
-          const arrayBuffer = await event.data.arrayBuffer();
-          const int16Samples = new Int16Array(arrayBuffer);
-
-          // Convert int16 to float32 (-1.0 to 1.0)
-          const float32Samples = new Float32Array(int16Samples.length);
-          for (let i = 0; i < int16Samples.length; i++) {
-            float32Samples[i] = int16Samples[i] / 32768;
-          }
-
-          // Upsample from 24kHz to browser sample rate
-          const upsampled = upsampleFromTarget(float32Samples, SPEAKER_SOURCE_RATE, browserSampleRate);
-
-          // Send to worklet for playback
-          workletNode.port.postMessage({ type: "playback", samples: upsampled });
-          return;
-        }
-
-        if (event.data instanceof ArrayBuffer) {
-          const int16Samples = new Int16Array(event.data);
-
-          const float32Samples = new Float32Array(int16Samples.length);
-          for (let i = 0; i < int16Samples.length; i++) {
-            float32Samples[i] = int16Samples[i] / 32768;
-          }
-
-          const upsampled = upsampleFromTarget(float32Samples, SPEAKER_SOURCE_RATE, browserSampleRate);
-          workletNode.port.postMessage({ type: "playback", samples: upsampled });
-          return;
-        }
-
-        // Text message: JSON control signal
-        if (typeof event.data === "string") {
-          try {
-            const msg = JSON.parse(event.data);
-            if (msg.type === "clear") {
-              workletNode.port.postMessage({ type: "clear" });
-            }
-          } catch {
-            // Ignore non-JSON text messages
-          }
-        }
-      };
-
-      ws.onopen = () => {
-        console.log("[Call] WebSocket connected");
-        setCallState("active");
-      };
-
-      ws.onclose = (ev) => {
-        console.log("[Call] WebSocket closed, code:", ev.code, "reason:", ev.reason);
-        cleanup();
-        setCallState("ready");
-      };
-
-      ws.onerror = (ev) => {
-        console.error("[Call] WebSocket error:", ev);
-        setCallError("WebSocket connection failed");
-        cleanup();
-        setCallState("ready");
-      };
+      setCallState("active");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Connection failed";
       setCallError(`Connection failed: ${message}`);
