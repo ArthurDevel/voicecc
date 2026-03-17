@@ -72,8 +72,16 @@ async def handle_twilio_websocket(websocket: WebSocket, call_token: str) -> None
     try:
         # Read messages until we get the "start" event
         while True:
-            raw = await websocket.receive_text()
-            msg = json.loads(raw)
+            message = await websocket.receive()
+
+            # Skip binary frames (early audio before start)
+            if message.get("type") == "websocket.disconnect":
+                logger.warning("[twilio] WebSocket disconnected before start event")
+                return
+            if "text" not in message:
+                continue
+
+            msg = json.loads(message["text"])
 
             if msg.get("event") == "start":
                 start_data = msg.get("start", {})
@@ -173,7 +181,12 @@ async def _run_twilio_pipeline(
         llm_config: Claude LLM service configuration
         voice_id: ElevenLabs voice ID
     """
-    serializer = TwilioFrameSerializer(stream_sid=stream_sid, call_sid=call_sid)
+    serializer = TwilioFrameSerializer(
+        stream_sid=stream_sid,
+        call_sid=call_sid,
+        account_sid=config.twilio_account_sid,
+        auth_token=config.twilio_auth_token,
+    )
 
     transport = FastAPIWebsocketTransport(
         websocket=websocket,
