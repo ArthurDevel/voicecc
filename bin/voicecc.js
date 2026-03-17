@@ -129,7 +129,11 @@ function ensurePython() {
 
   if (process.platform !== "linux") {
     console.error("ERROR: Python 3.12+ is required but not found.");
-    console.error("Install Python 3.12+ and run 'voicecc' again.");
+    if (process.platform === "darwin") {
+      console.error("Install it with Homebrew: brew install python@3.12");
+    } else {
+      console.error("Install Python 3.12+ and run 'voicecc' again.");
+    }
     process.exit(1);
   }
 
@@ -157,7 +161,11 @@ function ensureVenvModule(systemPython) {
 
   if (process.platform !== "linux") {
     console.error("ERROR: Python venv module is missing.");
-    console.error("Install it and run 'voicecc' again.");
+    if (process.platform === "darwin") {
+      console.error("Reinstall Python with Homebrew: brew install python@3.12");
+    } else {
+      console.error("Install the venv module and run 'voicecc' again.");
+    }
     process.exit(1);
   }
 
