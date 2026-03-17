@@ -151,9 +151,9 @@ function ensurePython() {
 
 function ensureVenvModule(systemPython) {
   try {
-    execSync(`${systemPython} -c "import venv" 2>&1`, { encoding: "utf-8" });
+    execSync(`${systemPython} -c "import ensurepip" 2>&1`, { encoding: "utf-8" });
     return;
-  } catch { /* venv not available */ }
+  } catch { /* ensurepip not available — venv creation will fail */ }
 
   if (process.platform !== "linux") {
     console.error("ERROR: Python venv module is missing.");
