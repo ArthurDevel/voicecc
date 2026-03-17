@@ -95,13 +95,88 @@ function generatePassword() {
   return randomBytes(18).toString("base64url");
 }
 
+function findPython() {
+  const candidates = ["python3.12", "python3.13", "python3", "python"];
+  for (const candidate of candidates) {
+    if (commandExists(candidate)) {
+      try {
+        const version = execSync(`${candidate} --version 2>&1`, { encoding: "utf-8" }).trim();
+        const match = version.match(/Python (\d+)\.(\d+)/);
+        if (match && (parseInt(match[1]) > 3 || (parseInt(match[1]) === 3 && parseInt(match[2]) >= 12))) {
+          return candidate;
+        }
+      } catch { /* skip */ }
+    }
+  }
+  return null;
+}
+
+function linuxInstallPackage(pkg) {
+  if (commandExists("apt-get")) {
+    execSync(`apt-get update -qq && apt-get install -y -qq ${pkg} 2>&1`, { stdio: "inherit" });
+  } else if (commandExists("dnf")) {
+    execSync(`dnf install -y ${pkg} 2>&1`, { stdio: "inherit" });
+  } else if (commandExists("yum")) {
+    execSync(`yum install -y ${pkg} 2>&1`, { stdio: "inherit" });
+  } else {
+    throw new Error("No supported package manager found (apt-get, dnf, yum).");
+  }
+}
+
+function ensurePython() {
+  let systemPython = findPython();
+  if (systemPython) return systemPython;
+
+  if (process.platform !== "linux") {
+    console.error("ERROR: Python 3.12+ is required but not found.");
+    console.error("Install Python 3.12+ and run 'voicecc' again.");
+    process.exit(1);
+  }
+
+  console.log("Python 3.12+ not found. Installing...");
+  try {
+    linuxInstallPackage("python3.12 python3.12-venv python3.12-dev");
+  } catch (err) {
+    console.error(`Failed to install Python: ${err.message}`);
+    process.exit(1);
+  }
+
+  systemPython = findPython();
+  if (!systemPython) {
+    console.error("Python installation completed but Python 3.12+ still not found.");
+    process.exit(1);
+  }
+  return systemPython;
+}
+
+function ensureVenvModule(systemPython) {
+  try {
+    execSync(`${systemPython} -c "import venv" 2>&1`, { encoding: "utf-8" });
+    return;
+  } catch { /* venv not available */ }
+
+  if (process.platform !== "linux") {
+    console.error("ERROR: Python venv module is missing.");
+    console.error("Install it and run 'voicecc' again.");
+    process.exit(1);
+  }
+
+  const version = execSync(`${systemPython} --version 2>&1`, { encoding: "utf-8" }).trim().match(/Python (\d+)\.(\d+)/);
+  const venvPkg = version ? `python${version[1]}.${version[2]}-venv` : "python3-venv";
+  console.log(`Python venv module missing. Installing ${venvPkg}...`);
+  try {
+    linuxInstallPackage(venvPkg);
+  } catch (err) {
+    console.error(`Failed to install ${venvPkg}: ${err.message}`);
+    process.exit(1);
+  }
+}
+
 /**
  * Ensure the Python virtual environment exists and dependencies are installed.
  *
  * Creates voice-server/.venv if missing, installs requirements.txt, and
  * stores a checksum so subsequent runs skip installation unless deps change.
- *
- * @returns true if the venv is ready, false if Python is unavailable
  */
 function ensurePythonVenv() {
   const voiceServerDir = join(PKG_ROOT, "voice-server");
@@ -114,72 +189,13 @@ function ensurePythonVenv() {
     return true; // No voice-server requirements, nothing to do
   }
 
-  // Find a working Python 3.12+
-  const pythonCandidates = ["python3.12", "python3.13", "python3", "python"];
-  let systemPython = null;
-  for (const candidate of pythonCandidates) {
-    if (commandExists(candidate)) {
-      try {
-        const version = execSync(`${candidate} --version 2>&1`, { encoding: "utf-8" }).trim();
-        const match = version.match(/Python (\d+)\.(\d+)/);
-        if (match && (parseInt(match[1]) > 3 || (parseInt(match[1]) === 3 && parseInt(match[2]) >= 12))) {
-          systemPython = candidate;
-          break;
-        }
-      } catch { /* skip */ }
-    }
-  }
+  // Step 1: Ensure Python 3.12+ is installed
+  const systemPython = ensurePython();
 
-  if (!systemPython) {
-    // Attempt to install Python 3.12 automatically on Linux
-    if (process.platform === "linux") {
-      console.log("Python 3.12+ not found. Installing automatically...");
-      try {
-        if (commandExists("apt-get")) {
-          execSync("apt-get update -qq && apt-get install -y -qq python3.12 python3.12-venv python3.12-dev 2>&1", { stdio: "inherit" });
-        } else if (commandExists("dnf")) {
-          execSync("dnf install -y python3.12 2>&1", { stdio: "inherit" });
-        } else if (commandExists("yum")) {
-          execSync("yum install -y python3.12 2>&1", { stdio: "inherit" });
-        } else {
-          console.error("No supported package manager found (apt-get, dnf, yum).");
-          console.error("Install Python 3.12+ manually and run 'voicecc' again.");
-          process.exit(1);
-        }
-        // Re-check for Python after installation
-        for (const candidate of pythonCandidates) {
-          if (commandExists(candidate)) {
-            try {
-              const version = execSync(`${candidate} --version 2>&1`, { encoding: "utf-8" }).trim();
-              const match = version.match(/Python (\d+)\.(\d+)/);
-              if (match && (parseInt(match[1]) > 3 || (parseInt(match[1]) === 3 && parseInt(match[2]) >= 12))) {
-                systemPython = candidate;
-                console.log(`Python installed successfully: ${version}`);
-                break;
-              }
-            } catch { /* skip */ }
-          }
-        }
-        if (!systemPython) {
-          console.error("Python installation completed but Python 3.12+ still not found.");
-          console.error("Install Python 3.12+ manually and run 'voicecc' again.");
-          process.exit(1);
-        }
-      } catch (err) {
-        console.error(`Failed to install Python 3.12: ${err.message}`);
-        console.error("Install Python 3.12+ manually and run 'voicecc' again.");
-        process.exit(1);
-      }
-    } else {
-      console.error("");
-      console.error("ERROR: Python 3.12+ is required but not found.");
-      console.error("Install Python 3.12+ and run 'voicecc' again.");
-      console.error("");
-      process.exit(1);
-    }
-  }
+  // Step 2: Ensure venv module is available
+  ensureVenvModule(systemPython);
 
-  // Check if venv needs to be created
+  // Step 3: Create venv if needed
   if (!existsSync(venvPython)) {
     console.log("Setting up Python environment for voice server...");
     try {
@@ -190,7 +206,7 @@ function ensurePythonVenv() {
     }
   }
 
-  // Check if requirements have changed since last install
+  // Step 4: Install/update dependencies if requirements changed
   const currentChecksum = (() => {
     try {
       const content = readFileSync(requirementsFile, "utf-8");
@@ -207,7 +223,6 @@ function ensurePythonVenv() {
     return true; // Dependencies up to date
   }
 
-  // Install/update dependencies
   console.log("Installing Python dependencies for voice server...");
   try {
     execSync(`${venvPython} -m pip install -r ${requirementsFile}`, {
