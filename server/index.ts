@@ -50,8 +50,10 @@ let pythonProcess: ChildProcess | null = null;
 async function startPythonVoiceServer(): Promise<void> {
   const venvPython = join(VOICE_SERVER_DIR, ".venv", "bin", "python");
   if (!existsSync(venvPython)) {
-    console.warn(`Python venv not found at ${venvPython} -- voice server will not start`);
-    return;
+    console.error(`ERROR: Python venv not found at ${venvPython}`);
+    console.error("The voice-server directory or its venv is missing from the installation.");
+    console.error("Try reinstalling: npm install -g voicecc");
+    process.exit(1);
   }
 
   console.log("Starting Python voice server...");

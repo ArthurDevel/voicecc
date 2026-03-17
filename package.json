@@ -24,6 +24,7 @@
   "files": [
     "bin/",
     "server/",
+    "voice-server/",
     "dashboard/dist/",
     "dashboard/server.ts",
     "dashboard/routes/",
