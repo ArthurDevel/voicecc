@@ -2,7 +2,7 @@
  * WebRTC device pairing API routes.
  *
  * Handles pairing code generation and device token validation:
- * - POST /generate-code -- localhost-only, create a 6-digit pairing code
+ * - POST /generate-code -- create a 6-digit pairing code
  * - POST /pair -- validate a code and issue a device token
  * - GET /validate -- check if a device token is valid
  */
@@ -27,17 +27,8 @@ import {
 export function webrtcRoutes(): Hono {
   const app = new Hono();
 
-  /** Generate a pairing code (localhost only) */
+  /** Generate a pairing code */
   app.post("/generate-code", (c) => {
-    const remoteAddr = c.req.header("x-forwarded-for") ?? "";
-    const isLocalhost = remoteAddr === "127.0.0.1" || remoteAddr === "::1" || remoteAddr === "::ffff:127.0.0.1" || remoteAddr === "";
-    console.log(`[webrtc] generate-code from ${remoteAddr || "(empty)"}, isLocalhost=${isLocalhost}`);
-
-    if (!isLocalhost) {
-      console.log("[webrtc] generate-code REJECTED: not localhost");
-      return c.json({ error: "Pairing codes can only be generated from localhost" }, 403);
-    }
-
     const result = generatePairingCode();
     console.log("[webrtc] generate-code OK, code:", result.code);
     return c.json(result);
