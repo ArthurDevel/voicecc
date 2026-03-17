@@ -19,7 +19,11 @@ Responsibilities:
 import aiohttp
 import logging
 
-from pipecat.frames.frames import LLMMessagesFrame
+from pipecat.frames.frames import (
+    LLMFullResponseEndFrame,
+    LLMFullResponseStartFrame,
+    LLMMessagesFrame,
+)
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
@@ -97,6 +101,7 @@ async def bot(runner_args: SmallWebRTCRunnerArguments):
         claude_config = ClaudeLLMServiceConfig(
             cwd=config.default_cwd,
             system_prompt=system_prompt,
+            initial_prompt="The user just joined the call. Greet them briefly.",
         )
         claude_llm = ClaudeLLMService(config=claude_config)
 
@@ -134,6 +139,16 @@ async def bot(runner_args: SmallWebRTCRunnerArguments):
             pipeline,
             params=PipelineParams(allow_interruptions=True),
         )
+
+        # Send initial prompt once the pipeline is fully ready
+        @task.event_handler("on_pipeline_started")
+        async def on_pipeline_started(task_ref, *args):
+            if claude_config.initial_prompt and not claude_llm._initial_prompt_sent:
+                claude_llm._initial_prompt_sent = True
+                await claude_llm._ensure_client()
+                await claude_llm.push_frame(LLMFullResponseStartFrame())
+                await claude_llm._send_to_claude(claude_config.initial_prompt)
+                await claude_llm.push_frame(LLMFullResponseEndFrame())
 
         runner = PipelineRunner(handle_sigint=False)
         await runner.run(task)
