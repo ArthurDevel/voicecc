@@ -314,8 +314,9 @@ def _extract_last_user_message(context: OpenAILLMContext | LLMContext | object) 
 
     # Walk backwards to find the last user message
     for msg in reversed(messages):
-        if msg.get("role") == "user":
-            content = msg.get("content", "")
+        msg_dict = msg if isinstance(msg, dict) else vars(msg) if hasattr(msg, "__dict__") else {}
+        if msg_dict.get("role") == "user":
+            content = msg_dict.get("content", "")
             if isinstance(content, str):
                 return content.strip() or None
             # Content might be a list of content blocks

@@ -230,7 +230,7 @@ async def _run_twilio_pipeline(
 
         task = PipelineTask(
             pipeline,
-            PipelineParams(allow_interruptions=True),
+            params=PipelineParams(allow_interruptions=True),
         )
 
         runner = PipelineRunner()

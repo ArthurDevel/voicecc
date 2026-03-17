@@ -14,7 +14,7 @@ import { spawn, spawnSync, execSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync, openSync, closeSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { createInterface } from "node:readline";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir, platform } from "node:os";
@@ -93,6 +93,95 @@ function commandExists(cmd) {
  */
 function generatePassword() {
   return randomBytes(18).toString("base64url");
+}
+
+/**
+ * Ensure the Python virtual environment exists and dependencies are installed.
+ *
+ * Creates voice-server/.venv if missing, installs requirements.txt, and
+ * stores a checksum so subsequent runs skip installation unless deps change.
+ *
+ * @returns true if the venv is ready, false if Python is unavailable
+ */
+function ensurePythonVenv() {
+  const voiceServerDir = join(PKG_ROOT, "voice-server");
+  const venvDir = join(voiceServerDir, ".venv");
+  const venvPython = join(venvDir, "bin", "python");
+  const requirementsFile = join(voiceServerDir, "requirements.txt");
+  const checksumFile = join(venvDir, ".requirements-checksum");
+
+  if (!existsSync(requirementsFile)) {
+    return true; // No voice-server requirements, nothing to do
+  }
+
+  // Find a working Python 3.12+
+  const pythonCandidates = ["python3.12", "python3.13", "python3", "python"];
+  let systemPython = null;
+  for (const candidate of pythonCandidates) {
+    if (commandExists(candidate)) {
+      try {
+        const version = execSync(`${candidate} --version 2>&1`, { encoding: "utf-8" }).trim();
+        const match = version.match(/Python (\d+)\.(\d+)/);
+        if (match && (parseInt(match[1]) > 3 || (parseInt(match[1]) === 3 && parseInt(match[2]) >= 12))) {
+          systemPython = candidate;
+          break;
+        }
+      } catch { /* skip */ }
+    }
+  }
+
+  if (!systemPython) {
+    console.log("");
+    console.log("WARNING: Python 3.12+ not found. Voice server will not be available.");
+    console.log("Install Python 3.12+ and run 'voicecc' again to enable voice features.");
+    console.log("");
+    return false;
+  }
+
+  // Check if venv needs to be created
+  if (!existsSync(venvPython)) {
+    console.log("Setting up Python environment for voice server...");
+    try {
+      execSync(`${systemPython} -m venv ${venvDir}`, { stdio: "inherit" });
+    } catch (err) {
+      console.log(`Failed to create Python venv: ${err.message}`);
+      console.log("Voice server will not be available.");
+      return false;
+    }
+  }
+
+  // Check if requirements have changed since last install
+  const currentChecksum = (() => {
+    try {
+      const content = readFileSync(requirementsFile, "utf-8");
+      return createHash("sha256").update(content).digest("hex");
+    } catch { return ""; }
+  })();
+
+  let installedChecksum = "";
+  try {
+    installedChecksum = readFileSync(checksumFile, "utf-8").trim();
+  } catch { /* no checksum file yet */ }
+
+  if (currentChecksum && currentChecksum === installedChecksum) {
+    return true; // Dependencies up to date
+  }
+
+  // Install/update dependencies
+  console.log("Installing Python dependencies for voice server...");
+  try {
+    execSync(`${venvPython} -m pip install -r ${requirementsFile}`, {
+      stdio: "inherit",
+      cwd: voiceServerDir,
+    });
+    writeFileSync(checksumFile, currentChecksum);
+    console.log("Python dependencies installed.");
+  } catch (err) {
+    console.log(`Failed to install Python dependencies: ${err.message}`);
+    console.log("Voice server may not work correctly.");
+  }
+
+  return true;
 }
 
 /**
@@ -599,6 +688,10 @@ if (existsSync(OLD_ENV_PATH) && !existsSync(ENV_PATH)) {
 if (!existsSync(ENV_PATH)) {
   await runSetupWizard();
 }
+
+// Ensure Python venv and dependencies are set up for the voice server.
+// Runs on every start but skips pip install if requirements.txt hasn't changed.
+ensurePythonVenv();
 
 // If already running, show info and exit
 if (isRunning()) {

@@ -229,7 +229,7 @@ async def close_session(session_key: str) -> None:
     logger.info(f"[chat] Session closed, key: {session_key}")
 
 
-def interrupt_session(session_key: str) -> bool:
+async def interrupt_session(session_key: str) -> bool:
     """Interrupt the current streaming response for a session.
 
     Args:
@@ -243,7 +243,7 @@ def interrupt_session(session_key: str) -> bool:
         return False
 
     try:
-        session.client.interrupt()
+        await session.client.interrupt()
     except Exception as e:
         logger.warning(f"[chat] Interrupt error for {session_key}: {e}")
 

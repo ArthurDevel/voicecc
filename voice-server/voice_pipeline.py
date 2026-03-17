@@ -29,7 +29,8 @@ from pipecat.processors.aggregators.llm_response_universal import (
     LLMContextAggregatorPair,
     LLMUserAggregatorParams,
 )
-from pipecat.runner.run import SmallWebRTCRunnerArguments, main
+from pipecat.runner.types import SmallWebRTCRunnerArguments
+from pipecat.runner.run import main
 from pipecat.services.elevenlabs.stt import ElevenLabsSTTService, ElevenLabsSTTSettings
 from pipecat.services.elevenlabs.tts import ElevenLabsTTSService, ElevenLabsTTSSettings
 from pipecat.transports.base_transport import TransportParams

@@ -416,7 +416,7 @@ async def initiate_agent_call(agent: Agent, client: ClaudeSDKClient) -> str:
     numbers = twilio_client.incoming_phone_numbers.list(limit=1)
     if not numbers:
         raise RuntimeError("No Twilio phone numbers found on the account")
-    from_number = numbers[0].phone_number
+    from_number: str = numbers[0].phone_number or ""
 
     # Build TwiML with WebSocket stream URL
     tunnel_host = tunnel_url.replace("https://", "").replace("http://", "")
@@ -436,7 +436,7 @@ async def initiate_agent_call(agent: Agent, client: ClaudeSDKClient) -> str:
         f"[heartbeat] outbound call placed to {_config.user_phone_number} "
         f"(callSid={call.sid})"
     )
-    return call.sid
+    return call.sid or ""
 
 
 async def _cleanup_pending_call(token: str) -> None:

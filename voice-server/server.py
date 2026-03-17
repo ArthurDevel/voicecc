@@ -141,7 +141,7 @@ async def chat_stop(request: Request):
     if not session_key or not isinstance(session_key, str):
         return JSONResponse({"error": "Missing 'session_key' field"}, status_code=400)
 
-    interrupted = interrupt_session(session_key)
+    interrupted = await interrupt_session(session_key)
     return {"ok": True, "interrupted": interrupted}
 
 
