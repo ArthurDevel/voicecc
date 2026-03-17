@@ -1,13 +1,25 @@
 /**
  * Twilio integration state management.
  *
- * Tracks whether the Twilio integration is enabled/active and handles
- * Twilio-specific setup (webhook URL updates). The actual HTTP/WebSocket
- * handling runs in the unified voice server (voice-server.ts).
+ * Simplified: tracks whether Twilio is enabled and checks the Python voice
+ * server health. The actual Twilio call handling (WebSocket, TwiML, heartbeat)
+ * runs in the Python server.
+ *
+ * Responsibilities:
+ * - Track Twilio running state
+ * - Update Twilio phone number webhooks on start
+ * - Check Python server health via GET /health
  */
 
 import { readEnv } from "./env.js";
 import twilioSdk from "twilio";
+
+// ============================================================================
+// CONSTANTS
+// ============================================================================
+
+/** Base URL for the Python FastAPI server */
+const VOICE_API_URL = process.env.VOICE_SERVER_URL ?? "http://localhost:7861";
 
 // ============================================================================
 // TYPES
@@ -22,7 +34,7 @@ export interface TwilioStatus {
 // STATE
 // ============================================================================
 
-/** Whether the Twilio voice server is running */
+/** Whether the Twilio integration is running */
 let twilioRunning = false;
 
 // ============================================================================
@@ -31,9 +43,7 @@ let twilioRunning = false;
 
 /**
  * Start the Twilio integration.
- * Reads .env for TWILIO_AUTH_TOKEN. If tunnelUrl exists, updates phone number
- * webhooks via Twilio SDK. The voice server is already running and handles
- * Twilio HTTP/WebSocket requests.
+ * Checks Python server health, then updates phone number webhooks via Twilio SDK.
  *
  * @param _dashboardPort - Unused (kept for API compatibility)
  * @param tunnelUrl - Optional tunnel public URL for webhook configuration
@@ -43,6 +53,17 @@ export async function startTwilioServer(_dashboardPort: number, tunnelUrl?: stri
     throw new Error("Twilio is already running");
   }
 
+  // Check Python server health
+  try {
+    const healthRes = await fetch(`${VOICE_API_URL}/health`);
+    if (!healthRes.ok) {
+      throw new Error(`Python server returned ${healthRes.status}`);
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`Python voice server is not reachable at ${VOICE_API_URL}: ${msg}`);
+  }
+
   const envVars = await readEnv();
 
   if (!envVars.TWILIO_AUTH_TOKEN) {
@@ -50,7 +71,7 @@ export async function startTwilioServer(_dashboardPort: number, tunnelUrl?: stri
   }
 
   const accountSid = envVars.TWILIO_ACCOUNT_SID;
-  const webhookUrl = tunnelUrl ? `${tunnelUrl}/twilio/incoming-call` : null;
+  const webhookUrl = tunnelUrl ? `${tunnelUrl}/api/twilio/incoming-call` : null;
 
   if (tunnelUrl && accountSid && envVars.TWILIO_AUTH_TOKEN) {
     const client = twilioSdk(accountSid, envVars.TWILIO_AUTH_TOKEN);
@@ -80,8 +101,6 @@ export async function startTwilioServer(_dashboardPort: number, tunnelUrl?: stri
  * Stop the Twilio voice server.
  */
 export function stopTwilioServer(): void {
-  // In-process server doesn't have a clean shutdown mechanism yet;
-  // mark as not running so new calls are rejected.
   twilioRunning = false;
 }
 

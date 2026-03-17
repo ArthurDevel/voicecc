@@ -21,7 +21,9 @@ import {
   importAgent,
 } from "../../server/services/agent-store.js";
 import type { AgentConfig } from "../../server/services/agent-store.js";
-import { getHeartbeatStatus, initiateAgentCall } from "../../server/services/heartbeat.js";
+
+/** Base URL for the Python voice server API */
+const VOICE_API_URL = process.env.VOICE_SERVER_URL ?? "http://localhost:7861";
 
 // ============================================================================
 // ROUTES
@@ -36,10 +38,17 @@ export function agentsRoutes(): Hono {
   const app = new Hono();
 
   // /heartbeat/status and /import MUST be registered before /:id to avoid route conflict
-  /** Get last heartbeat result per agent */
-  app.get("/heartbeat/status", (c) => {
-    const status = getHeartbeatStatus();
-    return c.json(status);
+  /** Proxy heartbeat status from the Python voice server */
+  app.get("/heartbeat/status", async (c) => {
+    try {
+      const response = await fetch(`${VOICE_API_URL}/heartbeat/status`);
+      const data = await response.json();
+      return c.json(data);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Proxy error";
+      console.error(`[agents] Error proxying heartbeat status: ${message}`);
+      return c.json({ error: "Voice server unavailable" }, 502);
+    }
   });
 
   /** Import an agent from a zip upload */
@@ -142,12 +151,23 @@ export function agentsRoutes(): Hono {
     }
   });
 
-  /** Trigger outbound call for an agent */
+  /** Trigger outbound call for an agent via Python voice server */
   app.post("/:id/call", async (c) => {
     const id = c.req.param("id");
     try {
-      const agent = await getAgent(id);
-      await initiateAgentCall(agent, { initialPrompt: "The user pressed the 'Call Me' button. Greet them and ask how you can help." });
+      const response = await fetch(`${VOICE_API_URL}/register-call`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          token: crypto.randomUUID(),
+          agent_id: id,
+          initial_prompt: "The user pressed the 'Call Me' button. Greet them and ask how you can help.",
+        }),
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error ?? "Voice server error");
+      }
       return c.json({ success: true });
     } catch (err) {
       return c.json({ error: (err as Error).message }, 400);

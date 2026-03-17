@@ -3,6 +3,7 @@
  *
  * Thin wiring file that creates the Hono app and starts listening:
  * - Mount all API route groups under /api/*
+ * - Proxy Twilio media WebSocket upgrades to the Python server
  * - Serve the Vite build output as static files
  * - SPA fallback for client-side routing
  */
@@ -15,6 +16,10 @@ import { readFileSync } from "fs";
 import { access } from "fs/promises";
 import { join } from "path";
 import { homedir } from "os";
+import { WebSocket as WsWebSocket, WebSocketServer } from "ws";
+
+import type { IncomingMessage } from "http";
+import type { Duplex } from "stream";
 
 import { claudeMdRoutes } from "./routes/claude-md.js";
 import { conversationRoutes } from "./routes/conversations.js";
@@ -30,6 +35,7 @@ import { providersRoutes } from "./routes/providers.js";
 import { agentsRoutes } from "./routes/agents.js";
 import { versionRoutes } from "./routes/version.js";
 import { chatRoutes } from "./routes/chat.js";
+import { voiceRoutes } from "./routes/voice.js";
 import { loadDeviceTokens } from "../server/services/device-pairing.js";
 
 // ============================================================================
@@ -38,6 +44,9 @@ import { loadDeviceTokens } from "../server/services/device-pairing.js";
 
 const PORTS_TO_TRY = [3456, 3457, 3458, 3459, 3460];
 const USER_CLAUDE_MD_PATH = join(homedir(), ".claude", "CLAUDE.md");
+
+/** Base URL for the Python FastAPI server (for WebSocket + HTTP proxy) */
+const VOICE_API_URL = process.env.VOICE_SERVER_URL ?? "http://localhost:7861";
 
 // ============================================================================
 // MAIN HANDLERS
@@ -59,7 +68,7 @@ export function createApp(): Hono {
     const auth = basicAuth({ username: "admin", password: dashboardPassword });
     app.use("*", async (c, next) => {
       const path = c.req.path;
-      if (path === "/chat" || path.startsWith("/api/chat/") || path.startsWith("/api/webrtc/")) {
+      if (path === "/chat" || path.startsWith("/api/chat/") || path.startsWith("/api/webrtc/") || path.startsWith("/api/voice/")) {
         return next();
       }
       return auth(c, next);
@@ -81,6 +90,7 @@ export function createApp(): Hono {
   app.route("/api/agents", agentsRoutes());
   app.route("/api/version", versionRoutes());
   app.route("/api/chat", chatRoutes());
+  app.route("/api/voice", voiceRoutes());
 
   // Status endpoint (user CLAUDE.md conflict check)
   app.get("/api/status", async (c) => {
@@ -131,6 +141,43 @@ export async function startDashboard(): Promise<number> {
           resolve();
         });
         server.on("error", reject);
+
+        // Proxy /media/:token WebSocket upgrades to the Python server
+        const wss = new WebSocketServer({ noServer: true });
+        server.on("upgrade", (req: IncomingMessage, socket: Duplex, head: Buffer) => {
+          const url = req.url ?? "";
+          const match = url.match(/^\/media\/([a-f0-9-]+)(?:\?.*)?$/);
+          if (!match) return; // Not a Twilio media WebSocket -- let it fall through
+
+          const targetWsUrl = VOICE_API_URL.replace(/^http/, "ws") + url;
+          const upstream = new WsWebSocket(targetWsUrl);
+
+          upstream.on("open", () => {
+            wss.handleUpgrade(req, socket, head, (clientWs) => {
+              // Bidirectional message proxy
+              clientWs.on("message", (data) => {
+                if (upstream.readyState === WsWebSocket.OPEN) {
+                  upstream.send(data);
+                }
+              });
+              upstream.on("message", (data) => {
+                if (clientWs.readyState === WsWebSocket.OPEN) {
+                  clientWs.send(data);
+                }
+              });
+
+              clientWs.on("close", () => upstream.close());
+              upstream.on("close", () => clientWs.close());
+              clientWs.on("error", () => upstream.close());
+              upstream.on("error", () => clientWs.close());
+            });
+          });
+
+          upstream.on("error", (err) => {
+            console.error(`[dashboard] Twilio WS proxy error: ${err.message}`);
+            socket.destroy();
+          });
+        });
       });
 
       setDashboardPort(port);

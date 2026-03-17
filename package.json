@@ -35,17 +35,14 @@
     "linux"
   ],
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.2.70",
+    "@anthropic-ai/claude-agent-sdk": "^0.1.8",
     "@anthropic-ai/sdk": "^0.39.0",
     "@hono/node-server": "^1.19.9",
-    "@huggingface/transformers": "^3.8.1",
     "archiver": "^7.0.1",
-    "avr-vad": "^1.0.0",
     "cloudflared": "^0.7.1",
     "dotenv": "^16.4.0",
     "hono": "^4.12.0",
     "node-pty": "^1.1.0",
-    "onnxruntime-node": "^1.24.3",
     "qrcode.react": "^4.2.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",

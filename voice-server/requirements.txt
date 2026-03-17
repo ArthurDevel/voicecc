@@ -1,0 +1,7 @@
+pipecat-ai[webrtc,elevenlabs,silero]
+pipecat-ai-small-webrtc-prebuilt
+claude-agent-sdk
+python-dotenv
+fastapi
+uvicorn
+twilio
