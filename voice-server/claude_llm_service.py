@@ -108,12 +108,8 @@ class ClaudeLLMService(LLMService):
         self._settings.user_turn_completion_config = None
 
     async def start(self, frame: StartFrame):
-        """Handle pipeline start. Sends initial_prompt if configured."""
+        """Handle pipeline start."""
         await super().start(frame)
-        if self._config.initial_prompt and not self._initial_prompt_sent:
-            self._initial_prompt_sent = True
-            await self._ensure_client()
-            await self._send_to_claude(self._config.initial_prompt)
 
     async def stop(self, frame: EndFrame):
         """Handle pipeline stop. Disconnects the Claude session."""
@@ -237,7 +233,7 @@ class ClaudeLLMService(LLMService):
                 allowed_tools=self._config.allowed_tools or [],
                 permission_mode="bypassPermissions",
                 include_partial_messages=True,
-                max_thinking_tokens=10000,
+                max_thinking_tokens=0,
             )
             self._client = ClaudeSDKClient(options=options)
 

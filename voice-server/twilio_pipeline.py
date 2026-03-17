@@ -233,5 +233,16 @@ async def _run_twilio_pipeline(
             params=PipelineParams(allow_interruptions=True),
         )
 
+        # For Twilio, the WebSocket is already connected, so send the
+        # initial prompt shortly after the pipeline starts.
+        async def _send_initial_prompt():
+            await asyncio.sleep(1)  # Let the pipeline fully initialize
+            if llm_config.initial_prompt and not claude_llm._initial_prompt_sent:
+                claude_llm._initial_prompt_sent = True
+                await claude_llm._ensure_client()
+                await claude_llm._send_to_claude(llm_config.initial_prompt)
+
+        asyncio.create_task(_send_initial_prompt())
+
         runner = PipelineRunner()
         await runner.run(task)
