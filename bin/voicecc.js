@@ -195,6 +195,23 @@ function ensurePythonVenv() {
   // Step 2: Ensure venv module is available
   ensureVenvModule(systemPython);
 
+  // Step 2.5: Ensure system libraries needed by Python packages (OpenCV, audio, WebRTC)
+  if (process.platform === "linux") {
+    const requiredLibs = ["libGL.so.1", "libSM.so.6", "libsndfile.so.1"];
+    const missing = requiredLibs.some((lib) => {
+      try { execSync(`ldconfig -p | grep ${lib}`, { encoding: "utf-8" }); return false; } catch { return true; }
+    });
+    if (missing) {
+      console.log("Installing system libraries required by Python packages...");
+      try {
+        linuxInstallPackage("libgl1 libglib2.0-0 libsm6 libxext6 libxrender1 libsndfile1 libportaudio2");
+      } catch (err) {
+        console.error(`Failed to install system libraries: ${err.message}`);
+        process.exit(1);
+      }
+    }
+  }
+
   // Step 3: Create venv if needed
   if (!existsSync(venvPython)) {
     console.log("Setting up Python environment for voice server...");
