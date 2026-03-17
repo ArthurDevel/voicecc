@@ -21,10 +21,16 @@ import os
 import aiohttp
 from fastapi import WebSocket
 
+from pipecat.frames.frames import LLMFullResponseEndFrame, LLMFullResponseStartFrame
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
-from pipecat.processors.aggregators.openai_llm_context import OpenAILLMContext
+from pipecat.audio.vad.silero import SileroVADAnalyzer
+from pipecat.processors.aggregators.llm_context import LLMContext
+from pipecat.processors.aggregators.llm_response_universal import (
+    LLMContextAggregatorPair,
+    LLMUserAggregatorParams,
+)
 from pipecat.serializers.twilio import TwilioFrameSerializer
 from pipecat.services.elevenlabs.stt import ElevenLabsSTTService
 from pipecat.services.elevenlabs.tts import ElevenLabsTTSService
@@ -74,14 +80,18 @@ async def handle_twilio_websocket(websocket: WebSocket, call_token: str) -> None
         while True:
             message = await websocket.receive()
 
-            # Skip binary frames (early audio before start)
             if message.get("type") == "websocket.disconnect":
                 logger.warning("[twilio] WebSocket disconnected before start event")
                 return
-            if "text" not in message:
+
+            # Twilio may send frames as text or binary
+            raw = message.get("text") or (
+                message.get("bytes", b"").decode("utf-8") if message.get("bytes") else None
+            )
+            if not raw:
                 continue
 
-            msg = json.loads(message["text"])
+            msg = json.loads(raw)
 
             if msg.get("event") == "start":
                 start_data = msg.get("start", {})
@@ -224,8 +234,13 @@ async def _run_twilio_pipeline(
         narration = NarrationProcessor()
 
         # Context aggregator
-        context = OpenAILLMContext(messages=[], tools=[])
-        context_aggregator = claude_llm.create_context_aggregator(context)
+        context = LLMContext()
+        context_aggregator = LLMContextAggregatorPair(
+            context,
+            user_params=LLMUserAggregatorParams(
+                vad_analyzer=SileroVADAnalyzer(),
+            ),
+        )
 
         # Pipeline
         pipeline = Pipeline(
@@ -246,16 +261,15 @@ async def _run_twilio_pipeline(
             params=PipelineParams(allow_interruptions=True),
         )
 
-        # For Twilio, the WebSocket is already connected, so send the
-        # initial prompt shortly after the pipeline starts.
-        async def _send_initial_prompt():
-            await asyncio.sleep(1)  # Let the pipeline fully initialize
+        # Send initial prompt once the pipeline is fully ready
+        @task.event_handler("on_pipeline_started")
+        async def on_pipeline_started(task_ref, *args):
             if llm_config.initial_prompt and not claude_llm._initial_prompt_sent:
                 claude_llm._initial_prompt_sent = True
                 await claude_llm._ensure_client()
+                await claude_llm.push_frame(LLMFullResponseStartFrame())
                 await claude_llm._send_to_claude(llm_config.initial_prompt)
-
-        asyncio.create_task(_send_initial_prompt())
+                await claude_llm.push_frame(LLMFullResponseEndFrame())
 
         runner = PipelineRunner()
         await runner.run(task)
