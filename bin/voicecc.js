@@ -195,6 +195,22 @@ function ensurePythonVenv() {
   // Step 2: Ensure venv module is available
   ensureVenvModule(systemPython);
 
+  // Step 2.5: Ensure system libraries needed by Python packages (e.g. OpenCV)
+  if (process.platform === "linux") {
+    try {
+      execSync("ldconfig -p | grep libGL.so.1", { encoding: "utf-8" });
+    } catch {
+      console.log("Installing system libraries required by Python packages...");
+      try {
+        linuxInstallPackage("libgl1 libglib2.0-0");
+      } catch (err) {
+        console.error(`Failed to install system libraries: ${err.message}`);
+        console.error("Try: apt install libgl1 libglib2.0-0");
+        process.exit(1);
+      }
+    }
+  }
+
   // Step 3: Create venv if needed
   if (!existsSync(venvPython)) {
     console.log("Setting up Python environment for voice server...");
