@@ -16,10 +16,9 @@ import { readFileSync } from "fs";
 import { access } from "fs/promises";
 import { join } from "path";
 import { homedir } from "os";
-import { WebSocket as WsWebSocket, WebSocketServer } from "ws";
+import { attachMediaProxy } from "./ws-proxy.js";
 
-import type { IncomingMessage } from "http";
-import type { Duplex } from "stream";
+import type http from "http";
 
 import { claudeMdRoutes } from "./routes/claude-md.js";
 import { conversationRoutes } from "./routes/conversations.js";
@@ -142,42 +141,8 @@ export async function startDashboard(): Promise<number> {
         });
         server.on("error", reject);
 
-        // Proxy /media/:token WebSocket upgrades to the Python server
-        const wss = new WebSocketServer({ noServer: true });
-        server.on("upgrade", (req: IncomingMessage, socket: Duplex, head: Buffer) => {
-          const url = req.url ?? "";
-          const match = url.match(/^\/media\/([a-f0-9-]+)(?:\?.*)?$/);
-          if (!match) return; // Not a Twilio media WebSocket -- let it fall through
-
-          const targetWsUrl = VOICE_API_URL.replace(/^http/, "ws") + url;
-          const upstream = new WsWebSocket(targetWsUrl);
-
-          upstream.on("open", () => {
-            wss.handleUpgrade(req, socket, head, (clientWs) => {
-              // Bidirectional message proxy
-              clientWs.on("message", (data) => {
-                if (upstream.readyState === WsWebSocket.OPEN) {
-                  upstream.send(data);
-                }
-              });
-              upstream.on("message", (data) => {
-                if (clientWs.readyState === WsWebSocket.OPEN) {
-                  clientWs.send(data);
-                }
-              });
-
-              clientWs.on("close", () => upstream.close());
-              upstream.on("close", () => clientWs.close());
-              clientWs.on("error", () => upstream.close());
-              upstream.on("error", () => clientWs.close());
-            });
-          });
-
-          upstream.on("error", (err) => {
-            console.error(`[dashboard] Twilio WS proxy error: ${err.message}`);
-            socket.destroy();
-          });
-        });
+        // Proxy /media/:token WebSocket upgrades to the Python voice server
+        attachMediaProxy(server as unknown as http.Server, VOICE_API_URL);
       });
 
       setDashboardPort(port);
