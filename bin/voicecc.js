@@ -131,11 +131,52 @@ function ensurePythonVenv() {
   }
 
   if (!systemPython) {
-    console.log("");
-    console.log("WARNING: Python 3.12+ not found. Voice server will not be available.");
-    console.log("Install Python 3.12+ and run 'voicecc' again to enable voice features.");
-    console.log("");
-    return false;
+    // Attempt to install Python 3.12 automatically on Linux
+    if (process.platform === "linux") {
+      console.log("Python 3.12+ not found. Installing automatically...");
+      try {
+        if (commandExists("apt-get")) {
+          execSync("apt-get update -qq && apt-get install -y -qq python3.12 python3.12-venv python3.12-dev 2>&1", { stdio: "inherit" });
+        } else if (commandExists("dnf")) {
+          execSync("dnf install -y python3.12 2>&1", { stdio: "inherit" });
+        } else if (commandExists("yum")) {
+          execSync("yum install -y python3.12 2>&1", { stdio: "inherit" });
+        } else {
+          console.error("No supported package manager found (apt-get, dnf, yum).");
+          console.error("Install Python 3.12+ manually and run 'voicecc' again.");
+          process.exit(1);
+        }
+        // Re-check for Python after installation
+        for (const candidate of pythonCandidates) {
+          if (commandExists(candidate)) {
+            try {
+              const version = execSync(`${candidate} --version 2>&1`, { encoding: "utf-8" }).trim();
+              const match = version.match(/Python (\d+)\.(\d+)/);
+              if (match && (parseInt(match[1]) > 3 || (parseInt(match[1]) === 3 && parseInt(match[2]) >= 12))) {
+                systemPython = candidate;
+                console.log(`Python installed successfully: ${version}`);
+                break;
+              }
+            } catch { /* skip */ }
+          }
+        }
+        if (!systemPython) {
+          console.error("Python installation completed but Python 3.12+ still not found.");
+          console.error("Install Python 3.12+ manually and run 'voicecc' again.");
+          process.exit(1);
+        }
+      } catch (err) {
+        console.error(`Failed to install Python 3.12: ${err.message}`);
+        console.error("Install Python 3.12+ manually and run 'voicecc' again.");
+        process.exit(1);
+      }
+    } else {
+      console.error("");
+      console.error("ERROR: Python 3.12+ is required but not found.");
+      console.error("Install Python 3.12+ and run 'voicecc' again.");
+      console.error("");
+      process.exit(1);
+    }
   }
 
   // Check if venv needs to be created
@@ -144,9 +185,8 @@ function ensurePythonVenv() {
     try {
       execSync(`${systemPython} -m venv ${venvDir}`, { stdio: "inherit" });
     } catch (err) {
-      console.log(`Failed to create Python venv: ${err.message}`);
-      console.log("Voice server will not be available.");
-      return false;
+      console.error(`Failed to create Python venv: ${err.message}`);
+      process.exit(1);
     }
   }
 
@@ -177,8 +217,8 @@ function ensurePythonVenv() {
     writeFileSync(checksumFile, currentChecksum);
     console.log("Python dependencies installed.");
   } catch (err) {
-    console.log(`Failed to install Python dependencies: ${err.message}`);
-    console.log("Voice server may not work correctly.");
+    console.error(`Failed to install Python dependencies: ${err.message}`);
+    process.exit(1);
   }
 
   return true;
@@ -687,6 +727,13 @@ if (existsSync(OLD_ENV_PATH) && !existsSync(ENV_PATH)) {
 // Run setup wizard on first run (no .env file)
 if (!existsSync(ENV_PATH)) {
   await runSetupWizard();
+}
+
+// Verify Claude CLI is available
+if (!commandExists("claude")) {
+  console.error("ERROR: Claude Code CLI ('claude') is not installed.");
+  console.error("Install it with: npm install -g @anthropic-ai/claude-code");
+  process.exit(1);
 }
 
 // Ensure Python venv and dependencies are set up for the voice server.
