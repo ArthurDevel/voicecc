@@ -27,6 +27,7 @@
     "voice-server/",
     "dashboard/dist/",
     "dashboard/server.ts",
+    "dashboard/ws-proxy.ts",
     "dashboard/routes/",
     "init/",
     "tsconfig.json"
