@@ -25,8 +25,8 @@
     "bin/",
     "server/",
     "voice-server/",
+    "dashboard/*.ts",
     "dashboard/dist/",
-    "dashboard/server.ts",
     "dashboard/routes/",
     "init/",
     "tsconfig.json"
