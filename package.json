@@ -1,6 +1,6 @@
 {
   "name": "voicecc",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "description": "Voice Agent Platform running on Claude Code -- create and deploy conversational voice agents with ElevenLabs STT/TTS and VAD",
   "repository": {
     "type": "git",
