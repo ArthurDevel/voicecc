@@ -9,10 +9,10 @@ A Voice Agent Platform running on Claude Code. Create, manage, and deploy conver
 ## Project Structure
 
 ```
-server/             Backend: voice pipeline + orchestration services
-  voice/            Real-time audio: STT, TTS, VAD, session management
-  services/         Orchestration: tunnel, Twilio, browser calls, agents
-  index.ts          Entry point (boots dashboard + auto-starts integrations)
+voice-server/       Python FastAPI: real-time audio pipeline (VAD, STT, TTS, Claude sessions)
+server/             Node.js orchestration: boots dashboard + voice server, manages integrations
+  services/         Tunnel, Twilio, browser calls, agents, device pairing
+  index.ts          Entry point (spawns voice-server + dashboard, auto-starts integrations)
 dashboard/          Web UI (Vite + React) + API routes (Hono)
 lander/             Static landing page
 init/               Default prompt templates for new agents
@@ -25,6 +25,7 @@ bin/                CLI entry point (voicecc command)
 
 - macOS or Linux
 - Node.js 18+
+- Python 3.11+ with `venv`
 - An ElevenLabs API key
 
 ### Terminal
@@ -41,11 +42,13 @@ voicecc
 
 ## How It Works
 
-1. **Mic capture**: Browser captures 16kHz mono PCM via WebRTC
+The platform runs two servers: a **Node.js orchestrator** (dashboard, integrations, CLI) and a **Python voice server** (real-time audio pipeline via Pipecat).
+
+1. **Mic capture**: Browser captures audio via WebRTC, connected to the Python voice server
 2. **Voice activity detection**: Silero VAD v5 detects speech segments
-3. **Speech-to-text**: ElevenLabs Scribe API transcribes audio
+3. **Speech-to-text**: ElevenLabs Scribe transcribes audio
 4. **Endpointing**: VAD silence-based turn detection
 5. **Claude inference**: Transcript sent to Claude Agent SDK session with streaming response
 6. **Narration**: Claude's response stripped of markdown and split into sentences
-7. **Text-to-speech**: ElevenLabs streaming TTS API generates audio
-8. **Speaker playback**: Audio output through browser at 24kHz
+7. **Text-to-speech**: ElevenLabs streaming TTS generates audio
+8. **Speaker playback**: Audio streamed back through WebRTC
