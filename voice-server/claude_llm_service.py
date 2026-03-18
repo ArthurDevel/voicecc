@@ -234,6 +234,7 @@ class ClaudeLLMService(LLMService):
                 permission_mode="bypassPermissions",
                 include_partial_messages=True,
                 max_thinking_tokens=0,
+                setting_sources=["user", "project", "local"],
             )
             self._client = ClaudeSDKClient(options=options)
 

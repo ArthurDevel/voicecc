@@ -315,6 +315,7 @@ async def _run_heartbeat_session(
         permission_mode="bypassPermissions",
         include_partial_messages=True,
         max_thinking_tokens=0,
+        setting_sources=["user", "project", "local"],
     )
     client = ClaudeSDKClient(options=options)
     await client.connect()

@@ -138,6 +138,7 @@ async def get_or_create_session(session_key: str, agent_id: str | None = None) -
         permission_mode="bypassPermissions",
         include_partial_messages=True,
         max_thinking_tokens=10000,
+        setting_sources=["user", "project", "local"],
     )
 
     client = ClaudeSDKClient(options=options)
