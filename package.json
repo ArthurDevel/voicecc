@@ -36,7 +36,7 @@
     "linux"
   ],
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.1.8",
+    "@anthropic-ai/claude-agent-sdk": "^0.2.78",
     "@anthropic-ai/sdk": "^0.39.0",
     "@hono/node-server": "^1.19.9",
     "archiver": "^7.0.1",
