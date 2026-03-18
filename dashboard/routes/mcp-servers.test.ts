@@ -7,6 +7,7 @@
 import { test, describe } from "node:test";
 import { strict as assert } from "node:assert";
 
+import type { McpServerStatus } from "@anthropic-ai/claude-agent-sdk";
 import { mapSdkStatusToEntry } from "./mcp-servers.js";
 
 // ============================================================================
@@ -19,7 +20,7 @@ describe("mapSdkStatusToEntry", () => {
       name: "claude.ai Notion",
       status: "connected",
       scope: "claudeai",
-      config: { url: "https://mcp.notion.com/mcp" },
+      config: { url: "https://mcp.notion.com/mcp" } as McpServerStatus["config"],
     });
 
     assert.deepEqual(entry, {
@@ -36,7 +37,7 @@ describe("mapSdkStatusToEntry", () => {
       name: "chrome-devtools",
       status: "connected",
       scope: "user",
-      config: { command: "npx", args: ["chrome-devtools-mcp@latest"] },
+      config: { command: "npx", args: ["chrome-devtools-mcp@latest"] } as McpServerStatus["config"],
     });
 
     assert.equal(entry.scope, "user");
