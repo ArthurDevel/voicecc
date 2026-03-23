@@ -32,6 +32,11 @@ interface IntegrationsState {
   browserCall: { enabled: boolean };
 }
 
+interface TwilioPhoneNumber {
+  phoneNumber: string;
+  friendlyName: string;
+}
+
 // ============================================================================
 // COMPONENT
 // ============================================================================
@@ -45,6 +50,22 @@ export function TwilioPanel({ onClose }: TwilioPanelProps) {
   const [toggling, setToggling] = useState(false);
   const [userPhoneNumber, setUserPhoneNumber] = useState("");
   const [testCallStatus, setTestCallStatus] = useState("");
+  const [twilioNumbers, setTwilioNumbers] = useState<TwilioPhoneNumber[]>([]);
+  const [selectedTwilioNumber, setSelectedTwilioNumber] = useState("");
+  const [loadingNumbers, setLoadingNumbers] = useState(false);
+
+  /** Fetch available phone numbers from the Twilio account */
+  const fetchTwilioNumbers = useCallback(async () => {
+    setLoadingNumbers(true);
+    try {
+      const data = await get<{ numbers: TwilioPhoneNumber[] }>("/api/twilio/phone-numbers");
+      setTwilioNumbers(data.numbers);
+    } catch {
+      setTwilioNumbers([]);
+    } finally {
+      setLoadingNumbers(false);
+    }
+  }, []);
 
   // Load current settings, integration state, and check cloudflared on mount
   useEffect(() => {
@@ -53,6 +74,7 @@ export function TwilioPanel({ onClose }: TwilioPanelProps) {
         if (data.TWILIO_ACCOUNT_SID) setAccountSid(data.TWILIO_ACCOUNT_SID);
         if (data.TWILIO_AUTH_TOKEN) setAuthToken(data.TWILIO_AUTH_TOKEN);
         if (data.USER_PHONE_NUMBER) setUserPhoneNumber(data.USER_PHONE_NUMBER);
+        if (data.TWILIO_PHONE_NUMBER) setSelectedTwilioNumber(data.TWILIO_PHONE_NUMBER);
       })
       .catch(() => {});
 
@@ -65,6 +87,13 @@ export function TwilioPanel({ onClose }: TwilioPanelProps) {
     return () => clearInterval(interval);
   }, []);
 
+  // Fetch Twilio numbers once credentials are available
+  useEffect(() => {
+    if (accountSid.trim() && authToken.trim()) {
+      fetchTwilioNumbers();
+    }
+  }, [accountSid, authToken, fetchTwilioNumbers]);
+
 
   /** Poll Twilio status */
   const pollStatus = () => {
@@ -72,7 +101,8 @@ export function TwilioPanel({ onClose }: TwilioPanelProps) {
   };
 
   /**
-   * Save a single setting to .env.
+   * Save a single setting to .env. If the integration is currently enabled,
+   * restart it so the new config takes effect.
    *
    * @param key - The .env key to save
    * @param value - The value to save
@@ -81,11 +111,16 @@ export function TwilioPanel({ onClose }: TwilioPanelProps) {
   const saveSetting = useCallback(async (key: string, value: string): Promise<boolean> => {
     try {
       await post("/api/settings", { [key]: value });
+      if (enabled) {
+        await post("/api/integrations/twilio", { enabled: false });
+        await post("/api/integrations/twilio", { enabled: true });
+        pollStatus();
+      }
       return true;
     } catch {
       return false;
     }
-  }, []);
+  }, [enabled]);
 
   /** Toggle the Twilio integration enabled state */
   const handleToggle = useCallback(async () => {
@@ -110,7 +145,7 @@ export function TwilioPanel({ onClose }: TwilioPanelProps) {
   };
 
   const isRunning = status?.running ?? false;
-  const canEnable = !!(accountSid.trim() && authToken.trim() && userPhoneNumber.trim());
+  const canEnable = !!(accountSid.trim() && authToken.trim() && userPhoneNumber.trim() && selectedTwilioNumber.trim());
 
   return (
     <div className="modal-overlay visible" onClick={handleOverlayClick}>
@@ -161,7 +196,39 @@ export function TwilioPanel({ onClose }: TwilioPanelProps) {
           <div className="setup-step-title"><span className="setup-step-number">2</span>Get a phone number</div>
           <div className="setup-step-desc">
             In the Twilio console, go to <strong>Phone Numbers</strong> &rarr; <strong>Buy a Number</strong>.
-            Pick any number with voice capability.
+            Pick any number with voice capability. Then select it below.
+          </div>
+          <div className="setup-paste-row">
+            <select
+              value={selectedTwilioNumber}
+              onChange={(e) => setSelectedTwilioNumber(e.target.value)}
+              disabled={!accountSid.trim() || !authToken.trim()}
+              style={{ flex: 1 }}
+            >
+              <option value="">
+                {!accountSid.trim() || !authToken.trim()
+                  ? "Enter credentials first"
+                  : loadingNumbers
+                    ? "Loading..."
+                    : twilioNumbers.length === 0
+                      ? "No numbers found"
+                      : "Select a phone number"}
+              </option>
+              {twilioNumbers.map((n) => (
+                <option key={n.phoneNumber} value={n.phoneNumber}>
+                  {n.phoneNumber} ({n.friendlyName})
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={fetchTwilioNumbers}
+              disabled={!accountSid.trim() || !authToken.trim() || loadingNumbers}
+              title="Refresh phone numbers"
+              style={{ minWidth: "auto", padding: "6px 10px" }}
+            >
+              {loadingNumbers ? "..." : "Refresh"}
+            </button>
+            <ApplyButton onClick={() => saveSetting("TWILIO_PHONE_NUMBER", selectedTwilioNumber)} />
           </div>
         </div>
 

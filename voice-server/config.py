@@ -89,6 +89,7 @@ class VoiceServerConfig:
     project_root: str
     twilio_account_sid: str
     twilio_auth_token: str
+    twilio_phone_number: str
     user_phone_number: str
     max_concurrent_sessions: int
 
@@ -127,6 +128,7 @@ def load_config() -> VoiceServerConfig:
         project_root=PROJECT_ROOT,
         twilio_account_sid=os.environ.get("TWILIO_ACCOUNT_SID", ""),
         twilio_auth_token=os.environ.get("TWILIO_AUTH_TOKEN", ""),
+        twilio_phone_number=os.environ.get("TWILIO_PHONE_NUMBER", ""),
         user_phone_number=os.environ.get("USER_PHONE_NUMBER", ""),
         max_concurrent_sessions=int(
             os.environ.get("MAX_CONCURRENT_SESSIONS") or DEFAULT_MAX_CONCURRENT_SESSIONS
