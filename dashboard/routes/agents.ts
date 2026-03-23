@@ -24,6 +24,8 @@ import {
 import type { AgentConfig } from "../../server/services/agent-store.js";
 import { readEnv } from "../../server/services/env.js";
 import { getTunnelUrl } from "../../server/services/tunnel.js";
+import { syncGroupsForNewAgent, syncGroupsForDeletedAgent } from "../../server/services/whatsapp-groups.js";
+import { isConnected as isWhatsAppConnected } from "../../server/services/whatsapp-manager.js";
 
 /** Base URL for the Python voice server API */
 const VOICE_API_URL = process.env.VOICE_SERVER_URL ?? "http://localhost:7861";
@@ -125,10 +127,20 @@ export function agentsRoutes(): Hono {
 
     try {
       await createAgent(body.id, body.soulMd, body.heartbeatMd, body.config);
-      return c.json({ success: true });
     } catch (err) {
       return c.json({ error: (err as Error).message }, 400);
     }
+
+    // Sync WhatsApp group if connected (non-blocking)
+    if (isWhatsAppConnected()) {
+      try {
+        await syncGroupsForNewAgent(body.id);
+      } catch (err) {
+        console.error(`[agents] Failed to create WhatsApp group for "${body.id}": ${(err as Error).message}`);
+      }
+    }
+
+    return c.json({ success: true });
   });
 
   /** Update an agent's config */
@@ -146,6 +158,16 @@ export function agentsRoutes(): Hono {
   /** Delete an agent by ID */
   app.delete("/:id", async (c) => {
     const id = c.req.param("id");
+
+    // Leave WhatsApp group before deleting agent (non-blocking)
+    if (isWhatsAppConnected()) {
+      try {
+        await syncGroupsForDeletedAgent(id);
+      } catch (err) {
+        console.error(`[agents] Failed to leave WhatsApp group for "${id}": ${(err as Error).message}`);
+      }
+    }
+
     try {
       await deleteAgent(id);
       return c.json({ success: true });

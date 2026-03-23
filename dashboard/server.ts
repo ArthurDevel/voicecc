@@ -35,6 +35,7 @@ import { agentsRoutes } from "./routes/agents.js";
 import { versionRoutes } from "./routes/version.js";
 import { chatRoutes } from "./routes/chat.js";
 import { voiceRoutes } from "./routes/voice.js";
+import { whatsappRoutes } from "./routes/whatsapp.js";
 import { loadDeviceTokens } from "../server/services/device-pairing.js";
 
 // ============================================================================
@@ -90,6 +91,7 @@ export function createApp(): Hono {
   app.route("/api/version", versionRoutes());
   app.route("/api/chat", chatRoutes());
   app.route("/api/voice", voiceRoutes());
+  app.route("/api/whatsapp", whatsappRoutes());
 
   // Status endpoint (user CLAUDE.md conflict check)
   app.get("/api/status", async (c) => {

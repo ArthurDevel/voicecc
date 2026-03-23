@@ -7,6 +7,12 @@ import { McpServersPanel } from "../components/McpServersPanel";
 
 import type { TunnelStatus, TwilioStatus } from "../pages/Home";
 
+/** WhatsApp connection state from GET /api/whatsapp/status */
+interface WhatsAppStatusData {
+    status: "disconnected" | "qr_pending" | "connecting" | "connected";
+    qrCode: string | null;
+}
+
 export function Settings() {
     const [searchParams] = useSearchParams();
     const initialTab = searchParams.get("tab") as "general" | "voice" | "integrations" | null;
@@ -15,11 +21,13 @@ export function Settings() {
     );
     const [tunnelStatus, setTunnelStatus] = useState<TunnelStatus>({ running: false, url: null });
     const [twilioStatus, setTwilioStatus] = useState<TwilioStatus>({ running: false, tunnelUrl: null });
+    const [whatsappStatus, setWhatsappStatus] = useState<WhatsAppStatusData>({ status: "disconnected", qrCode: null });
 
     useEffect(() => {
         const poll = () => {
             get<TunnelStatus>("/api/tunnel/status").then(setTunnelStatus).catch(() => { });
             get<TwilioStatus>("/api/twilio/status").then(setTwilioStatus).catch(() => { });
+            get<WhatsAppStatusData>("/api/whatsapp/status").then(setWhatsappStatus).catch(() => { });
         };
         poll();
         const interval = setInterval(poll, 5000);
@@ -56,7 +64,7 @@ export function Settings() {
                     <VoiceProvidersPanel />
                 )}
                 {activeTab === "integrations" && (
-                    <McpServersPanel twilioRunning={twilioStatus.running} />
+                    <McpServersPanel twilioRunning={twilioStatus.running} whatsappStatus={whatsappStatus.status} />
                 )}
             </div>
         </div>

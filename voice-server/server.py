@@ -86,6 +86,7 @@ async def chat_send(request: Request):
     session_key = body.get("session_key")
     text = body.get("text", "").strip()
     agent_id = body.get("agent_id")
+    resume_session_id = body.get("resume_session_id")
 
     if not session_key or not isinstance(session_key, str):
         return JSONResponse({"error": "Missing 'session_key' field"}, status_code=400)
@@ -94,35 +95,34 @@ async def chat_send(request: Request):
 
     # Get or create the chat session
     try:
-        await get_or_create_session(session_key, agent_id)
+        session = await get_or_create_session(session_key, agent_id, resume_session_id)
     except RuntimeError as e:
         logger.error(f"[server] Failed to create chat session: {e}")
         return JSONResponse({"error": str(e)}, status_code=503)
 
-    # Stream response as SSE
-    try:
-
-        async def event_generator():
-            async for event in stream_message(session_key, text):
-                data = json.dumps(event.to_dict())
-                yield f"data: {data}\n\n"
-
-        return StreamingResponse(
-            event_generator(),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "X-Accel-Buffering": "no",
-            },
+    # Check if already streaming before creating the StreamingResponse.
+    # This returns HTTP 409 immediately instead of an abruptly closed empty stream.
+    if session.streaming:
+        return JSONResponse(
+            {"error": "Already streaming a response. Wait for it to complete."},
+            status_code=409,
         )
-    except RuntimeError as e:
-        if "ALREADY_STREAMING" in str(e):
-            return JSONResponse(
-                {"error": "Already streaming a response. Wait for it to complete."},
-                status_code=409,
-            )
-        return JSONResponse({"error": str(e)}, status_code=500)
+
+    # Stream response as SSE
+    async def event_generator():
+        async for event in stream_message(session_key, text):
+            data = json.dumps(event.to_dict())
+            yield f"data: {data}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @app.post("/chat/stop")

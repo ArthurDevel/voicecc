@@ -58,6 +58,7 @@ export interface AgentConfig {
   heartbeatTimeoutMinutes?: number;
   enabled: boolean;
   voice?: AgentVoiceConfig;
+  outboundChannel?: "call" | "whatsapp";
 }
 
 /** Full agent data including all file contents */

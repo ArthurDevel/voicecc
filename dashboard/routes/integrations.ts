@@ -1,7 +1,7 @@
 /**
  * Integration enable/disable API routes.
  *
- * Manages the enabled state of toggleable integrations (Twilio).
+ * Manages the enabled state of toggleable integrations (Twilio, WhatsApp).
  * Browser calling is always enabled and not toggleable.
  *
  * - GET / -- returns enabled state for each integration
@@ -12,6 +12,7 @@ import { Hono } from "hono";
 import { readEnv, writeEnvKey } from "../../server/services/env.js";
 import { startTwilioServer, stopTwilioServer, isRunning as isTwilioRunning } from "../../server/services/twilio-manager.js";
 import { isTunnelRunning, getTunnelUrl } from "../../server/services/tunnel.js";
+import { startWhatsApp, stopWhatsApp } from "../../server/services/whatsapp-manager.js";
 
 // ============================================================================
 // CONSTANTS
@@ -20,6 +21,7 @@ import { isTunnelRunning, getTunnelUrl } from "../../server/services/tunnel.js";
 /** Map of integration names to their .env key */
 const INTEGRATION_ENV_KEYS: Record<string, string> = {
   twilio: "TWILIO_ENABLED",
+  whatsapp: "WHATSAPP_ENABLED",
 };
 
 // ============================================================================
@@ -55,6 +57,7 @@ export function integrationsRoutes(): Hono {
     const envVars = await readEnv();
     return c.json({
       twilio: { enabled: envVars.TWILIO_ENABLED === "true" },
+      whatsapp: { enabled: envVars.WHATSAPP_ENABLED === "true" },
     });
   });
 
@@ -113,6 +116,10 @@ async function startIntegration(name: string): Promise<void> {
       await startTwilioServer(dashboardPort, getTunnelUrl() ?? undefined);
     }
   }
+
+  if (name === "whatsapp") {
+    await startWhatsApp();
+  }
 }
 
 /**
@@ -123,5 +130,9 @@ async function startIntegration(name: string): Promise<void> {
 function stopIntegration(name: string): void {
   if (name === "twilio") {
     stopTwilioServer();
+  }
+
+  if (name === "whatsapp") {
+    stopWhatsApp();
   }
 }
