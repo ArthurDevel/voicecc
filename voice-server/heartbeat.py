@@ -414,14 +414,14 @@ async def initiate_agent_call(agent: Agent, client: ClaudeSDKClient) -> str:
     # Schedule cleanup for unanswered calls
     asyncio.create_task(_cleanup_pending_call(token))
 
-    # Get from number via Twilio API
+    # Get the configured Twilio phone number
     from twilio.rest import Client as TwilioClient
 
+    from_number: str = _config.twilio_phone_number
+    if not from_number:
+        raise RuntimeError("No TWILIO_PHONE_NUMBER configured")
+
     twilio_client = TwilioClient(_config.twilio_account_sid, _config.twilio_auth_token)
-    numbers = twilio_client.incoming_phone_numbers.list(limit=1)
-    if not numbers:
-        raise RuntimeError("No Twilio phone numbers found on the account")
-    from_number: str = numbers[0].phone_number or ""
 
     # Build TwiML with WebSocket stream URL
     tunnel_host = tunnel_url.replace("https://", "").replace("http://", "")

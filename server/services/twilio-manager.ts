@@ -70,26 +70,36 @@ export async function startTwilioServer(_dashboardPort: number, tunnelUrl?: stri
     throw new Error("TWILIO_AUTH_TOKEN is not set in .env");
   }
 
+  if (!envVars.TWILIO_PHONE_NUMBER) {
+    throw new Error("TWILIO_PHONE_NUMBER is not set in .env");
+  }
+
   const accountSid = envVars.TWILIO_ACCOUNT_SID;
   const webhookUrl = tunnelUrl ? `${tunnelUrl}/api/twilio/incoming-call` : null;
 
   if (tunnelUrl && accountSid && envVars.TWILIO_AUTH_TOKEN) {
     const client = twilioSdk(accountSid, envVars.TWILIO_AUTH_TOKEN);
 
-    // Update all phone numbers on the account to point to the new webhook URL
+    // Update the selected phone number's webhook URL
+    const selectedNumber = envVars.TWILIO_PHONE_NUMBER;
     try {
-      const numbers = await client.incomingPhoneNumbers.list();
-      for (const num of numbers) {
-        await client.incomingPhoneNumbers(num.sid).update({
-          voiceUrl: webhookUrl!,
-          voiceMethod: "POST",
-        });
-      }
-      if (numbers.length > 0) {
-        console.log(`Updated ${numbers.length} phone number(s) webhook to ${webhookUrl}`);
+      if (selectedNumber) {
+        // Find the SID for the selected number and update only that one
+        const numbers = await client.incomingPhoneNumbers.list({ phoneNumber: selectedNumber });
+        if (numbers.length > 0) {
+          await client.incomingPhoneNumbers(numbers[0].sid).update({
+            voiceUrl: webhookUrl!,
+            voiceMethod: "POST",
+          });
+          console.log(`Updated webhook for ${selectedNumber} to ${webhookUrl}`);
+        } else {
+          console.error(`Selected phone number ${selectedNumber} not found on Twilio account`);
+        }
+      } else {
+        console.warn("No TWILIO_PHONE_NUMBER configured, skipping webhook setup");
       }
     } catch (err) {
-      console.error(`Failed to update phone number webhooks: ${err}`);
+      console.error(`Failed to update phone number webhook: ${err}`);
     }
   }
 

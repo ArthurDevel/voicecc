@@ -192,18 +192,18 @@ export function agentsRoutes(): Hono {
       }
 
       // Place the actual Twilio call
-      const client = twilioSdk(accountSid, authToken);
-      const numbers = await client.incomingPhoneNumbers.list({ limit: 1 });
-      if (numbers.length === 0) {
-        return c.json({ error: "No Twilio phone numbers found on this account" }, 400);
+      const fromNumber = envVars.TWILIO_PHONE_NUMBER;
+      if (!fromNumber) {
+        return c.json({ error: "No Twilio phone number selected. Select one in Twilio settings." }, 400);
       }
 
+      const client = twilioSdk(accountSid, authToken);
       const tunnelHost = tunnelUrl.replace(/^https?:\/\//, "");
       const twiml = `<Response><Connect><Stream url="wss://${tunnelHost}/media/${token}?agentId=${id}" /></Connect></Response>`;
 
       const call = await client.calls.create({
         to: userPhone,
-        from: numbers[0].phoneNumber,
+        from: fromNumber,
         twiml,
       });
 

@@ -134,17 +134,15 @@ export function twilioRoutes(): Hono {
     }
 
     try {
-      const client = twilioSdk(accountSid, authToken);
-
-      // Get the first Twilio phone number to use as caller ID
-      const numbers = await client.incomingPhoneNumbers.list({ limit: 1 });
-      if (numbers.length === 0) {
-        return c.json({ error: "No Twilio phone numbers found on this account" }, 400);
+      const fromNumber = envVars.TWILIO_PHONE_NUMBER;
+      if (!fromNumber) {
+        return c.json({ error: "No Twilio phone number selected. Select one in step 2." }, 400);
       }
 
+      const client = twilioSdk(accountSid, authToken);
       const call = await client.calls.create({
         to,
-        from: numbers[0].phoneNumber,
+        from: fromNumber,
         twiml: '<Response><Say>This is a test call from your voice assistant. If you can hear this, your Twilio setup is working correctly. Goodbye!</Say></Response>',
       });
 
