@@ -17,6 +17,7 @@ Responsibilities:
 """
 
 import asyncio
+import gc
 import json
 import logging
 import os
@@ -288,6 +289,9 @@ async def check_single_agent(agent: Agent) -> HeartbeatResult:
             except Exception:
                 pass
         _in_flight_checks.discard(agent.id)
+
+        # Force garbage collection to reclaim memory from the Claude subprocess
+        gc.collect()
 
 
 async def _run_heartbeat_session(
