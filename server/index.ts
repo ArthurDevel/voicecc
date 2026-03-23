@@ -43,6 +43,18 @@ const VOICE_SERVER_DIR = join(import.meta.dirname ?? ".", "..", "voice-server");
 /** Reference to the Python voice server child process */
 let pythonProcess: ChildProcess | null = null;
 
+/** Maximum number of automatic restart attempts after an unexpected crash */
+const PYTHON_MAX_RESTART_ATTEMPTS = 5;
+
+/** Delay before attempting a restart (ms) */
+const PYTHON_RESTART_DELAY_MS = 3_000;
+
+/** Number of consecutive restart attempts since last successful start */
+let pythonRestartAttempts = 0;
+
+/** Whether the Python server was intentionally stopped (skip auto-restart) */
+let pythonManuallyStopped = false;
+
 /**
  * Start the Python voice server as a child process.
  * Waits for the health endpoint to respond before returning.
@@ -63,6 +75,7 @@ async function startPythonVoiceServer(): Promise<void> {
   pythonProcess.on("exit", (code) => {
     console.error(`Python voice server exited with code ${code}`);
     pythonProcess = null;
+    schedulePythonRestart();
   });
 
   // Wait for health endpoint (up to 15s)
@@ -72,6 +85,7 @@ async function startPythonVoiceServer(): Promise<void> {
       const res = await fetch(`${VOICE_SERVER_API_URL}/health`);
       if (res.ok) {
         console.log("Python voice server is ready");
+        pythonRestartAttempts = 0;
         return;
       }
     } catch {
@@ -83,13 +97,65 @@ async function startPythonVoiceServer(): Promise<void> {
 }
 
 /**
- * Stop the Python voice server child process.
+ * Stop the Python voice server child process. Prevents auto-restart.
  */
 function stopPythonVoiceServer(): void {
+  pythonManuallyStopped = true;
   if (pythonProcess) {
     pythonProcess.kill("SIGTERM");
     pythonProcess = null;
   }
+}
+
+/**
+ * Schedule an automatic restart of the Python voice server after an unexpected exit.
+ * Skips restart if manually stopped or max attempts exceeded.
+ */
+function schedulePythonRestart(): void {
+  if (pythonManuallyStopped) {
+    return;
+  }
+
+  pythonRestartAttempts++;
+
+  if (pythonRestartAttempts > PYTHON_MAX_RESTART_ATTEMPTS) {
+    console.error(`[voice-server] Giving up after ${PYTHON_MAX_RESTART_ATTEMPTS} restart attempts`);
+    return;
+  }
+
+  console.log(
+    `[voice-server] Restarting in ${PYTHON_RESTART_DELAY_MS / 1000}s ` +
+    `(attempt ${pythonRestartAttempts}/${PYTHON_MAX_RESTART_ATTEMPTS})...`
+  );
+
+  setTimeout(async () => {
+    if (pythonManuallyStopped || pythonProcess) {
+      return;
+    }
+
+    try {
+      await startPythonVoiceServer();
+      pythonRestartAttempts = 0;
+      console.log("[voice-server] Restarted successfully");
+
+      // Re-notify of tunnel URL if tunnel is running
+      const currentTunnelUrl = getTunnelUrl();
+      if (currentTunnelUrl) {
+        try {
+          await fetch(`${VOICE_SERVER_API_URL}/config/tunnel-url`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url: currentTunnelUrl }),
+          });
+        } catch {
+          console.warn("[voice-server] Failed to re-notify tunnel URL after restart");
+        }
+      }
+    } catch (err) {
+      console.error(`[voice-server] Restart failed: ${err}`);
+      schedulePythonRestart();
+    }
+  }, PYTHON_RESTART_DELAY_MS);
 }
 
 // Use VOICECC_DIR env var if set (passed by CLI when dropping root privileges),
