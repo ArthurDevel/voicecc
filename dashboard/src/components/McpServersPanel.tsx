@@ -9,6 +9,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { get, del } from "../api";
 import { TwilioPanel } from "./TwilioPanel";
+import { WhatsAppPanel } from "./WhatsAppPanel";
 import { AddMcpServerModal } from "./AddMcpServerModal";
 import { Toast } from "./Toast";
 import type { ApiError } from "../api";
@@ -27,16 +28,18 @@ interface McpServerEntry {
 
 interface McpServersPanelProps {
   twilioRunning: boolean;
+  whatsappStatus: string;
 }
 
 // ============================================================================
 // COMPONENT
 // ============================================================================
 
-export function McpServersPanel({ twilioRunning }: McpServersPanelProps) {
+export function McpServersPanel({ twilioRunning, whatsappStatus }: McpServersPanelProps) {
   const [servers, setServers] = useState<McpServerEntry[] | null>(null);
   const [error, setError] = useState(false);
   const [showTwilioModal, setShowTwilioModal] = useState(false);
+  const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -96,6 +99,10 @@ export function McpServersPanel({ twilioRunning }: McpServersPanelProps) {
           <button className="btn-integration" onClick={() => setShowTwilioModal(true)}>
             <span className={`integration-dot${twilioRunning ? " running" : ""}`} />
             Twilio
+          </button>
+          <button className="btn-integration" onClick={() => setShowWhatsAppModal(true)}>
+            <span className={`integration-dot${whatsappStatus === "connected" ? " running" : ""}`} />
+            WhatsApp
           </button>
         </div>
       </div>
@@ -157,6 +164,10 @@ export function McpServersPanel({ twilioRunning }: McpServersPanelProps) {
 
       {showTwilioModal && (
         <TwilioPanel onClose={() => setShowTwilioModal(false)} />
+      )}
+
+      {showWhatsAppModal && (
+        <WhatsAppPanel onClose={() => setShowWhatsAppModal(false)} />
       )}
 
       {showAddModal && (

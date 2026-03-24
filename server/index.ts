@@ -33,6 +33,7 @@ import { startDashboard } from "../dashboard/server.js";
 import { readEnv } from "./services/env.js";
 import { startTunnel, stopTunnel, isTunnelRunning, getTunnelUrl } from "./services/tunnel.js";
 import { startTwilioServer } from "./services/twilio-manager.js";
+import { startWhatsApp, stopWhatsApp } from "./services/whatsapp-manager.js";
 
 /** Base URL for the Python FastAPI server (for tunnel URL notification) */
 const VOICE_SERVER_API_URL = process.env.VOICE_SERVER_URL ?? "http://localhost:7861";
@@ -252,10 +253,21 @@ async function main(): Promise<void> {
     }
   }
 
+  // Auto-start WhatsApp if enabled
+  if (envVars.WHATSAPP_ENABLED === "true") {
+    console.log("WhatsApp integration enabled, starting...");
+    try {
+      await startWhatsApp();
+    } catch (err) {
+      console.error(`WhatsApp auto-start failed: ${err}`);
+    }
+  }
+
   // Graceful shutdown: stop tunnel subprocess, then clean up status file
   const shutdown = () => {
     stopPythonVoiceServer();
     stopTunnel();
+    stopWhatsApp();
     cleanupStatusFile();
     process.exit(0);
   };

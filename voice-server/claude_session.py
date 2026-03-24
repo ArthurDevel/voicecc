@@ -50,16 +50,20 @@ class ChatSseEvent:
         type: Event type ("text_delta", "tool_start", "tool_end", "result", "error")
         content: Text content or error message
         tool_name: Tool name (only for tool_start events)
+        session_id: Claude session ID (only for "result" events, used for session resume)
     """
     type: str
     content: str
     tool_name: str | None = None
+    session_id: str | None = None
 
     def to_dict(self) -> dict:
         """Serialize to a JSON-safe dict, omitting None fields."""
         d: dict = {"type": self.type, "content": self.content}
         if self.tool_name is not None:
             d["toolName"] = self.tool_name
+        if self.session_id is not None:
+            d["sessionId"] = self.session_id
         return d
 
 
@@ -93,16 +97,25 @@ _cleanup_task: asyncio.Task | None = None
 # MAIN HANDLERS
 # ============================================================================
 
-async def get_or_create_session(session_key: str, agent_id: str | None = None) -> ChatSession:
+async def get_or_create_session(
+    session_key: str,
+    agent_id: str | None = None,
+    resume_session_id: str | None = None,
+) -> ChatSession:
     """Get an existing chat session or create a new one.
 
     On first call for a session_key, creates a ClaudeSDKClient with the
     appropriate system prompt. Subsequent calls return the existing session.
     Enforces max concurrent sessions from config.
 
+    If resume_session_id is provided and no existing session exists, creates
+    the session with resume=resume_session_id so Claude reloads conversation
+    history. Falls back to a fresh session if resume fails.
+
     Args:
         session_key: Device token to key the session on
         agent_id: Optional agent ID for agent-specific prompts
+        resume_session_id: Optional Claude session ID to resume from
 
     Returns:
         The active ChatSession
@@ -131,18 +144,7 @@ async def get_or_create_session(session_key: str, agent_id: str | None = None) -
         if os.path.isdir(agent_dir):
             cwd = agent_dir
 
-    options = ClaudeAgentOptions(
-        system_prompt=system_prompt,
-        cwd=cwd,
-        allowed_tools=[],
-        permission_mode="bypassPermissions",
-        include_partial_messages=True,
-        max_thinking_tokens=10000,
-        setting_sources=["user", "project", "local"],
-    )
-
-    client = ClaudeSDKClient(options=options)
-    await client.connect()
+    client = await _create_client(system_prompt, cwd, resume_session_id)
 
     session = ChatSession(
         session_key=session_key,
@@ -184,6 +186,8 @@ async def stream_message(session_key: str, text: str):
     try:
         await session.client.query(text)
 
+        captured_session_id: str | None = None
+
         async for msg in session.client.receive_response():
             if isinstance(msg, AssistantMessage):
                 for block in msg.content:
@@ -195,13 +199,14 @@ async def stream_message(session_key: str, text: str):
                         )
 
             elif isinstance(msg, ResultMessage):
+                captured_session_id = msg.session_id
                 if msg.is_error:
                     yield ChatSseEvent(
                         type="error", content=msg.subtype or "Unknown error"
                     )
                 break
 
-        yield ChatSseEvent(type="result", content="")
+        yield ChatSseEvent(type="result", content="", session_id=captured_session_id)
 
     except Exception as e:
         logger.error(f"[chat] Stream error for {session_key}: {e}")
@@ -286,6 +291,55 @@ async def cleanup_inactive() -> None:
 # ============================================================================
 # HELPER FUNCTIONS
 # ============================================================================
+
+async def _create_client(
+    system_prompt: str,
+    cwd: str,
+    resume_session_id: str | None,
+) -> ClaudeSDKClient:
+    """Create and connect a ClaudeSDKClient, optionally resuming a prior session.
+
+    If resume_session_id is provided, attempts to create the client with
+    resume=resume_session_id. If that fails, falls back to a fresh session.
+
+    Args:
+        system_prompt: System prompt for the Claude session
+        cwd: Working directory for the session
+        resume_session_id: Optional session ID to resume from
+
+    Returns:
+        A connected ClaudeSDKClient
+    """
+    base_kwargs = dict(
+        system_prompt=system_prompt,
+        cwd=cwd,
+        allowed_tools=[],
+        permission_mode="bypassPermissions",
+        include_partial_messages=True,
+        max_thinking_tokens=10000,
+        setting_sources=["user", "project", "local"],
+    )
+
+    # Attempt resume if a session ID was provided
+    if resume_session_id:
+        try:
+            options = ClaudeAgentOptions(**base_kwargs, resume=resume_session_id)
+            client = ClaudeSDKClient(options=options)
+            await client.connect()
+            logger.info(f"[chat] Resumed session: {resume_session_id}")
+            return client
+        except Exception as e:
+            logger.warning(
+                f"[chat] Failed to resume session {resume_session_id}, "
+                f"creating fresh session: {e}"
+            )
+
+    # Fresh session (no resume, or resume failed)
+    options = ClaudeAgentOptions(**base_kwargs)
+    client = ClaudeSDKClient(options=options)
+    await client.connect()
+    return client
+
 
 async def _cleanup_loop() -> None:
     """Background loop that runs cleanup_inactive every 60 seconds."""

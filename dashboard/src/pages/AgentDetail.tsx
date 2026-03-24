@@ -30,6 +30,7 @@ interface AgentConfig {
     elevenlabs?: VoicePreference;
     local?: VoicePreference;
   };
+  outboundChannel?: "call" | "whatsapp";
 }
 
 interface Agent {
@@ -82,6 +83,9 @@ export function AgentDetail() {
   const [savingVoice, setSavingVoice] = useState(false);
   const [showBrowserCallModal, setShowBrowserCallModal] = useState(false);
   const [openingChat, setOpeningChat] = useState(false);
+  const [twilioRunning, setTwilioRunning] = useState(false);
+  const [whatsappConnected, setWhatsappConnected] = useState(false);
+  const [savingOutbound, setSavingOutbound] = useState(false);
 
   // ============================================================================
   // EVENT HANDLERS
@@ -94,6 +98,16 @@ export function AgentDetail() {
       .then(setAgent)
       .catch(() => {});
   }, [id]);
+
+  /** Fetch Twilio and WhatsApp status for outbound channel availability */
+  useEffect(() => {
+    get<{ running: boolean }>("/api/twilio/status")
+      .then((data) => setTwilioRunning(data.running))
+      .catch(() => {});
+    get<{ status: string }>("/api/whatsapp/status")
+      .then((data) => setWhatsappConnected(data.status === "connected"))
+      .catch(() => {});
+  }, []);
 
   /** Fetch active TTS provider and available voices */
   useEffect(() => {
@@ -120,6 +134,18 @@ export function AgentDetail() {
       setAgent({ ...agent, config: { ...agent.config, voice: newVoice } });
     } finally {
       setSavingVoice(false);
+    }
+  };
+
+  /** Update the agent's outbound channel preference */
+  const handleOutboundChannelChange = async (channel: "call" | "whatsapp") => {
+    if (!id || !agent) return;
+    setSavingOutbound(true);
+    try {
+      await patch(`/api/agents/${id}`, { config: { outboundChannel: channel } });
+      setAgent({ ...agent, config: { ...agent.config, outboundChannel: channel } });
+    } finally {
+      setSavingOutbound(false);
     }
   };
 
@@ -377,6 +403,37 @@ export function AgentDetail() {
           ) : (
             <p style={{ margin: 0, fontSize: 13, color: "var(--text-secondary)" }}>Loading voices...</p>
           )}
+        </div>
+
+        {/* Outbound Channel */}
+        <div className="settings-panel" style={{ marginBottom: 24, padding: 20 }}>
+          <h3 style={SECTION_LABEL_STYLE}>Outbound Channel</h3>
+          <p style={{ margin: "0 0 8px", fontSize: 13, color: "var(--text-secondary)" }}>
+            When a heartbeat decides to reach out, use this channel.
+          </p>
+          <select
+            value={agent.config.outboundChannel ?? "call"}
+            onChange={(e) => handleOutboundChannelChange(e.target.value as "call" | "whatsapp")}
+            disabled={savingOutbound}
+            style={{
+              padding: "6px 10px",
+              fontSize: 13,
+              background: "var(--bg-main)",
+              color: "var(--text-primary)",
+              border: "1px solid var(--border-color)",
+              borderRadius: 0,
+              cursor: savingOutbound ? "not-allowed" : "pointer",
+              opacity: savingOutbound ? 0.6 : 1,
+              minWidth: 200,
+            }}
+          >
+            <option value="call" disabled={!twilioRunning}>
+              Phone Call{!twilioRunning ? " (Twilio not running)" : ""}
+            </option>
+            <option value="whatsapp" disabled={!whatsappConnected}>
+              WhatsApp{!whatsappConnected ? " (not connected)" : ""}
+            </option>
+          </select>
         </div>
 
         {/* Config */}

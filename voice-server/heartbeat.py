@@ -26,6 +26,9 @@ import time
 from dataclasses import dataclass, field
 from uuid import uuid4
 
+import urllib.request
+import urllib.error
+
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, AssistantMessage, ResultMessage, TextBlock
 
 from config import (
@@ -274,11 +277,18 @@ async def check_single_agent(agent: Agent) -> HeartbeatResult:
         )
 
         if result.should_call:
-            try:
-                await initiate_agent_call(agent, client)
-                client = None  # Don't close -- voice session owns it now
-            except Exception as e:
-                logger.error(f'[heartbeat] failed to call agent "{agent.id}": {e}')
+            outbound = agent.config.outbound_channel
+
+            if outbound == "whatsapp":
+                # Send via WhatsApp -- no session handoff needed
+                await send_whatsapp_message(agent.id, result.reason)
+            else:
+                # Default: place a Twilio call with session handoff
+                try:
+                    await initiate_agent_call(agent, client)
+                    client = None  # Don't close -- voice session owns it now
+                except Exception as e:
+                    logger.error(f'[heartbeat] failed to call agent "{agent.id}": {e}')
 
         return result
     finally:
@@ -442,6 +452,63 @@ async def initiate_agent_call(agent: Agent, client: ClaudeSDKClient) -> str:
         f"(callSid={call.sid})"
     )
     return call.sid or ""
+
+
+async def send_whatsapp_message(agent_id: str, text: str) -> None:
+    """Send a WhatsApp message to an agent's group via the dashboard API.
+
+    POSTs { agentId, text } to the dashboard's POST /api/whatsapp/send endpoint.
+    Logs errors but does NOT raise -- the caller should not retry or fall back.
+
+    Args:
+        agent_id: Agent identifier
+        text: Message text to send
+    """
+    dashboard_port = _get_dashboard_port()
+    if not dashboard_port:
+        logger.error("[heartbeat] Cannot send WhatsApp message: dashboard port unknown")
+        return
+
+    url = f"http://localhost:{dashboard_port}/api/whatsapp/send"
+    try:
+        payload = json.dumps({"agentId": agent_id, "text": text}).encode("utf-8")
+        req = urllib.request.Request(
+            url,
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        response = await asyncio.to_thread(urllib.request.urlopen, req, timeout=10)
+        if response.status == 200:
+            logger.info(f'[heartbeat] WhatsApp message sent for agent "{agent_id}"')
+        else:
+            logger.error(
+                f'[heartbeat] WhatsApp send failed for agent "{agent_id}": '
+                f"HTTP {response.status}"
+            )
+    except urllib.error.HTTPError as e:
+        logger.error(
+            f'[heartbeat] WhatsApp send failed for agent "{agent_id}": '
+            f"HTTP {e.code} -- {e.read().decode('utf-8', errors='replace')}"
+        )
+    except Exception as e:
+        logger.error(f'[heartbeat] WhatsApp send error for agent "{agent_id}": {e}')
+
+
+def _get_dashboard_port() -> int | None:
+    """Read the dashboard port from ~/.voicecc/status.json.
+
+    Returns:
+        The dashboard port number, or None if the status file is unreadable
+    """
+    voicecc_dir = os.environ.get("VOICECC_DIR", os.path.join(os.path.expanduser("~"), ".voicecc"))
+    status_path = os.path.join(voicecc_dir, "status.json")
+    try:
+        with open(status_path, "r", encoding="utf-8") as f:
+            status = json.load(f)
+        return int(status["dashboardPort"])
+    except Exception:
+        return None
 
 
 async def _cleanup_pending_call(token: str) -> None:

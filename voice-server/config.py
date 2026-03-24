@@ -62,6 +62,7 @@ class AgentConfig:
     heartbeat_timeout_minutes: int | None = None
     enabled: bool = True
     voice: AgentVoiceConfig | None = None
+    outbound_channel: str = "call"  # "call" or "whatsapp"
 
 
 @dataclass
@@ -334,9 +335,15 @@ def _read_agent_config(config_path: str) -> AgentConfig:
             elevenlabs = VoicePreference(id=el["id"], name=el["name"])
         voice_config = AgentVoiceConfig(elevenlabs=elevenlabs)
 
+    # Validate outbound channel value
+    outbound_channel = raw.get("outboundChannel", "call")
+    if outbound_channel not in ("call", "whatsapp"):
+        raise ValueError(f'Invalid outboundChannel "{outbound_channel}". Must be "call" or "whatsapp".')
+
     return AgentConfig(
         heartbeat_interval_minutes=raw.get("heartbeatIntervalMinutes", 10),
         heartbeat_timeout_minutes=raw.get("heartbeatTimeoutMinutes"),
         enabled=raw.get("enabled", True),
         voice=voice_config,
+        outbound_channel=outbound_channel,
     )
