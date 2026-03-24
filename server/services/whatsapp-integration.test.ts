@@ -121,7 +121,7 @@ const originalFetch = globalThis.fetch;
  * @returns A Response with SSE body
  */
 function buildPythonResponse(
-  events: Array<{ type: string; content?: string; session_id?: string }>,
+  events: Array<{ type: string; content?: string; sessionId?: string; toolName?: string }>,
   status = 200
 ): Response {
   const sseText = events.map((e) => `data: ${JSON.stringify(e)}\n\n`).join("");
@@ -173,7 +173,7 @@ describe("handleIncomingMessage - message round-trip", () => {
       return buildPythonResponse([
         { type: "text_delta", content: "I am " },
         { type: "text_delta", content: "agent-1." },
-        { type: "result", session_id: "new-session-99" },
+        { type: "result", sessionId: "new-session-99" },
       ]);
     }) as typeof fetch;
 
@@ -198,7 +198,7 @@ describe("handleIncomingMessage - message round-trip", () => {
     // Verify reply was sent back via Baileys
     assert.equal(sendMessageCalls.length, 1);
     assert.equal(sendMessageCalls[0]!.jid, groupJid);
-    assert.equal(sendMessageCalls[0]!.content.text, "I am agent-1.");
+    assert.equal(sendMessageCalls[0]!.content.text, "[voicecc] I am agent-1.");
 
     // Verify session ID was stored
     assert.equal(groupMappings.get(groupJid)?.lastSessionId, "new-session-99");
@@ -236,7 +236,7 @@ describe("handleIncomingMessage - message round-trip", () => {
       fetchCalls.push([url, init]);
       return buildPythonResponse([
         { type: "text_delta", content: "First reply" },
-        { type: "result", session_id: "first-session" },
+        { type: "result", sessionId: "first-session" },
       ]);
     }) as typeof fetch;
 
@@ -249,6 +249,35 @@ describe("handleIncomingMessage - message round-trip", () => {
 
     const body = await parseFetchBody(fetchCalls[0]!);
     assert.equal(body.resume_session_id, null);
+  });
+
+  it("sends multiple WhatsApp messages when response has tool boundaries", async (t) => {
+    t.after(() => { globalThis.fetch = originalFetch; });
+    globalThis.fetch = (async () => {
+      return buildPythonResponse([
+        { type: "text_delta", content: "Looking that up..." },
+        { type: "tool_start", toolName: "read_file" },
+        { type: "text_delta", content: "Here is the answer." },
+        { type: "result", sessionId: "new-session-99" },
+      ]);
+    }) as typeof fetch;
+
+    await handleIncomingMessage({
+      groupJid,
+      senderJid: "5511999998888@s.whatsapp.net",
+      text: "What does the config say?",
+      messageId: "msg-004",
+    });
+
+    // Two separate messages: one before tool, one after
+    assert.equal(sendMessageCalls.length, 2);
+    assert.equal(sendMessageCalls[0]!.jid, groupJid);
+    assert.equal(sendMessageCalls[0]!.content.text, "[voicecc] Looking that up...");
+    assert.equal(sendMessageCalls[1]!.jid, groupJid);
+    assert.equal(sendMessageCalls[1]!.content.text, "[voicecc] Here is the answer.");
+
+    // Session ID should be stored
+    assert.equal(groupMappings.get(groupJid)?.lastSessionId, "new-session-99");
   });
 });
 

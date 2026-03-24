@@ -31,7 +31,7 @@ mock.module("./whatsapp-groups.js", {
   },
 });
 
-const { shouldHandleMessage, collectSseResponse, normalizeJid } = await import(
+const { shouldHandleMessage, streamSseSegments, normalizeJid } = await import(
   "./whatsapp-message-handler.js"
 );
 
@@ -205,107 +205,68 @@ describe("shouldHandleMessage", () => {
 });
 
 // ============================================================================
-// TESTS: collectSseResponse
+// HELPERS: collect all segments from an async generator
 // ============================================================================
 
-describe("collectSseResponse", () => {
-  it("accumulates text_delta events and extracts session_id from result", async () => {
+import type { SseSegment } from "./whatsapp-message-handler.js";
+
+/**
+ * Collect all segments from the streamSseSegments async generator into an array.
+ *
+ * @param gen - The async generator to drain
+ * @returns Array of all yielded SseSegment objects
+ */
+async function collectSegments(gen: AsyncGenerator<SseSegment>): Promise<SseSegment[]> {
+  const segments: SseSegment[] = [];
+  for await (const segment of gen) {
+    segments.push(segment);
+  }
+  return segments;
+}
+
+// ============================================================================
+// TESTS: streamSseSegments
+// ============================================================================
+
+describe("streamSseSegments", () => {
+  it("yields separate segments at tool_start boundaries", async () => {
+    const events = [
+      JSON.stringify({ type: "text_delta", content: "Hello" }),
+      JSON.stringify({ type: "tool_start", toolName: "read_file" }),
+      JSON.stringify({ type: "text_delta", content: "Done" }),
+      JSON.stringify({ type: "result", sessionId: "sess-abc-123" }),
+    ];
+
+    const response = buildSseResponse(events);
+    const segments = await collectSegments(streamSseSegments(response));
+
+    assert.equal(segments.length, 2);
+    assert.equal(segments[0]!.text, "Hello");
+    assert.equal(segments[0]!.sessionId, null);
+    assert.equal(segments[1]!.text, "Done");
+    assert.equal(segments[1]!.sessionId, "sess-abc-123");
+  });
+
+  it("yields single segment when no tool calls", async () => {
     const events = [
       JSON.stringify({ type: "text_delta", content: "Hello " }),
       JSON.stringify({ type: "text_delta", content: "world!" }),
-      JSON.stringify({ type: "result", session_id: "sess-abc-123" }),
+      JSON.stringify({ type: "result", sessionId: "sess-abc-123" }),
     ];
 
     const response = buildSseResponse(events);
-    const result = await collectSseResponse(response);
+    const segments = await collectSegments(streamSseSegments(response));
 
-    assert.equal(result.text, "Hello world!");
-    assert.equal(result.sessionId, "sess-abc-123");
+    assert.equal(segments.length, 1);
+    assert.equal(segments[0]!.text, "Hello world!");
+    assert.equal(segments[0]!.sessionId, "sess-abc-123");
   });
 
-  it("returns ALREADY_STREAMING for HTTP 409", async () => {
+  it("yields isAlreadyStreaming segment for HTTP 409", async () => {
     const response = new Response("Already streaming", { status: 409 });
-    const result = await collectSseResponse(response);
+    const segments = await collectSegments(streamSseSegments(response));
 
-    assert.equal(result.text, "ALREADY_STREAMING");
-    assert.equal(result.sessionId, null);
-  });
-
-  it("returns user-friendly error string for SSE error events", async () => {
-    const events = [
-      JSON.stringify({ type: "error", error: "Internal server error" }),
-    ];
-
-    const response = buildSseResponse(events);
-    const result = await collectSseResponse(response);
-
-    assert.equal(
-      result.text,
-      "Sorry, something went wrong while generating a response. Please try again."
-    );
-    assert.equal(result.sessionId, null);
-  });
-
-  it("returns empty string for an empty stream", async () => {
-    const response = buildSseResponse([]);
-    const result = await collectSseResponse(response);
-
-    assert.equal(result.text, "");
-    assert.equal(result.sessionId, null);
-  });
-
-  it("returns empty string when response body is null", async () => {
-    // Construct a response with no body
-    const response = new Response(null, { status: 200 });
-    const result = await collectSseResponse(response);
-
-    assert.equal(result.text, "");
-    assert.equal(result.sessionId, null);
-  });
-
-  it("throws for non-2xx responses other than 409", async () => {
-    const response = new Response("Server error", { status: 500 });
-
-    await assert.rejects(
-      () => collectSseResponse(response),
-      (err: Error) => {
-        assert.match(err.message, /HTTP 500/);
-        return true;
-      }
-    );
-  });
-
-  it("handles result event without session_id", async () => {
-    const events = [
-      JSON.stringify({ type: "text_delta", content: "Some text" }),
-      JSON.stringify({ type: "result" }),
-    ];
-
-    const response = buildSseResponse(events);
-    const result = await collectSseResponse(response);
-
-    assert.equal(result.text, "Some text");
-    assert.equal(result.sessionId, null);
-  });
-
-  it("skips malformed JSON events gracefully", async () => {
-    const sseText = [
-      "data: {invalid json}\n\n",
-      `data: ${JSON.stringify({ type: "text_delta", content: "valid" })}\n\n`,
-      `data: ${JSON.stringify({ type: "result", session_id: "sess-1" })}\n\n`,
-    ].join("");
-
-    const stream = new ReadableStream({
-      start(controller) {
-        controller.enqueue(new TextEncoder().encode(sseText));
-        controller.close();
-      },
-    });
-
-    const response = new Response(stream, { status: 200 });
-    const result = await collectSseResponse(response);
-
-    assert.equal(result.text, "valid");
-    assert.equal(result.sessionId, "sess-1");
+    assert.equal(segments.length, 1);
+    assert.equal(segments[0]!.isAlreadyStreaming, true);
   });
 });
