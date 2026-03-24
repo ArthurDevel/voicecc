@@ -227,10 +227,27 @@ export function ConversationView({ sessionId, agentId }: ConversationViewProps) 
 
   return (
     <>
-      <div className="page-header" style={{ padding: "48px 64px 24px" }}>
+      <div className="page-header" style={{ padding: "48px 64px 24px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div>
           <h1>{title}</h1>
         </div>
+        {agentId && (
+          <button
+            onClick={() => window.open(`/chat?agentId=${encodeURIComponent(agentId)}&sessionId=${encodeURIComponent(sessionId)}`, "_blank")}
+            style={{
+              padding: "6px 14px",
+              background: "var(--btn-primary-bg)",
+              color: "var(--btn-primary-text)",
+              border: "none",
+              borderRadius: 0,
+              fontWeight: 500,
+              fontSize: 13,
+              cursor: "pointer",
+            }}
+          >
+            Resume
+          </button>
+        )}
       </div>
       <div className="conversation-messages" ref={containerRef} style={{ padding: "0 64px 48px" }}>
         {error && <div className="conversation-empty">{error}</div>}
