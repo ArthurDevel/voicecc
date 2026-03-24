@@ -622,6 +622,19 @@ export function Chat() {
         </div>
       </div>
 
+      {/* Error banner */}
+      {error && (
+        <div style={styles.errorBanner}>
+          <span>{error}</span>
+          <button
+            onClick={() => setError("")}
+            style={styles.errorDismiss}
+          >
+            &times;
+          </button>
+        </div>
+      )}
+
       {/* Messages */}
       <div style={styles.messageList}>
         {messages.length === 0 && (
@@ -886,5 +899,25 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 500,
     fontSize: 14,
     cursor: "pointer",
+  },
+  errorBanner: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "8px 20px",
+    background: "#d73a4922",
+    borderBottom: "1px solid #d73a4955",
+    color: "#d73a49",
+    fontSize: 13,
+    flexShrink: 0,
+  },
+  errorDismiss: {
+    background: "none",
+    border: "none",
+    color: "#d73a49",
+    fontSize: 18,
+    cursor: "pointer",
+    padding: "0 4px",
+    lineHeight: 1,
   },
 };
