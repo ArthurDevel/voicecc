@@ -6,7 +6,7 @@
  * - Sends messages via POST /api/chat/send and reads SSE response stream
  * - Renders a scrollable message list with user/assistant bubbles
  * - Manages send-disable during assistant streaming
- * - Closes session on unmount via POST /api/chat/close
+ * - Captures sessionId from SSE result events for session resume support
  */
 
 import { useState, useRef, useEffect, useCallback } from "react";
@@ -30,6 +30,15 @@ interface ChatMessage {
 interface SseEvent {
   type: "text_delta" | "tool_start" | "tool_end" | "result" | "error";
   content: string;
+  toolName?: string;
+  sessionId?: string;
+}
+
+/** Message shape returned by GET /api/conversations/{sessionId} */
+interface ConversationApiMessage {
+  role: "user" | "assistant" | "tool_use" | "subagent";
+  content: string;
+  timestamp: string;
   toolName?: string;
 }
 
@@ -60,6 +69,7 @@ export function Chat() {
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const textInputRef = useRef<HTMLInputElement | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const sessionIdRef = useRef<string | null>(null);
 
   // ============================================================================
   // HELPER FUNCTIONS
@@ -67,6 +77,12 @@ export function Chat() {
 
   /** Generate a simple unique ID for messages */
   const generateId = (): string => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  /** Map conversation API role to ChatMessage role. `tool_use` becomes `tool`. */
+  const mapRole = (role: ConversationApiMessage["role"]): ChatMessage["role"] => {
+    if (role === "tool_use") return "tool";
+    return role as "user" | "assistant";
+  };
 
   /** Scroll the message list to the bottom */
   const scrollToBottom = () => {
@@ -131,9 +147,24 @@ export function Chat() {
     const params = new URLSearchParams(window.location.search);
     const urlCode = params.get("code");
     const urlAgentId = params.get("agentId");
+    const urlSessionId = params.get("sessionId");
 
     if (urlAgentId) {
       agentIdRef.current = urlAgentId;
+    }
+
+    if (urlSessionId) {
+      sessionIdRef.current = urlSessionId;
+    }
+
+    // Resume flow: skip pairing when sessionId is in URL (opened from dashboard)
+    if (urlSessionId && urlAgentId) {
+      if (!token) {
+        // Use sessionId as a placeholder token for the resume flow
+        deviceTokenRef.current = `resume-${urlSessionId}`;
+      }
+      markConnected();
+      return;
     }
 
     // Auto-pair from URL code
@@ -178,22 +209,57 @@ export function Chat() {
       });
   }, []);
 
+  // Pre-load conversation history when resuming a session (waits for connected state)
+  useEffect(() => {
+    if (chatState !== "connected") return;
+
+    const sessionId = sessionIdRef.current;
+    const agentId = agentIdRef.current;
+    if (!sessionId || !agentId) return;
+
+    let stale = false;
+    const controller = new AbortController();
+
+    fetch(`/api/conversations/${sessionId}?agentId=${agentId}`, {
+      signal: controller.signal,
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
+      .then((data: ConversationApiMessage[]) => {
+        if (stale) return;
+
+        // Only populate if the user hasn't sent a message while we were fetching
+        setMessages((prev) => {
+          if (prev.length > 0) return prev;
+
+          return data
+            .filter((m) => m.role !== "subagent")
+            .map((m) => ({
+              id: generateId(),
+              role: mapRole(m.role),
+              content: m.role === "tool_use" ? (m.toolName || "tool") : m.content,
+              timestamp: new Date(m.timestamp).getTime(),
+              isStreaming: false,
+            }));
+        });
+      })
+      .catch((err) => {
+        if ((err as Error).name === "AbortError") return;
+        console.error("[Chat] Failed to load conversation history:", err);
+      });
+
+    return () => {
+      stale = true;
+      controller.abort();
+    };
+  }, [chatState]);
+
   // Auto-scroll on new messages or tool status changes
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
-
-  // Close session on unmount
-  useEffect(() => {
-    return () => {
-      const token = deviceTokenRef.current;
-      if (token) {
-        // Use sendBeacon for reliable cleanup on page unload
-        const body = JSON.stringify({ token });
-        navigator.sendBeacon("/api/chat/close", new Blob([body], { type: "application/json" }));
-      }
-    };
-  }, []);
 
   // ============================================================================
   // SSE STREAM HANDLER
@@ -258,6 +324,19 @@ export function Chat() {
         break;
 
       case "result":
+        // Store session ID and update URL for resume support
+        if (event.sessionId) {
+          sessionIdRef.current = event.sessionId;
+
+          const cleanUrl = new URL(window.location.href);
+          cleanUrl.search = "";
+          if (agentIdRef.current) {
+            cleanUrl.searchParams.set("agentId", agentIdRef.current);
+          }
+          cleanUrl.searchParams.set("sessionId", event.sessionId);
+          window.history.replaceState(null, "", cleanUrl.toString());
+        }
+
         // Finalize any remaining streaming message
         setMessages((prev) => {
           const last = prev[prev.length - 1];
@@ -382,6 +461,7 @@ export function Chat() {
           token: deviceTokenRef.current,
           agentId: agentIdRef.current || undefined,
           text: trimmed,
+          resumeSessionId: sessionIdRef.current || undefined,
         }),
         signal: controller.signal,
       });

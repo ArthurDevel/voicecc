@@ -30,6 +30,7 @@ interface ChatSendBody {
   token: string;
   agentId?: string;
   text: string;
+  resumeSessionId?: string;
 }
 
 /** Request body for POST /stop and /close */
@@ -66,24 +67,30 @@ export function chatRoutes(): Hono {
       return c.json({ error: "Missing 'token' field" }, 400);
     }
 
-    // Validate device token (localhost bypass via x-forwarded-for)
+    // Validate device token (localhost bypass via x-forwarded-for, resume bypass for dashboard)
     const forwarded = c.req.header("x-forwarded-for") ?? "";
     const isLocalhost = forwarded === "127.0.0.1";
+    const isResumeFlow = !!body.resumeSessionId;
 
-    if (!isLocalhost && !isValidDeviceToken(body.token)) {
+    if (!isLocalhost && !isResumeFlow && !isValidDeviceToken(body.token)) {
       return c.json({ error: "Invalid device token" }, 401);
     }
 
     // Proxy to Python server
     try {
+      const pythonBody: Record<string, string | undefined> = {
+        session_key: body.token,
+        agent_id: body.agentId,
+        text: body.text.trim(),
+      };
+      if (body.resumeSessionId) {
+        pythonBody.resume_session_id = body.resumeSessionId;
+      }
+
       const response = await fetch(`${VOICE_SERVER_URL}/chat/send`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          session_key: body.token,
-          agent_id: body.agentId,
-          text: body.text.trim(),
-        }),
+        body: JSON.stringify(pythonBody),
       });
 
       if (!response.ok && !response.headers.get("content-type")?.includes("text/event-stream")) {
