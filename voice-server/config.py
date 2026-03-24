@@ -110,7 +110,7 @@ def load_config() -> VoiceServerConfig:
     """
     voicecc_dir = os.environ.get("VOICECC_DIR", DEFAULT_VOICECC_DIR)
     env_path = os.path.join(voicecc_dir, ".env")
-    load_dotenv(env_path)
+    load_dotenv(env_path, override=True)
 
     api_key = os.environ.get("ELEVENLABS_API_KEY", "")
     if not api_key:

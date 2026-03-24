@@ -37,6 +37,7 @@ from config import (
     build_system_prompt,
     list_agents,
     load_agent,
+    load_config,
     DEFAULT_AGENTS_DIR,
     PROJECT_ROOT,
 )
@@ -108,9 +109,6 @@ _in_flight_checks: set[str] = set()
 # Pending calls keyed by token, waiting for Twilio WebSocket connection
 _pending_calls: dict[str, PendingCall] = {}
 
-# Reference to config (set on start)
-_config: VoiceServerConfig | None = None
-
 # Getter for tunnel URL (set on start, imported from server module)
 _get_tunnel_url = None
 
@@ -125,15 +123,14 @@ def start_heartbeat(config: VoiceServerConfig, get_tunnel_url_fn) -> None:
     Runs _check_all_agents every 60 seconds via an asyncio task.
 
     Args:
-        config: Voice server configuration with Twilio credentials
+        config: Voice server configuration (unused, kept for API compat)
         get_tunnel_url_fn: Callable that returns the current tunnel URL
     """
-    global _interval_task, _config, _get_tunnel_url
+    global _interval_task, _get_tunnel_url
 
     if _interval_task is not None:
         return
 
-    _config = config
     _get_tunnel_url = get_tunnel_url_fn
 
     _interval_task = asyncio.create_task(_interval_loop())
@@ -217,10 +214,8 @@ async def _interval_loop() -> None:
 
 async def _check_all_agents() -> None:
     """Check all enabled agents and spawn heartbeat sessions for those that are due."""
-    if not _config:
-        return
-
-    agents = list_agents(_config.agents_dir)
+    config = load_config()
+    agents = list_agents(config.agents_dir)
     if not agents:
         return
 
@@ -396,17 +391,16 @@ async def initiate_agent_call(agent: Agent, client: ClaudeSDKClient) -> str:
     Returns:
         The Twilio call SID
     """
-    if not _config:
-        raise RuntimeError("Heartbeat not started -- no config")
+    config = load_config()
 
     tunnel_url = _get_tunnel_url() if _get_tunnel_url else None
     if not tunnel_url:
         raise RuntimeError("Tunnel is not running. Cannot place outbound call.")
 
-    if not _config.twilio_account_sid or not _config.twilio_auth_token:
+    if not config.twilio_account_sid or not config.twilio_auth_token:
         raise RuntimeError("TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN must be set")
 
-    if not _config.user_phone_number:
+    if not config.user_phone_number:
         raise RuntimeError("USER_PHONE_NUMBER must be set in Settings > General")
 
     token = str(uuid4())
@@ -427,11 +421,11 @@ async def initiate_agent_call(agent: Agent, client: ClaudeSDKClient) -> str:
     # Get the configured Twilio phone number
     from twilio.rest import Client as TwilioClient
 
-    from_number: str = _config.twilio_phone_number
+    from_number: str = config.twilio_phone_number
     if not from_number:
         raise RuntimeError("No TWILIO_PHONE_NUMBER configured")
 
-    twilio_client = TwilioClient(_config.twilio_account_sid, _config.twilio_auth_token)
+    twilio_client = TwilioClient(config.twilio_account_sid, config.twilio_auth_token)
 
     # Build TwiML with WebSocket stream URL
     tunnel_host = tunnel_url.replace("https://", "").replace("http://", "")
@@ -442,13 +436,13 @@ async def initiate_agent_call(agent: Agent, client: ClaudeSDKClient) -> str:
     )
 
     call = twilio_client.calls.create(
-        to=_config.user_phone_number,
+        to=config.user_phone_number,
         from_=from_number,
         twiml=twiml,
     )
 
     logger.info(
-        f"[heartbeat] outbound call placed to {_config.user_phone_number} "
+        f"[heartbeat] outbound call placed to {config.user_phone_number} "
         f"(callSid={call.sid})"
     )
     return call.sid or ""
