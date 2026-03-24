@@ -1,13 +1,14 @@
 /**
  * Incoming WhatsApp message handler for VoiceCC.
  *
- * Routes group messages to the Python /chat/send endpoint, collects the full
- * SSE response (WhatsApp cannot stream), and sends the reply back via Baileys.
+ * Routes group messages to the Python /chat/send endpoint, streams the SSE
+ * response, and sends each logical message to WhatsApp as soon as it completes.
  *
  * Responsibilities:
  * - Validate and filter incoming Baileys messages (only owner text in mapped groups)
  * - Normalize JIDs to handle the :0 device suffix from Baileys
- * - Consume SSE streams from Python and accumulate the full response
+ * - Stream SSE from Python and yield message segments at tool_start / result boundaries
+ * - Send each segment to WhatsApp immediately (no buffering the full response)
  * - Handle concurrency (HTTP 409 -> "Still thinking, please wait...")
  * - Store session IDs for conversation resume
  * - Split long replies that exceed WhatsApp's byte limit
@@ -49,17 +50,20 @@ export interface WhatsAppIncomingMessage {
   messageId: string;
 }
 
-/** Result of collecting a full SSE response from Python */
-interface SseCollectedResponse {
+/** A single message segment yielded by the SSE stream generator */
+export interface SseSegment {
   text: string;
   sessionId: string | null;
+  isAlreadyStreaming: boolean;
+  isError: boolean;
 }
 
-/** Shape of an SSE event payload from Python /chat/send */
+/** Shape of an SSE event payload from Python /chat/send (camelCase, matches Python to_dict()) */
 interface SseEventPayload {
   type: string;
   content?: string;
-  session_id?: string;
+  sessionId?: string;
+  toolName?: string;
   error?: string;
 }
 
@@ -183,18 +187,19 @@ export function shouldHandleMessage(
 }
 
 /**
- * Consume a full SSE response from the Python /chat/send endpoint.
- * Accumulates all text_delta events and extracts the session_id from
- * the result event.
+ * Stream SSE from Python /chat/send and yield message segments at boundaries.
+ * Yields a segment whenever a tool_start or result event arrives after accumulated text.
+ * This allows each logical message to be sent to WhatsApp immediately.
  *
  * @param response - The fetch Response from Python /chat/send
- * @returns The accumulated text and session ID
+ * @yields SseSegment for each completed message boundary
  * @throws Error on non-2xx responses (except 409)
  */
-export async function collectSseResponse(response: Response): Promise<SseCollectedResponse> {
+export async function* streamSseSegments(response: Response): AsyncGenerator<SseSegment> {
   // HTTP 409 means the session is already streaming
   if (response.status === 409) {
-    return { text: "ALREADY_STREAMING", sessionId: null };
+    yield { text: "", sessionId: null, isAlreadyStreaming: true, isError: false };
+    return;
   }
 
   // Any other non-2xx is an error
@@ -203,14 +208,12 @@ export async function collectSseResponse(response: Response): Promise<SseCollect
     throw new Error(`Python /chat/send returned HTTP ${response.status}: ${errorBody}`);
   }
 
-  // Read the SSE stream
   const body = response.body;
   if (!body) {
-    return { text: "", sessionId: null };
+    return;
   }
 
   let accumulatedText = "";
-  let sessionId: string | null = null;
   let hasError = false;
 
   const reader = body.getReader();
@@ -245,25 +248,39 @@ export async function collectSseResponse(response: Response): Promise<SseCollect
 
       if (payload.type === "text_delta" && payload.content) {
         accumulatedText += payload.content;
+      } else if (payload.type === "tool_start") {
+        // Tool boundary: yield accumulated text as a separate message
+        if (accumulatedText) {
+          yield { text: accumulatedText, sessionId: null, isAlreadyStreaming: false, isError: false };
+          accumulatedText = "";
+        }
       } else if (payload.type === "result") {
-        sessionId = payload.session_id ?? null;
+        // Final event: yield remaining text with session ID
+        yield {
+          text: accumulatedText,
+          sessionId: payload.sessionId ?? null,
+          isAlreadyStreaming: false,
+          isError: false,
+        };
+        return;
       } else if (payload.type === "error") {
         hasError = true;
       }
     }
   }
 
+  // Stream closed without a result event (error path) -- yield whatever we have
   if (hasError && !accumulatedText) {
-    return { text: SSE_ERROR_REPLY, sessionId: null };
+    yield { text: SSE_ERROR_REPLY, sessionId: null, isAlreadyStreaming: false, isError: true };
+  } else if (accumulatedText) {
+    yield { text: accumulatedText, sessionId: null, isAlreadyStreaming: false, isError: false };
   }
-
-  return { text: accumulatedText, sessionId };
 }
 
 /**
  * Handle an incoming WhatsApp message end-to-end.
- * Resolves the agent, calls Python /chat/send, collects the response,
- * and sends the reply back to the WhatsApp group.
+ * Resolves the agent, calls Python /chat/send, and sends each logical message
+ * segment to WhatsApp as soon as it completes (at tool_start / result boundaries).
  *
  * @param msg - The parsed incoming message
  */
@@ -295,24 +312,25 @@ export async function handleIncomingMessage(msg: WhatsAppIncomingMessage): Promi
     }),
   });
 
-  // Collect the full SSE response
-  const collected = await collectSseResponse(response);
+  // Stream segments and send each to WhatsApp as soon as it's ready
+  for await (const segment of streamSseSegments(response)) {
+    if (segment.isAlreadyStreaming) {
+      await sock.sendMessage(msg.groupJid, { text: ALREADY_STREAMING_REPLY });
+      return;
+    }
 
-  // Handle ALREADY_STREAMING case
-  if (collected.text === "ALREADY_STREAMING") {
-    await sock.sendMessage(msg.groupJid, { text: ALREADY_STREAMING_REPLY });
-    return;
-  }
+    // Store session ID when present (only on the final segment)
+    if (segment.sessionId) {
+      await setLastSessionId(msg.groupJid, segment.sessionId);
+    }
 
-  // Store the session ID for future resume
-  if (collected.sessionId) {
-    await setLastSessionId(msg.groupJid, collected.sessionId);
-  }
-
-  // Send the reply, splitting if it exceeds the byte limit
-  const chunks = splitByByteLength(collected.text, MAX_MESSAGE_BYTES);
-  for (const chunk of chunks) {
-    await sock.sendMessage(msg.groupJid, { text: `[voicecc] ${chunk}` });
+    // Send text, splitting if it exceeds the byte limit
+    if (segment.text) {
+      const chunks = splitByByteLength(segment.text, MAX_MESSAGE_BYTES);
+      for (const chunk of chunks) {
+        await sock.sendMessage(msg.groupJid, { text: `[voicecc] ${chunk}` });
+      }
+    }
   }
 }
 
