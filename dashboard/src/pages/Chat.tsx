@@ -256,6 +256,25 @@ export function Chat() {
     };
   }, [chatState]);
 
+  // Close session on tab close / navigation away
+  useEffect(() => {
+    if (chatState !== "connected") return;
+
+    const handleUnload = () => {
+      const token = deviceTokenRef.current;
+      if (!token) return;
+
+      const blob = new Blob(
+        [JSON.stringify({ token })],
+        { type: "application/json" },
+      );
+      navigator.sendBeacon("/api/chat/close", blob);
+    };
+
+    window.addEventListener("beforeunload", handleUnload);
+    return () => window.removeEventListener("beforeunload", handleUnload);
+  }, [chatState]);
+
   // Auto-scroll on new messages or tool status changes
   useEffect(() => {
     scrollToBottom();
