@@ -36,5 +36,31 @@ export function providersRoutes(): Hono {
     return c.json({ status: "valid" as const });
   });
 
+  /** Build ElevenLabs provider info from current .env state */
+  async function elevenLabsProvider() {
+    const env = await readEnv();
+    const hasKey = !!env.ELEVENLABS_API_KEY;
+    return {
+      type: "elevenlabs",
+      name: "ElevenLabs",
+      description: "High-quality neural text-to-speech and speech-to-text",
+      status: hasKey
+        ? { ready: true }
+        : { ready: false, reason: "missing_api_key" as const },
+    };
+  }
+
+  /** List TTS providers with status */
+  app.get("/tts", async (c) => {
+    const provider = await elevenLabsProvider();
+    return c.json({ providers: [provider], active: "elevenlabs" });
+  });
+
+  /** List STT providers with status */
+  app.get("/stt", async (c) => {
+    const provider = await elevenLabsProvider();
+    return c.json({ providers: [provider], active: "elevenlabs" });
+  });
+
   return app;
 }
