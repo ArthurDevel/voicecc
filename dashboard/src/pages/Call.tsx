@@ -281,6 +281,7 @@ export function Call() {
         body: JSON.stringify({
           sdp: pc.localDescription?.sdp,
           type: pc.localDescription?.type,
+          ...(agentIdRef.current ? { request_data: { agentId: agentIdRef.current } } : {}),
         }),
       });
 

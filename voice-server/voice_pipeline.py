@@ -62,11 +62,15 @@ async def bot(runner_args: SmallWebRTCRunnerArguments):
     """
     config = load_config()
 
-    # TODO: Accept agent_id from WebRTC signaling query params
+    # Extract agent_id from request_data sent by the browser client
     agent_id = None
+    if runner_args.body and isinstance(runner_args.body, dict):
+        agent_id = runner_args.body.get("agentId")
+    logger.info(f"[voice] WebRTC session started, agent_id={agent_id}, body={runner_args.body}")
 
     system_prompt = build_system_prompt(agent_id, "voice")
     voice_id = get_agent_voice_id(agent_id, provider=config.tts_provider)
+    logger.info(f"[voice] Using voice_id={voice_id} for provider={config.tts_provider}")
 
     # Transport
     transport = SmallWebRTCTransport(
