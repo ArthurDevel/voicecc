@@ -27,10 +27,14 @@ DEFAULT_AGENT_VOICE_ID = "IKne3meq5aSn9XLyUdCD"  # Charlie
 DEFAULT_NON_AGENT_VOICE_ID = "WrjxnKxK0m1uiaH0uteU"
 DEFAULT_TTS_MODEL = "eleven_turbo_v2_5"
 DEFAULT_STT_MODEL = "scribe_v1"
+DEFAULT_DEEPGRAM_STT_MODEL = "nova-2"
+DEFAULT_DEEPGRAM_TTS_VOICE = "aura-asteria-en"
 DEFAULT_WEBRTC_PORT = 7860
 DEFAULT_API_PORT = 7861
 DEFAULT_TWILIO_PORT = 8080
 DEFAULT_MAX_CONCURRENT_SESSIONS = 2
+
+VALID_PROVIDERS = ("elevenlabs", "deepgram")
 
 # Project root is the parent of voice-server/
 PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
@@ -53,6 +57,7 @@ class AgentVoiceConfig:
     """Per-provider voice preferences."""
     elevenlabs: VoicePreference | None = None
     local: VoicePreference | None = None
+    deepgram: VoicePreference | None = None
 
 
 @dataclass
@@ -81,10 +86,15 @@ class VoiceServerConfig:
     webrtc_port: int
     api_port: int
     tunnel_url: str | None
+    stt_provider: str
+    tts_provider: str
     elevenlabs_api_key: str
     elevenlabs_voice_id: str
     elevenlabs_tts_model: str
     elevenlabs_stt_model: str
+    deepgram_api_key: str
+    deepgram_stt_model: str
+    deepgram_tts_voice: str
     agents_dir: str
     default_cwd: str
     project_root: str
@@ -103,7 +113,8 @@ def load_config() -> VoiceServerConfig:
     """Load environment variables from ~/.voicecc/.env and return a typed config.
 
     Reads .env using python-dotenv, then extracts all required values.
-    Fails fast if ELEVENLABS_API_KEY is missing.
+    Validates that provider strings are valid and that the active provider's
+    API key is present.
 
     Returns:
         VoiceServerConfig with all settings populated
@@ -112,18 +123,44 @@ def load_config() -> VoiceServerConfig:
     env_path = os.path.join(voicecc_dir, ".env")
     load_dotenv(env_path, override=True)
 
-    api_key = os.environ.get("ELEVENLABS_API_KEY", "")
-    if not api_key:
-        raise ValueError("ELEVENLABS_API_KEY is required in ~/.voicecc/.env")
+    # Read provider selection (default to elevenlabs for backwards compatibility)
+    stt_provider = os.environ.get("STT_PROVIDER", "elevenlabs").lower()
+    tts_provider = os.environ.get("TTS_PROVIDER", "elevenlabs").lower()
+
+    if stt_provider not in VALID_PROVIDERS:
+        raise ValueError(
+            f'Invalid STT_PROVIDER "{stt_provider}". Must be one of: {", ".join(VALID_PROVIDERS)}'
+        )
+    if tts_provider not in VALID_PROVIDERS:
+        raise ValueError(
+            f'Invalid TTS_PROVIDER "{tts_provider}". Must be one of: {", ".join(VALID_PROVIDERS)}'
+        )
+
+    # Only require API keys for active providers
+    elevenlabs_api_key = os.environ.get("ELEVENLABS_API_KEY", "")
+    deepgram_api_key = os.environ.get("DEEPGRAM_API_KEY", "")
+
+    if stt_provider == "elevenlabs" or tts_provider == "elevenlabs":
+        if not elevenlabs_api_key:
+            raise ValueError("ELEVENLABS_API_KEY is required when ElevenLabs is an active provider")
+
+    if stt_provider == "deepgram" or tts_provider == "deepgram":
+        if not deepgram_api_key:
+            raise ValueError("DEEPGRAM_API_KEY is required when Deepgram is an active provider")
 
     return VoiceServerConfig(
         webrtc_port=int(os.environ.get("WEBRTC_PORT", str(DEFAULT_WEBRTC_PORT))),
         api_port=int(os.environ.get("API_PORT", str(DEFAULT_API_PORT))),
         tunnel_url=os.environ.get("TUNNEL_URL"),
-        elevenlabs_api_key=api_key,
+        stt_provider=stt_provider,
+        tts_provider=tts_provider,
+        elevenlabs_api_key=elevenlabs_api_key,
         elevenlabs_voice_id=os.environ.get("ELEVENLABS_VOICE_ID", DEFAULT_NON_AGENT_VOICE_ID),
         elevenlabs_tts_model=os.environ.get("ELEVENLABS_MODEL_ID", DEFAULT_TTS_MODEL),
         elevenlabs_stt_model=os.environ.get("ELEVENLABS_STT_MODEL_ID", DEFAULT_STT_MODEL),
+        deepgram_api_key=deepgram_api_key,
+        deepgram_stt_model=os.environ.get("DEEPGRAM_STT_MODEL", DEFAULT_DEEPGRAM_STT_MODEL),
+        deepgram_tts_voice=os.environ.get("DEEPGRAM_TTS_VOICE", DEFAULT_DEEPGRAM_TTS_VOICE),
         agents_dir=os.environ.get("AGENTS_DIR", DEFAULT_AGENTS_DIR),
         default_cwd=os.environ.get("DEFAULT_CWD", os.path.expanduser("~")),
         project_root=PROJECT_ROOT,
@@ -237,26 +274,40 @@ def list_agents(agents_dir: str | None = None) -> list[Agent]:
     return agents
 
 
-def get_agent_voice_id(agent_id: str | None) -> str:
-    """Get the ElevenLabs voice ID for an agent, falling back to defaults.
+def get_agent_voice_id(agent_id: str | None, provider: str = "elevenlabs") -> str:
+    """Get the voice ID for an agent for the given provider, falling back to defaults.
 
     Args:
         agent_id: Agent identifier, or None
+        provider: TTS provider name ("elevenlabs" or "deepgram")
 
     Returns:
-        ElevenLabs voice ID string
+        Voice ID string for the specified provider
     """
+    # Default voice IDs per provider when no agent is specified
+    default_voice_ids = {
+        "elevenlabs": DEFAULT_NON_AGENT_VOICE_ID,
+        "deepgram": DEFAULT_DEEPGRAM_TTS_VOICE,
+    }
+    # Default voice IDs per provider when agent has no voice preference
+    agent_default_voice_ids = {
+        "elevenlabs": DEFAULT_AGENT_VOICE_ID,
+        "deepgram": DEFAULT_DEEPGRAM_TTS_VOICE,
+    }
+
     if not agent_id:
-        return DEFAULT_NON_AGENT_VOICE_ID
+        return default_voice_ids.get(provider, DEFAULT_NON_AGENT_VOICE_ID)
 
     try:
         agent = load_agent(agent_id)
-        if agent.config.voice and agent.config.voice.elevenlabs:
-            return agent.config.voice.elevenlabs.id
+        if agent.config.voice:
+            voice_pref = getattr(agent.config.voice, provider, None)
+            if voice_pref:
+                return voice_pref.id
     except FileNotFoundError:
         pass
 
-    return DEFAULT_AGENT_VOICE_ID
+    return agent_default_voice_ids.get(provider, DEFAULT_AGENT_VOICE_ID)
 
 
 # ============================================================================
@@ -333,7 +384,11 @@ def _read_agent_config(config_path: str) -> AgentConfig:
         if "elevenlabs" in voice_raw:
             el = voice_raw["elevenlabs"]
             elevenlabs = VoicePreference(id=el["id"], name=el["name"])
-        voice_config = AgentVoiceConfig(elevenlabs=elevenlabs)
+        deepgram = None
+        if "deepgram" in voice_raw:
+            dg = voice_raw["deepgram"]
+            deepgram = VoicePreference(id=dg["id"], name=dg["name"])
+        voice_config = AgentVoiceConfig(elevenlabs=elevenlabs, deepgram=deepgram)
 
     # Validate outbound channel value
     outbound_channel = raw.get("outboundChannel", "call")

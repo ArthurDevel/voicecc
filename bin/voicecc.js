@@ -358,11 +358,24 @@ async function runSetupWizard() {
   console.log("========================================");
   console.log("");
 
-  // ElevenLabs API key
-  console.log("VoiceCC uses ElevenLabs for speech recognition and text-to-speech.");
-  console.log("You can get a free API key at: https://elevenlabs.io");
+  // Voice provider selection
+  console.log("VoiceCC supports two voice providers for speech recognition and text-to-speech:");
   console.log("");
-  const apiKey = await ask(rl, "Paste your ElevenLabs API key (or press Enter to skip): ");
+  console.log("  1) ElevenLabs - High-quality neural TTS/STT (https://elevenlabs.io)");
+  console.log("  2) Deepgram   - Fast, accurate TTS/STT (https://deepgram.com)");
+  console.log("");
+  const providerChoice = await ask(rl, "Choose your voice provider [1/2] (default: 1): ");
+  const isDeepgram = providerChoice === "2";
+  const providerName = isDeepgram ? "Deepgram" : "ElevenLabs";
+  const providerKey = isDeepgram ? "DEEPGRAM_API_KEY" : "ELEVENLABS_API_KEY";
+  const providerValue = isDeepgram ? "deepgram" : "elevenlabs";
+
+  console.log("");
+  console.log(`You selected ${providerName}.`);
+  const apiKeyUrl = isDeepgram ? "https://deepgram.com" : "https://elevenlabs.io";
+  console.log(`You can get an API key at: ${apiKeyUrl}`);
+  console.log("");
+  const apiKey = await ask(rl, `Paste your ${providerName} API key (or press Enter to skip): `);
   if (!apiKey) {
     console.log("Skipped. You can add it later from the dashboard.");
   }
@@ -439,7 +452,9 @@ async function runSetupWizard() {
 
   // Build .env content
   const lines = [];
-  if (apiKey) lines.push(`ELEVENLABS_API_KEY=${apiKey}`);
+  lines.push(`TTS_PROVIDER=${providerValue}`);
+  lines.push(`STT_PROVIDER=${providerValue}`);
+  if (apiKey) lines.push(`${providerKey}=${apiKey}`);
   if (password) lines.push(`DASHBOARD_PASSWORD=${password}`);
   lines.push(`TUNNEL_ENABLED=${tunnelEnabled}`);
   await writeFile(ENV_PATH, lines.join("\n") + "\n", "utf-8");

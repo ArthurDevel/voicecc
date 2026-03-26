@@ -27,6 +27,9 @@ ENV_BACKED_FIELDS: dict[str, tuple[str, str, str]] = {
     "elevenlabs_voice_id":  ("ELEVENLABS_VOICE_ID",      "voice_old",        "voice_new"),
     "elevenlabs_tts_model": ("ELEVENLABS_MODEL_ID",      "model_old",        "model_new"),
     "elevenlabs_stt_model": ("ELEVENLABS_STT_MODEL_ID",  "stt_old",          "stt_new"),
+    "deepgram_api_key":     ("DEEPGRAM_API_KEY",         "dg_old_key",       "dg_new_key"),
+    "deepgram_stt_model":   ("DEEPGRAM_STT_MODEL",       "nova-2",           "nova-3"),
+    "deepgram_tts_voice":   ("DEEPGRAM_TTS_VOICE",       "aura-asteria-en",  "aura-luna-en"),
 }
 
 # Env vars we write into every .env so load_config() doesn't fail validation

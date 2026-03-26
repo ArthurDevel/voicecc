@@ -3,7 +3,8 @@
  *
  * Allows users to:
  * - See provider readiness status (Ready / Missing API Key)
- * - Configure ElevenLabs API key and model settings (modal)
+ * - Configure ElevenLabs and Deepgram API keys and model settings (modal)
+ * - Select active TTS and STT providers independently
  * - Save all provider settings to .env
  */
 
@@ -16,6 +17,8 @@ import { get, post } from "../api";
 
 const DEFAULT_MODEL_ID = "eleven_turbo_v2_5";
 const DEFAULT_STT_MODEL_ID = "scribe_v1";
+const DEFAULT_DEEPGRAM_TTS_VOICE = "aura-asteria-en";
+const DEFAULT_DEEPGRAM_STT_MODEL = "nova-2";
 
 // ============================================================================
 // TYPES
@@ -42,7 +45,9 @@ interface ProvidersResponse {
 type ModalState =
   | null
   | { kind: "elevenlabs-tts" }
-  | { kind: "elevenlabs-stt" };
+  | { kind: "elevenlabs-stt" }
+  | { kind: "deepgram-tts" }
+  | { kind: "deepgram-stt" };
 
 // ============================================================================
 // EVENT HANDLERS
@@ -324,6 +329,132 @@ function ElevenLabsSttModal({
   );
 }
 
+/**
+ * Modal for configuring Deepgram TTS settings.
+ * @param apiKey - Current Deepgram API key
+ * @param voice - Current TTS voice (shown disabled)
+ * @param onSave - Callback with updated values
+ * @param onClose - Callback to close the modal
+ */
+function DeepgramTtsModal({
+  apiKey,
+  voice,
+  onSave,
+  onClose,
+}: {
+  apiKey: string;
+  voice: string;
+  onSave: (values: { apiKey: string }) => void;
+  onClose: () => void;
+}) {
+  const [localApiKey, setLocalApiKey] = useState(apiKey);
+
+  const handleSave = () => {
+    onSave({ apiKey: localApiKey });
+    onClose();
+  };
+
+  return (
+    <div className="modal-overlay visible" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal" style={{ width: 480 }}>
+        <button className="modal-close" onClick={onClose}>&times;</button>
+        <h2>Deepgram TTS</h2>
+        <p style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 16 }}>
+          Configure API key for Deepgram text-to-speech.
+        </p>
+
+        <div style={fieldStyle}>
+          <label style={labelStyle}>API Key</label>
+          <input
+            type="password"
+            value={localApiKey}
+            onChange={(e) => setLocalApiKey(e.target.value)}
+            placeholder="Enter your Deepgram API key"
+            style={modalInputStyle}
+          />
+        </div>
+        <div style={fieldStyle}>
+          <label style={labelStyle}>TTS Voice</label>
+          <input
+            type="text"
+            value={voice}
+            disabled
+            style={{ ...modalInputStyle, opacity: 0.5, cursor: "not-allowed" }}
+          />
+        </div>
+
+        <div style={modalBtnRow}>
+          <button onClick={onClose} style={cancelBtnStyle}>Cancel</button>
+          <button onClick={handleSave} style={applyBtnStyle}>Apply</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Modal for configuring Deepgram STT settings.
+ * @param apiKey - Current Deepgram API key
+ * @param model - Current STT model (shown disabled)
+ * @param onSave - Callback with updated values
+ * @param onClose - Callback to close the modal
+ */
+function DeepgramSttModal({
+  apiKey,
+  model,
+  onSave,
+  onClose,
+}: {
+  apiKey: string;
+  model: string;
+  onSave: (values: { apiKey: string }) => void;
+  onClose: () => void;
+}) {
+  const [localApiKey, setLocalApiKey] = useState(apiKey);
+
+  const handleSave = () => {
+    onSave({ apiKey: localApiKey });
+    onClose();
+  };
+
+  return (
+    <div className="modal-overlay visible" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal" style={{ width: 480 }}>
+        <button className="modal-close" onClick={onClose}>&times;</button>
+        <h2>Deepgram STT</h2>
+        <p style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 16 }}>
+          Configure API key for Deepgram speech-to-text.
+        </p>
+
+        <div style={fieldStyle}>
+          <label style={labelStyle}>API Key</label>
+          <input
+            type="password"
+            value={localApiKey}
+            onChange={(e) => setLocalApiKey(e.target.value)}
+            placeholder="Enter your Deepgram API key"
+            style={modalInputStyle}
+          />
+        </div>
+        <div style={fieldStyle}>
+          <label style={labelStyle}>STT Model</label>
+          <input
+            type="text"
+            value={model}
+            disabled
+            style={{ ...modalInputStyle, opacity: 0.5, cursor: "not-allowed" }}
+          />
+        </div>
+
+        <div style={modalBtnRow}>
+          <button onClick={onClose} style={cancelBtnStyle}>Cancel</button>
+          <button onClick={handleSave} style={applyBtnStyle}>Apply</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ============================================================================
 // RENDER
 // ============================================================================
@@ -336,6 +467,9 @@ export function VoiceProvidersPanel() {
   const [apiKey, setApiKey] = useState("");
   const [modelId, setModelId] = useState(DEFAULT_MODEL_ID);
   const [sttModelId, setSttModelId] = useState(DEFAULT_STT_MODEL_ID);
+  const [deepgramApiKey, setDeepgramApiKey] = useState("");
+  const [deepgramTtsVoice, setDeepgramTtsVoice] = useState(DEFAULT_DEEPGRAM_TTS_VOICE);
+  const [deepgramSttModel, setDeepgramSttModel] = useState(DEFAULT_DEEPGRAM_STT_MODEL);
   const [modal, setModal] = useState<ModalState>(null);
 
   /** Persist a partial set of keys to .env */
@@ -368,6 +502,9 @@ export function VoiceProvidersPanel() {
         if (data.ELEVENLABS_API_KEY) setApiKey(data.ELEVENLABS_API_KEY);
         if (data.ELEVENLABS_MODEL_ID) setModelId(data.ELEVENLABS_MODEL_ID);
         if (data.ELEVENLABS_STT_MODEL_ID) setSttModelId(data.ELEVENLABS_STT_MODEL_ID);
+        if (data.DEEPGRAM_API_KEY) setDeepgramApiKey(data.DEEPGRAM_API_KEY);
+        if (data.DEEPGRAM_TTS_VOICE) setDeepgramTtsVoice(data.DEEPGRAM_TTS_VOICE);
+        if (data.DEEPGRAM_STT_MODEL) setDeepgramSttModel(data.DEEPGRAM_STT_MODEL);
       })
       .catch(() => {});
   }, []);
@@ -384,12 +521,18 @@ export function VoiceProvidersPanel() {
     saveSettings({ STT_PROVIDER: type });
   }, [saveSettings]);
 
-  /** Get action button config for a provider row */
-  const getAction = (_providerType: string, _status: ProviderStatus, section: "tts" | "stt") => {
-    const kind = section === "tts" ? "elevenlabs-tts" : "elevenlabs-stt";
+  /**
+   * Get action button config for a provider row.
+   * @param providerType - The provider type string (e.g. "elevenlabs", "deepgram")
+   * @param _status - The provider's current status
+   * @param section - Whether this is a "tts" or "stt" row
+   * @returns Label and click handler for the configure button
+   */
+  const getAction = (providerType: string, _status: ProviderStatus, section: "tts" | "stt") => {
+    const kind = `${providerType}-${section}` as NonNullable<ModalState>["kind"];
     return {
       label: "Configure",
-      onAction: () => setModal({ kind: kind as "elevenlabs-tts" | "elevenlabs-stt" }),
+      onAction: () => setModal({ kind }),
     };
   };
 
@@ -482,6 +625,36 @@ export function VoiceProvidersPanel() {
             setApiKey(values.apiKey);
             saveSettings({
               ELEVENLABS_API_KEY: values.apiKey,
+            });
+          }}
+          onClose={() => setModal(null)}
+        />
+      )}
+
+      {/* Deepgram TTS Configuration Modal */}
+      {modal?.kind === "deepgram-tts" && (
+        <DeepgramTtsModal
+          apiKey={deepgramApiKey}
+          voice={deepgramTtsVoice}
+          onSave={(values) => {
+            setDeepgramApiKey(values.apiKey);
+            saveSettings({
+              DEEPGRAM_API_KEY: values.apiKey,
+            });
+          }}
+          onClose={() => setModal(null)}
+        />
+      )}
+
+      {/* Deepgram STT Configuration Modal */}
+      {modal?.kind === "deepgram-stt" && (
+        <DeepgramSttModal
+          apiKey={deepgramApiKey}
+          model={deepgramSttModel}
+          onSave={(values) => {
+            setDeepgramApiKey(values.apiKey);
+            saveSettings({
+              DEEPGRAM_API_KEY: values.apiKey,
             });
           }}
           onClose={() => setModal(null)}
