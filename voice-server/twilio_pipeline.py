@@ -4,6 +4,7 @@ Twilio voice pipeline using FastAPIWebsocketTransport with TwilioFrameSerializer
 Handles inbound and outbound Twilio phone calls by wiring Pipecat components
 for mulaw audio over WebSocket. Supports heartbeat session handoff where a
 pre-existing Claude session is passed through to preserve context.
+STT and TTS providers are selected via config (ElevenLabs or Deepgram).
 
 Responsibilities:
 - Create a Pipecat pipeline with TwilioFrameSerializer for mulaw 8kHz audio
@@ -32,8 +33,6 @@ from pipecat.processors.aggregators.llm_response_universal import (
     LLMUserAggregatorParams,
 )
 from pipecat.serializers.twilio import TwilioFrameSerializer
-from pipecat.services.elevenlabs.stt import ElevenLabsSTTService
-from pipecat.services.elevenlabs.tts import ElevenLabsTTSService
 from pipecat.transports.websocket.fastapi import (
     FastAPIWebsocketParams,
     FastAPIWebsocketTransport,
@@ -48,6 +47,7 @@ from config import (
 )
 from heartbeat import get_pending_client
 from narration_processor import NarrationProcessor
+from provider_factory import create_stt, create_tts
 from stop_phrase_processor import StopPhraseProcessor
 
 logger = logging.getLogger(__name__)
@@ -138,7 +138,7 @@ async def handle_twilio_websocket(websocket: WebSocket, call_token: str) -> None
     # Build LLM config
     system_prompt = build_system_prompt(agent_id, "voice")
     cwd = os.path.join(DEFAULT_AGENTS_DIR, agent_id) if agent_id else config.default_cwd
-    voice_id = get_agent_voice_id(agent_id)
+    voice_id = get_agent_voice_id(agent_id, provider=config.tts_provider)
 
     llm_config = ClaudeLLMServiceConfig(
         cwd=cwd,
@@ -212,19 +212,9 @@ async def _run_twilio_pipeline(
     )
 
     async with aiohttp.ClientSession() as session:
-        # STT
-        stt = ElevenLabsSTTService(
-            api_key=config.elevenlabs_api_key,
-            aiohttp_session=session,
-            model=config.elevenlabs_stt_model,
-        )
-
-        # TTS
-        tts = ElevenLabsTTSService(
-            api_key=config.elevenlabs_api_key,
-            voice_id=voice_id,
-            model=config.elevenlabs_tts_model,
-        )
+        # STT + TTS via provider factory
+        stt = create_stt(config, session)
+        tts = create_tts(config, voice_id)
 
         # Claude LLM
         claude_llm = ClaudeLLMService(config=llm_config)

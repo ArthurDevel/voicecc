@@ -22,14 +22,17 @@ interface VoicePreference {
   name: string;
 }
 
+interface AgentVoiceConfig {
+  elevenlabs?: VoicePreference;
+  local?: VoicePreference;
+  deepgram?: VoicePreference;
+}
+
 interface AgentConfig {
   heartbeatIntervalMinutes: number;
   phoneNumber: string;
   enabled: boolean;
-  voice?: {
-    elevenlabs?: VoicePreference;
-    local?: VoicePreference;
-  };
+  voice?: AgentVoiceConfig;
   outboundChannel?: "call" | "whatsapp";
 }
 
@@ -44,6 +47,13 @@ interface Agent {
 // ============================================================================
 // CONSTANTS
 // ============================================================================
+
+/** Display names for TTS providers */
+const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
+  elevenlabs: "ElevenLabs",
+  deepgram: "Deepgram",
+  local: "Local",
+};
 
 const PRE_STYLE: React.CSSProperties = {
   margin: 0,
@@ -127,7 +137,7 @@ export function AgentDetail() {
     if (!id || !agent || !activeProvider) return;
     setSavingVoice(true);
     try {
-      const providerKey = activeProvider as "elevenlabs";
+      const providerKey = activeProvider as keyof AgentVoiceConfig;
       const existingVoice = agent.config.voice ?? {};
       const newVoice = { ...existingVoice, [providerKey]: { id: voiceId, name: voices.find((v) => v.id === voiceId)?.name ?? "" } };
       await patch(`/api/agents/${id}`, { config: { voice: newVoice } });
@@ -375,10 +385,10 @@ export function AgentDetail() {
           {activeProvider && voices.length > 0 ? (
             <div>
               <label style={{ display: "block", fontSize: 13, color: "var(--text-secondary)", marginBottom: 6 }}>
-                ElevenLabs voice
+                {PROVIDER_DISPLAY_NAMES[activeProvider] ?? activeProvider} voice
               </label>
               <select
-                value={agent.config.voice?.[activeProvider as "elevenlabs"]?.id ?? ""}
+                value={agent.config.voice?.[activeProvider as keyof AgentVoiceConfig]?.id ?? ""}
                 onChange={(e) => handleVoiceChange(e.target.value)}
                 disabled={savingVoice}
                 style={{

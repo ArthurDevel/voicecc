@@ -30,6 +30,7 @@ import { webrtcRoutes } from "./routes/webrtc.js";
 import { mcpServersRoutes } from "./routes/mcp-servers.js";
 import { authRoutes } from "./routes/auth.js";
 import { integrationsRoutes, setDashboardPort as setIntegrationsDashboardPort } from "./routes/integrations.js";
+import { setDashboardPort as setBrowserCallDashboardPort } from "../server/services/browser-call-manager.js";
 import { providersRoutes } from "./routes/providers.js";
 import { agentsRoutes } from "./routes/agents.js";
 import { versionRoutes } from "./routes/version.js";
@@ -149,6 +150,7 @@ export async function startDashboard(): Promise<number> {
 
       setDashboardPort(port);
       setIntegrationsDashboardPort(port);
+      setBrowserCallDashboardPort(port);
       console.log(`Dashboard running at http://localhost:${port}`);
       return port;
     } catch (err: unknown) {

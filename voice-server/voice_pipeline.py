@@ -1,9 +1,9 @@
 """
 Browser voice pipeline entry point for Pipecat runner.
 
-Assembles the voice pipeline: WebRTC transport -> ElevenLabs STT -> stop phrase
-detection -> user context aggregation -> Claude LLM -> narration -> ElevenLabs TTS
--> WebRTC output.
+Assembles the voice pipeline: WebRTC transport -> STT -> stop phrase detection ->
+user context aggregation -> Claude LLM -> narration -> TTS -> WebRTC output.
+STT and TTS providers are selected via config (ElevenLabs or Deepgram).
 
 Can be run standalone via `python voice_pipeline.py` or imported from server.py
 which starts it alongside the FastAPI server.
@@ -35,14 +35,13 @@ from pipecat.processors.aggregators.llm_response_universal import (
 )
 from pipecat.runner.types import SmallWebRTCRunnerArguments
 from pipecat.runner.run import main
-from pipecat.services.elevenlabs.stt import ElevenLabsSTTService, ElevenLabsSTTSettings
-from pipecat.services.elevenlabs.tts import ElevenLabsTTSService, ElevenLabsTTSSettings
 from pipecat.transports.base_transport import TransportParams
 from pipecat.transports.smallwebrtc.transport import SmallWebRTCTransport
 
 from claude_llm_service import ClaudeLLMService, ClaudeLLMServiceConfig
 from config import build_system_prompt, get_agent_voice_id, load_config
 from narration_processor import NarrationProcessor
+from provider_factory import create_stt, create_tts
 from stop_phrase_processor import StopPhraseProcessor
 
 logger = logging.getLogger(__name__)
@@ -63,11 +62,15 @@ async def bot(runner_args: SmallWebRTCRunnerArguments):
     """
     config = load_config()
 
-    # TODO: Accept agent_id from WebRTC signaling query params
+    # Extract agent_id from request_data sent by the browser client
     agent_id = None
+    if runner_args.body and isinstance(runner_args.body, dict):
+        agent_id = runner_args.body.get("agentId")
+    logger.info(f"[voice] WebRTC session started, agent_id={agent_id}, body={runner_args.body}")
 
     system_prompt = build_system_prompt(agent_id, "voice")
-    voice_id = get_agent_voice_id(agent_id)
+    voice_id = get_agent_voice_id(agent_id, provider=config.tts_provider)
+    logger.info(f"[voice] Using voice_id={voice_id} for provider={config.tts_provider}")
 
     # Transport
     transport = SmallWebRTCTransport(
@@ -80,22 +83,10 @@ async def bot(runner_args: SmallWebRTCRunnerArguments):
         ),
     )
 
-    # STT
+    # STT + TTS via provider factory
     async with aiohttp.ClientSession() as session:
-        stt = ElevenLabsSTTService(
-            api_key=config.elevenlabs_api_key,
-            aiohttp_session=session,
-            settings=ElevenLabsSTTSettings(model=config.elevenlabs_stt_model),
-        )
-
-        # TTS
-        tts = ElevenLabsTTSService(
-            api_key=config.elevenlabs_api_key,
-            settings=ElevenLabsTTSSettings(
-                voice=voice_id,
-                model=config.elevenlabs_tts_model,
-            ),
-        )
+        stt = create_stt(config, session)
+        tts = create_tts(config, voice_id)
 
         # Claude LLM
         claude_config = ClaudeLLMServiceConfig(

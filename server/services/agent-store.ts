@@ -50,6 +50,7 @@ export interface VoicePreference {
 export interface AgentVoiceConfig {
   elevenlabs?: VoicePreference;
   local?: VoicePreference;
+  deepgram?: VoicePreference;
 }
 
 /** Configuration stored in config.json for each agent */

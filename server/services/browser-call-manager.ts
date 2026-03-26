@@ -8,15 +8,24 @@
 import { getTunnelUrl } from "./tunnel.js";
 
 // ============================================================================
-// CONSTANTS
+// STATE
 // ============================================================================
 
-/** Voice server port (matches voice-server.ts default) */
-const VOICE_PORT = parseInt(process.env.TWILIO_PORT ?? "", 10) || 8080;
+/** Dashboard port, set by server.ts after the dashboard starts listening. */
+let dashboardPort = 3456;
 
 // ============================================================================
 // MAIN HANDLERS
 // ============================================================================
+
+/**
+ * Set the dashboard port for building call URLs.
+ *
+ * @param port - The dashboard server port
+ */
+export function setDashboardPort(port: number): void {
+  dashboardPort = port;
+}
 
 /**
  * Get the base URL for the browser call page.
@@ -25,5 +34,5 @@ const VOICE_PORT = parseInt(process.env.TWILIO_PORT ?? "", 10) || 8080;
  * @returns The base URL for the call page
  */
 export function getCallBaseUrl(): string {
-  return getTunnelUrl() ?? `http://localhost:${VOICE_PORT}`;
+  return getTunnelUrl() ?? `http://localhost:${dashboardPort}`;
 }
