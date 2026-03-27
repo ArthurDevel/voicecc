@@ -7,11 +7,11 @@
  * - On first run (no .env), launches an interactive setup wizard
  * - Copies CLAUDE.md template on first run
  * - Manages the server as a background daemon (start/stop/status)
- * - Supports subcommands: stop, logs, autostart
+ * - Supports subcommands: stop, logs, autostart, purge
  */
 
 import { spawn, spawnSync, execSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync, openSync, closeSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync, openSync, closeSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { createInterface } from "node:readline";
 import { createHash, randomBytes } from "node:crypto";
@@ -42,6 +42,7 @@ const ENV_PATH = join(VOICECC_DIR, ".env");
 const PID_FILE = join(VOICECC_DIR, "voicecc.pid");
 const LOG_FILE = join(VOICECC_DIR, "voicecc.log");
 const STATUS_FILE = join(VOICECC_DIR, "status.json");
+const AGENTS_DIR = join(homedir(), ".claude-voice-agents");
 
 process.chdir(PKG_ROOT);
 
@@ -676,6 +677,69 @@ function setupLaunchdAutostart() {
 }
 
 /**
+ * Delete all VoiceCC data: stop daemon, remove autostart, and delete
+ * ~/.voicecc and ~/.claude-voice-agents.
+ *
+ * Intended to be run before `npm uninstall -g voicecc`.
+ */
+function purge() {
+  // Stop daemon if running
+  if (isRunning()) {
+    stopDaemon();
+  }
+
+  // Remove autostart configuration
+  const os = platform();
+  if (os === "darwin") {
+    const plistPath = join(homedir(), "Library", "LaunchAgents", "com.voicecc.server.plist");
+    if (existsSync(plistPath)) {
+      try { execSync(`launchctl unload ${plistPath}`, { stdio: "ignore" }); } catch { /* ignore */ }
+      unlinkSync(plistPath);
+      console.log("Removed launchd autostart plist.");
+    }
+  } else if (os === "linux") {
+    const servicePath = "/etc/systemd/system/voicecc.service";
+    if (existsSync(servicePath)) {
+      try {
+        execSync("sudo systemctl stop voicecc", { stdio: "ignore" });
+        execSync("sudo systemctl disable voicecc", { stdio: "ignore" });
+        execSync(`sudo rm ${servicePath}`, { stdio: "ignore" });
+        execSync("sudo systemctl daemon-reload", { stdio: "ignore" });
+        console.log("Removed systemd autostart service.");
+      } catch {
+        console.log("Warning: could not fully remove systemd service. Check sudo permissions.");
+      }
+    }
+  }
+
+  // Delete legacy .env inside the package directory
+  if (existsSync(OLD_ENV_PATH)) {
+    unlinkSync(OLD_ENV_PATH);
+  }
+
+  // Delete data directories
+  const dirs = [VOICECC_DIR, AGENTS_DIR];
+  const removed = [];
+  for (const dir of dirs) {
+    if (existsSync(dir)) {
+      rmSync(dir, { recursive: true });
+      removed.push(dir);
+    }
+  }
+
+  console.log("");
+  if (removed.length > 0) {
+    console.log("Deleted:");
+    for (const dir of removed) console.log(`  ${dir}`);
+  } else {
+    console.log("No data directories found.");
+  }
+  console.log("");
+  console.log("All VoiceCC data removed.");
+  console.log("To remove the package itself: npm uninstall -g voicecc");
+}
+
+/**
  * Start the server as a detached background daemon.
  */
 function startDaemon() {
@@ -746,6 +810,11 @@ if (subcommand === "logs") {
 if (subcommand === "autostart") {
   ensureVoiceccDir();
   setupAutostart();
+  process.exit(0);
+}
+
+if (subcommand === "purge") {
+  purge();
   process.exit(0);
 }
 
