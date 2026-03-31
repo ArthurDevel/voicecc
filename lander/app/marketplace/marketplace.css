@@ -1,0 +1,303 @@
+/* Marketplace page styles.
+ * - Agent browsing, search, upload, and card grid
+ * - Uses CSS variables from globals.css
+ */
+
+/* ============================================================================
+ * HEADER
+ * ============================================================================ */
+
+.marketplaceHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.marketplaceHeader h1 {
+  margin-bottom: 0;
+}
+
+.authStatus {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+  padding-top: 12px;
+}
+
+.authStatus a,
+.authStatus button {
+  font-size: 13px;
+  color: var(--accent-color);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: none;
+  font-family: inherit;
+}
+
+.authStatus a:hover,
+.authStatus button:hover {
+  text-decoration: underline;
+}
+
+.backLink {
+  display: inline-block;
+  font-size: 13px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  margin-bottom: 24px;
+}
+
+.backLink:hover {
+  color: var(--text-primary);
+}
+
+/* ============================================================================
+ * SEARCH
+ * ============================================================================ */
+
+.searchInput {
+  width: 100%;
+  padding: 10px 14px;
+  font-size: 14px;
+  font-family: inherit;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  margin-bottom: 24px;
+  outline: none;
+}
+
+.searchInput:focus {
+  border-color: var(--accent-color);
+}
+
+/* ============================================================================
+ * UPLOAD PANEL
+ * ============================================================================ */
+
+.uploadToggle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-color);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  margin-bottom: 16px;
+  padding: 0;
+}
+
+.uploadToggle:hover {
+  text-decoration: underline;
+}
+
+.uploadPanel {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  padding: 20px;
+  margin-bottom: 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.uploadPanel h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+
+.formField {
+  margin-bottom: 12px;
+}
+
+.formField label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  margin-bottom: 4px;
+}
+
+.formField input,
+.formField textarea {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  background: var(--code-bg);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  outline: none;
+}
+
+.formField textarea {
+  resize: vertical;
+  min-height: 60px;
+}
+
+.formField input:focus,
+.formField textarea:focus {
+  border-color: var(--accent-color);
+}
+
+.uploadBtn {
+  padding: 8px 20px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-text);
+  border: none;
+  cursor: pointer;
+  margin-top: 4px;
+}
+
+.uploadBtn:hover {
+  opacity: 0.9;
+}
+
+.uploadBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ============================================================================
+ * MESSAGES
+ * ============================================================================ */
+
+.errorMessage {
+  font-size: 13px;
+  color: #e53e3e;
+  margin-bottom: 16px;
+  padding: 8px 12px;
+  background: rgba(229, 62, 62, 0.08);
+  border: 1px solid rgba(229, 62, 62, 0.2);
+}
+
+.successMessage {
+  font-size: 13px;
+  color: var(--accent-color);
+  margin-bottom: 16px;
+  padding: 8px 12px;
+  background: rgba(46, 160, 67, 0.08);
+  border: 1px solid rgba(46, 160, 67, 0.2);
+}
+
+/* ============================================================================
+ * AGENT GRID
+ * ============================================================================ */
+
+.agentGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.agentCard {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  padding: 16px 20px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.agentCardHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.agentCardHeader h3 {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.agentCardActions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.agentAuthor {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.agentDescription {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+  line-height: 1.5;
+}
+
+.agentMeta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.agentTag {
+  font-size: 11px;
+  padding: 2px 8px;
+  background: var(--bg-hover);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+}
+
+.agentVersion {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.agentSize {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.downloadBtn {
+  font-size: 12px;
+  color: var(--accent-color);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.downloadBtn:hover {
+  text-decoration: underline;
+}
+
+.deleteBtn {
+  font-size: 12px;
+  color: #e53e3e;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 500;
+  padding: 0;
+}
+
+.deleteBtn:hover {
+  text-decoration: underline;
+}
+
+/* ============================================================================
+ * EMPTY STATE
+ * ============================================================================ */
+
+.noResults {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
